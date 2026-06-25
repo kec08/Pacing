@@ -4,6 +4,7 @@ import Charts
 struct MyView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = MyViewModel()
+    @State private var showPicker = false
 
     var body: some View {
         ScrollView {
@@ -18,6 +19,88 @@ struct MyView: View {
         }
         .background(Color.backgroundPrimary)
         .refreshable { vm.loadData() }
+        .sheet(isPresented: $showPicker) {
+            periodPickerSheet
+        }
+    }
+
+    // MARK: - Period Picker Sheet
+    @ViewBuilder
+    private var periodPickerSheet: some View {
+        NavigationStack {
+            Group {
+                switch vm.selectedPeriod {
+                case .week:
+                    List(vm.weekOptions, id: \.offset) { option in
+                        Button {
+                            vm.weekOffset = option.offset
+                            vm.applySelection()
+                            showPicker = false
+                        } label: {
+                            HStack {
+                                Text(option.label)
+                                    .foregroundStyle(Color.textPrimary)
+                                Spacer()
+                                if vm.weekOffset == option.offset {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.main500)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                        }
+                    }
+                case .month:
+                    List(vm.monthOptions, id: \.self) { month in
+                        Button {
+                            vm.selectedMonth = month
+                            vm.applySelection()
+                            showPicker = false
+                        } label: {
+                            HStack {
+                                Text("\(Calendar.current.component(.year, from: Date()))년 \(month)월")
+                                    .foregroundStyle(Color.textPrimary)
+                                Spacer()
+                                if vm.selectedMonth == month {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.main500)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                        }
+                    }
+                case .year:
+                    List(vm.yearOptions, id: \.self) { year in
+                        Button {
+                            vm.selectedYear = year
+                            vm.applySelection()
+                            showPicker = false
+                        } label: {
+                            HStack {
+                                Text("\(year)년")
+                                    .foregroundStyle(Color.textPrimary)
+                                Spacer()
+                                if vm.selectedYear == year {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(Color.main500)
+                                        .fontWeight(.semibold)
+                                }
+                            }
+                        }
+                    }
+                case .all:
+                    EmptyView()
+                }
+            }
+            .navigationTitle(vm.selectedPeriod == .week ? "주 선택" : vm.selectedPeriod == .month ? "월 선택" : "년도 선택")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("닫기") { showPicker = false }
+                        .foregroundStyle(Color.main500)
+                }
+            }
+        }
+        .presentationDetents([.medium])
     }
 
     // MARK: - Profile Header
@@ -61,14 +144,20 @@ struct MyView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
 
-            // 기간 레이블
-            HStack(spacing: 5) {
-                Text(vm.periodLabel)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.textSecondary)
+            // 기간 레이블 (탭 → 피커 시트)
+            Button {
+                if vm.selectedPeriod != .all { showPicker = true }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(vm.periodLabel)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.textPrimary)
+                    if vm.selectedPeriod != .all {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                }
             }
             .padding(.horizontal, 28)
             .padding(.top, 22)
