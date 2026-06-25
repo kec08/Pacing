@@ -9,8 +9,6 @@ struct MyView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 0) {
-                    profileHeader
-                    Divider().padding(.horizontal, 20)
                     statsSection
                     Divider().padding(.horizontal, 20).padding(.top, 8)
                     historySection
@@ -19,50 +17,40 @@ struct MyView: View {
                 }
             }
             .background(Color.backgroundSecondary)
-            .navigationTitle("마이")
-            .navigationBarTitleDisplayMode(.large)
-            .refreshable { vm.loadData() }
-        }
-    }
-
-    // MARK: - Profile Header
-    private var profileHeader: some View {
-        HStack(spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(Color.main500)
-                    .frame(width: 60, height: 60)
-                Text(String(vm.nickname.prefix(1)))
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(vm.nickname)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                if vm.height > 0 || vm.weight > 0 || vm.age > 0 {
-                    HStack(spacing: 8) {
-                        if vm.height > 0 { statChip("\(vm.height)cm") }
-                        if vm.weight > 0 { statChip("\(vm.weight)kg") }
-                        if vm.age > 0    { statChip("\(vm.age)세") }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    // 네비게이션 바 회색 영역에 프로필 표시
+                    HStack(spacing: 10) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.main500)
+                                .frame(width: 34, height: 34)
+                            Text(String(vm.nickname.prefix(1)))
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(vm.nickname)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.textPrimary)
+                            if vm.height > 0 || vm.weight > 0 || vm.age > 0 {
+                                HStack(spacing: 6) {
+                                    if vm.height > 0 { Text("\(vm.height)cm") }
+                                    if vm.weight > 0 { Text("\(vm.weight)kg") }
+                                    if vm.age > 0    { Text("\(vm.age)세") }
+                                }
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.textSecondary)
+                            }
+                        }
+                        Spacer()
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            Spacer()
+            .refreshable { vm.loadData() }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
-        .background(Color.backgroundPrimary)
-    }
-
-    private func statChip(_ text: String) -> some View {
-        Text(text)
-            .font(.system(size: 13, weight: .medium))
-            .foregroundStyle(Color.textSecondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(Color.gray100)
-            .clipShape(Capsule())
     }
 
     // MARK: - Stats Section
@@ -75,10 +63,10 @@ struct MyView: View {
                         vm.changePeriod(period)
                     } label: {
                         Text(period.rawValue)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(vm.selectedPeriod == period ? Color.white : Color.textSecondary)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
+                            .padding(.vertical, 6)
                             .background(
                                 vm.selectedPeriod == period
                                 ? Color.main500
@@ -88,49 +76,49 @@ struct MyView: View {
                     }
                 }
             }
-            .padding(4)
+            .padding(3)
             .background(Color.gray100)
             .clipShape(Capsule())
             .padding(.horizontal, 20)
-            .padding(.top, 20)
+            .padding(.top, 16)
 
             // 총 거리
-            VStack(spacing: 4) {
+            VStack(spacing: 2) {
                 Text(String(format: "%.1f", vm.stats.totalDistance))
-                    .font(.system(size: 56, weight: .heavy))
+                    .font(.system(size: 40, weight: .heavy))
                     .foregroundStyle(Color.textPrimary)
                 Text("킬로미터")
-                    .font(.system(size: 14))
+                    .font(.system(size: 12))
                     .foregroundStyle(Color.textSecondary)
             }
-            .padding(.top, 20)
+            .padding(.top, 14)
 
             // 3컬럼 요약
             HStack(spacing: 0) {
                 summaryColumn(value: "\(vm.stats.totalRuns)회", label: "러닝")
-                Divider().frame(height: 32)
+                Divider().frame(height: 28)
                 summaryColumn(value: vm.formattedPace(vm.stats.avgPace), label: "평균 페이스")
-                Divider().frame(height: 32)
+                Divider().frame(height: 28)
                 summaryColumn(value: vm.formattedDuration(vm.stats.totalTime), label: "시간")
             }
-            .padding(.top, 16)
+            .padding(.top, 12)
 
             // 차트
             activityChart
                 .padding(.horizontal, 20)
-                .padding(.top, 20)
-                .padding(.bottom, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
         }
         .background(Color.backgroundPrimary)
     }
 
     private func summaryColumn(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 20, weight: .bold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
             Text(label)
-                .font(.system(size: 12))
+                .font(.system(size: 11))
                 .foregroundStyle(Color.textSecondary)
         }
         .frame(maxWidth: .infinity)
@@ -149,13 +137,13 @@ struct MyView: View {
             .foregroundStyle(
                 entry.value > 0 ? Color.main500 : Color.gray200
             )
-            .cornerRadius(4)
+            .cornerRadius(3)
         }
         .chartYScale(domain: 0...yMax)
         .chartXAxis {
             AxisMarks(values: .automatic) { _ in
                 AxisValueLabel()
-                    .font(.system(size: 11))
+                    .font(.system(size: 10))
                     .foregroundStyle(Color.textSecondary)
             }
         }
@@ -164,7 +152,7 @@ struct MyView: View {
                 AxisValueLabel {
                     if let v = val.as(Double.self) {
                         Text(String(format: "%.1f", v))
-                            .font(.system(size: 10))
+                            .font(.system(size: 9))
                             .foregroundStyle(Color.textSecondary)
                     }
                 }
@@ -172,24 +160,24 @@ struct MyView: View {
                     .foregroundStyle(Color.gray200)
             }
         }
-        .frame(height: 140)
+        .frame(height: 110)
     }
 
     // MARK: - History Section
     private var historySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             Text("최근 활동")
-                .font(.system(size: 17, weight: .bold))
+                .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
                 .padding(.horizontal, 20)
-                .padding(.top, 20)
+                .padding(.top, 16)
 
             if vm.runHistory.isEmpty {
                 Text("러닝 기록이 없어요")
-                    .font(.system(size: 15))
+                    .font(.system(size: 14))
                     .foregroundStyle(Color.textSecondary)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
+                    .padding(.vertical, 28)
             } else {
                 ForEach(vm.runHistory) { record in
                     RunHistoryCard(record: record, vm: vm)
@@ -197,7 +185,7 @@ struct MyView: View {
                 }
             }
         }
-        .padding(.bottom, 20)
+        .padding(.bottom, 16)
         .background(Color.backgroundPrimary)
     }
 
@@ -219,19 +207,19 @@ struct MyView: View {
         Button(action: action) {
             HStack(spacing: 14) {
                 Image(systemName: icon)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(tint)
                     .frame(width: 28)
                 Text(label)
-                    .font(.system(size: 16))
+                    .font(.system(size: 15))
                     .foregroundStyle(tint)
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(Color.gray300)
             }
             .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.vertical, 14)
         }
     }
 }
