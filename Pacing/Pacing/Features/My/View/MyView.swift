@@ -16,7 +16,7 @@ struct MyView: View {
                 settingsSection
             }
         }
-        .background(Color.backgroundSecondary)
+        .background(Color.backgroundPrimary)
         .refreshable { vm.loadData() }
     }
 
