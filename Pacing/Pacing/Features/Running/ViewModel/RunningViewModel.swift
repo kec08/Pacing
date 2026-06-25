@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import CoreLocation
+import FirebaseAuth
 
 enum RunningState {
     case idle
@@ -122,5 +123,18 @@ final class RunningViewModel: ObservableObject {
         if timeDelta > 0 {
             currentPace = (timeDelta / 60.0) / delta
         }
+    }
+
+    func saveRecord() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let record = RunRecord(
+            id: UUID().uuidString,
+            startedAt: Date().addingTimeInterval(-Double(elapsedSeconds)),
+            duration: elapsedSeconds,
+            distance: distance,
+            avgPace: avgPace,
+            routeCoordinates: locationManager.routeCoordinates
+        )
+        try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
     }
 }

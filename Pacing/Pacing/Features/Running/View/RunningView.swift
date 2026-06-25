@@ -22,7 +22,18 @@ struct RunningView: View {
                     MapPolyline(coordinates: viewModel.locationManager.routeCoordinates)
                         .stroke(Color.main500, lineWidth: 4)
                 }
-                UserAnnotation()
+                if let loc = viewModel.locationManager.currentLocation {
+                    Annotation("", coordinate: loc.coordinate) {
+                        ZStack {
+                            Circle()
+                                .fill(Color.main500)
+                                .frame(width: 16, height: 16)
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 8, height: 8)
+                        }
+                    }
+                }
             }
             .mapStyle(.standard)
             .ignoresSafeArea()
@@ -60,7 +71,7 @@ struct RunningView: View {
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
             if viewModel.state == .running {
-                withAnimation(.easeInOut(duration: 1)) {
+                withAnimation(.linear(duration: 2)) {
                     cameraPosition = .camera(MapCamera(
                         centerCoordinate: loc.coordinate,
                         distance: 500
@@ -76,7 +87,11 @@ struct RunningView: View {
                 elapsedSeconds: viewModel.elapsedSeconds,
                 avgPace: viewModel.avgPace,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
-                onSave: { showSummary = false; viewModel.reset() },
+                onSave: {
+                    Task { await viewModel.saveRecord() }
+                    showSummary = false
+                    viewModel.reset()
+                },
                 onDiscard: { showSummary = false; viewModel.reset() }
             )
         }
@@ -298,7 +313,7 @@ struct RunningView: View {
                             .frame(width: 80, height: 80)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
-                            .stroke(Color.white, lineWidth: 4)
+                            .stroke(Color(white: 0.2), lineWidth: 4)
                             .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.05), value: stopHoldProgress)

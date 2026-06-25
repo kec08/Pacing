@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import FirebaseAuth
 
 enum StatsPeriod: String, CaseIterable {
     case week = "주"
@@ -49,10 +50,21 @@ final class MyViewModel: ObservableObject {
     }
 
     private func loadProfile() {
+        // UserDefaults 우선 (즉시 표시), Firestore에서 최신값 덮어씀
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
         height   = UserDefaults.standard.integer(forKey: "height")
         weight   = UserDefaults.standard.integer(forKey: "weight")
         age      = UserDefaults.standard.integer(forKey: "age")
+
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        Task { @MainActor in
+            if let data = try? await FirestoreService.shared.fetchUserProfile(uid: uid) {
+                nickname = data["nickname"] as? String ?? nickname
+                height   = data["height"]   as? Int    ?? height
+                weight   = data["weight"]   as? Int    ?? weight
+                age      = data["age"]      as? Int    ?? age
+            }
+        }
     }
 
     func changePeriod(_ period: StatsPeriod) {
@@ -69,8 +81,18 @@ final class MyViewModel: ObservableObject {
     }
 
     func loadData() {
-        let all = RunRecord.dummies
-        let filtered = filter(records: all)
+        guard let uid = Auth.auth().currentUser?.uid else {
+            applyData(records: RunRecord.dummies)
+            return
+        }
+        Task { @MainActor in
+            let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? RunRecord.dummies
+            applyData(records: records)
+        }
+    }
+
+    private func applyData(records: [RunRecord]) {
+        let filtered = filter(records: records)
 
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
         let totalTime = filtered.reduce(0) { $0 + $1.duration }
@@ -84,7 +106,7 @@ final class MyViewModel: ObservableObject {
         )
 
         chartEntries = buildChartEntries(from: filtered)
-        runHistory = all.sorted(by: { $0.startedAt > $1.startedAt })
+        runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
     }
 
     private func filter(records: [RunRecord]) -> [RunRecord] {
@@ -206,6 +228,7 @@ final class MyViewModel: ObservableObject {
     }
 
     func logout(appState: AppState) {
+        try? Auth.auth().signOut()
         appState.isLoggedIn = false
         appState.isProfileComplete = false
     }

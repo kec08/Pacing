@@ -1,7 +1,10 @@
 import SwiftUI
+import AuthenticationServices
+import CryptoKit
 
 struct LoginView: View {
     @EnvironmentObject var appState: AppState
+    @StateObject private var authVM = AuthViewModel()
     @State private var navigateToOnboarding = false
 
     var body: some View {
@@ -9,7 +12,6 @@ struct LoginView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                // 로고 영역
                 VStack(spacing: 12) {
                     Image(systemName: "figure.run.circle.fill")
                         .resizable()
@@ -27,24 +29,31 @@ struct LoginView: View {
 
                 Spacer()
 
-                // Apple 로그인 버튼 (임시 — Firebase 연동 전)
-                Button {
-                    // TODO: Apple 로그인 연동
-                    navigateToOnboarding = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "applelogo")
-                        Text("Apple로 로그인")
-                            .font(.system(size: 17, weight: .semibold))
+                if authVM.isLoading {
+                    ProgressView()
+                        .padding(.bottom, 48)
+                } else {
+                    AppleSignInButton { result in
+                        Task {
+                            await authVM.handleSignInWithApple(result, appState: appState)
+                            if appState.isLoggedIn {
+                                navigateToOnboarding = true
+                            }
+                        }
+                    } prepareNonce: {
+                        authVM.prepareNonce()
                     }
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(Color.black)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 48)
                 }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 48)
+
+                if let error = authVM.errorMessage {
+                    Text(error)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.accent500)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
+                }
             }
             .background(Color.backgroundPrimary)
             .navigationDestination(isPresented: $navigateToOnboarding) {
