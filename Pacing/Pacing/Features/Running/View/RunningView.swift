@@ -303,8 +303,8 @@ struct RunningView: View {
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
-                        Text("종료")
-                            .font(.system(size: 16, weight: .bold))
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 80, height: 80)
                             .background(Color.black.opacity(0.85))
@@ -391,11 +391,11 @@ struct RunningView: View {
                 showStopConfirm = false
                 viewModel.resume()
             } label: {
-                Text("재시작")
-                    .font(.system(size: 16, weight: .bold))
+                Image(systemName: "play.fill")
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 80, height: 80)
-                    .background(Color.sub500)
+                    .background(Color.main500)
                     .clipShape(Circle())
             }
         }
