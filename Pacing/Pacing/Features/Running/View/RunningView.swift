@@ -194,30 +194,51 @@ struct RunningView: View {
     // MARK: - 러닝 중 스탯 오버레이
 
     private var runningStatsOverlay: some View {
-        HStack(spacing: 0) {
-            statItem(value: viewModel.formattedDistance, label: "km")
-            Divider().frame(height: 28).opacity(0.4)
-            statItem(value: viewModel.formattedTime, label: "시간")
-            Divider().frame(height: 28).opacity(0.4)
-            statItem(value: viewModel.formattedPace, label: "페이스")
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal, 16)
-    }
+        VStack(spacing: 0) {
+            // 시간 (크게, 중앙)
+            VStack(spacing: 2) {
+                Text(viewModel.formattedTime)
+                    .font(.system(size: 56, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.textPrimary)
+                Text("시간")
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 20)
+            .padding(.bottom, 16)
 
-    private func statItem(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color.textPrimary)
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(Color.textSecondary)
+            Divider().opacity(0.3).padding(.horizontal, 24)
+
+            // km / 페이스
+            HStack(spacing: 0) {
+                VStack(spacing: 2) {
+                    Text(viewModel.formattedDistance)
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.textPrimary)
+                    Text("km")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+
+                Divider().frame(height: 40).opacity(0.3)
+
+                VStack(spacing: 2) {
+                    Text(viewModel.formattedPace)
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.textPrimary)
+                    Text("페이스")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.vertical, 16)
         }
-        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+        .padding(.horizontal, 16)
     }
 
     // MARK: - 하단 컨트롤
