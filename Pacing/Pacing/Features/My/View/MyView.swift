@@ -27,80 +27,91 @@ struct MyView: View {
     // MARK: - Period Picker Sheet
     @ViewBuilder
     private var periodPickerSheet: some View {
-        NavigationStack {
-            Group {
-                switch vm.selectedPeriod {
-                case .week:
-                    List(vm.weekOptions, id: \.offset) { option in
-                        Button {
-                            vm.weekOffset = option.offset
-                            vm.applySelection()
-                            showPicker = false
-                        } label: {
-                            HStack {
-                                Text(option.label)
-                                    .foregroundStyle(Color.textPrimary)
-                                Spacer()
-                                if vm.weekOffset == option.offset {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Color.main500)
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                        }
+        VStack(spacing: 0) {
+            // 핸들
+            Capsule()
+                .fill(Color.gray300)
+                .frame(width: 36, height: 4)
+                .padding(.top, 12)
+                .padding(.bottom, 20)
+
+            Text(vm.selectedPeriod == .week ? "주 선택" : vm.selectedPeriod == .month ? "월 선택" : "년도 선택")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.textPrimary)
+                .padding(.bottom, 24)
+
+            switch vm.selectedPeriod {
+            case .week:
+                Picker("주", selection: $vm.weekOffset) {
+                    ForEach(vm.weekOptions, id: \.offset) { option in
+                        Text(option.label).tag(option.offset)
                     }
-                case .month:
-                    List(vm.monthOptions, id: \.self) { month in
-                        Button {
-                            vm.selectedMonth = month
-                            vm.applySelection()
-                            showPicker = false
-                        } label: {
-                            HStack {
-                                Text("\(Calendar.current.component(.year, from: Date()))년 \(month)월")
-                                    .foregroundStyle(Color.textPrimary)
-                                Spacer()
-                                if vm.selectedMonth == month {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Color.main500)
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                        }
-                    }
-                case .year:
-                    List(vm.yearOptions, id: \.self) { year in
-                        Button {
-                            vm.selectedYear = year
-                            vm.applySelection()
-                            showPicker = false
-                        } label: {
-                            HStack {
-                                Text("\(year)년")
-                                    .foregroundStyle(Color.textPrimary)
-                                Spacer()
-                                if vm.selectedYear == year {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(Color.main500)
-                                        .fontWeight(.semibold)
-                                }
-                            }
-                        }
-                    }
-                case .all:
-                    EmptyView()
                 }
-            }
-            .navigationTitle(vm.selectedPeriod == .week ? "주 선택" : vm.selectedPeriod == .month ? "월 선택" : "년도 선택")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("닫기") { showPicker = false }
-                        .foregroundStyle(Color.main500)
+                .pickerStyle(.wheel)
+                .frame(height: 160)
+                .background(Color.gray100)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 24)
+
+            case .month:
+                HStack(spacing: 12) {
+                    // 년도 (현재 연도 고정)
+                    Picker("년도", selection: .constant(Calendar.current.component(.year, from: Date()))) {
+                        Text("\(Calendar.current.component(.year, from: Date()))년")
+                            .tag(Calendar.current.component(.year, from: Date()))
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity, maxHeight: 160)
+                    .background(Color.gray100)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+
+                    Picker("월", selection: $vm.selectedMonth) {
+                        ForEach(vm.monthOptions, id: \.self) { month in
+                            Text("\(month)월").tag(month)
+                        }
+                    }
+                    .pickerStyle(.wheel)
+                    .frame(maxWidth: .infinity, maxHeight: 160)
+                    .background(Color.gray100)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
+                .padding(.horizontal, 24)
+
+            case .year:
+                Picker("년도", selection: $vm.selectedYear) {
+                    ForEach(vm.yearOptions, id: \.self) { year in
+                        Text("\(year)년").tag(year)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(height: 160)
+                .background(Color.gray100)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 24)
+
+            case .all:
+                EmptyView()
             }
+
+            Spacer()
+
+            Button {
+                vm.applySelection()
+                showPicker = false
+            } label: {
+                Text("선택")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(Color.main500)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 36)
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.height(360)])
+        .presentationDragIndicator(.hidden)
     }
 
     // MARK: - Profile Header

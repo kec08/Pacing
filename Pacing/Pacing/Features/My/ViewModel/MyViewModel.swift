@@ -183,11 +183,11 @@ final class MyViewModel: ObservableObject {
         }
     }
 
-    // 주 피커용: 선택 가능한 주 목록 (최근 8주)
+    // 주 피커용: 이번 주 ~ 4주 전 (5개)
     var weekOptions: [(offset: Int, label: String)] {
-        (0 ..< 8).map { i in
+        (0 ..< 5).map { i in
             let offset = -i
-            if offset == 0 { return (0, "이번 주") }
+            if offset == 0  { return (0,  "이번 주") }
             if offset == -1 { return (-1, "저번 주") }
             return (offset, "\(i)주 전")
         }
