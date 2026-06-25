@@ -12,15 +12,15 @@ struct LoginView: View {
                 Image(systemName: "figure.run.circle.fill")
                     .resizable()
                     .frame(width: 72, height: 72)
-                    .foregroundStyle(.main500)
+                    .foregroundStyle(Color.main500)
 
                 Text("Pacing")
                     .font(.system(size: 36, weight: .bold))
-                    .foregroundStyle(.textPrimary)
+                    .foregroundStyle(Color.textPrimary)
 
                 Text("같은 비트, 같은 페이스")
                     .font(.system(size: 16))
-                    .foregroundStyle(.textSecondary)
+                    .foregroundStyle(Color.textSecondary)
             }
 
             Spacer()

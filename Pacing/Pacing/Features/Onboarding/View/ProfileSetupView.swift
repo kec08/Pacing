@@ -18,10 +18,10 @@ struct ProfileSetupView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("프로필 설정")
                         .font(.system(size: 28, weight: .bold))
-                        .foregroundStyle(.textPrimary)
+                        .foregroundStyle(Color.textPrimary)
                     Text("나에 맞는 러닝 경험을 위해 정보를 입력해주세요")
                         .font(.system(size: 14))
-                        .foregroundStyle(.textSecondary)
+                        .foregroundStyle(Color.textSecondary)
                 }
                 .padding(.top, 24)
 
@@ -29,7 +29,7 @@ struct ProfileSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("닉네임")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.textSecondary)
+                        .foregroundStyle(Color.textSecondary)
                     TextField("닉네임을 입력하세요 (최대 12자)", text: $nickname)
                         .onChange(of: nickname) { _, new in
                             if new.count > 12 { nickname = String(new.prefix(12)) }
@@ -44,7 +44,7 @@ struct ProfileSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("키 (cm)")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.textSecondary)
+                        .foregroundStyle(Color.textSecondary)
                     Picker("키", selection: $height) {
                         ForEach(100...250, id: \.self) { Text("\($0) cm") }
                     }
@@ -58,7 +58,7 @@ struct ProfileSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("체중 (kg)")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.textSecondary)
+                        .foregroundStyle(Color.textSecondary)
                     Picker("체중", selection: $weight) {
                         ForEach(20...200, id: \.self) { Text("\($0) kg") }
                     }
@@ -72,7 +72,7 @@ struct ProfileSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("나이")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.textSecondary)
+                        .foregroundStyle(Color.textSecondary)
                     Picker("나이", selection: $age) {
                         ForEach(1...100, id: \.self) { Text("\($0) 세") }
                     }
@@ -86,7 +86,7 @@ struct ProfileSetupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("성별")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.textSecondary)
+                        .foregroundStyle(Color.textSecondary)
                     Picker("성별", selection: $gender) {
                         ForEach(genders, id: \.self) { Text($0) }
                     }
