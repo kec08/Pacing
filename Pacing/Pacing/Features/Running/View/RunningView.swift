@@ -10,6 +10,9 @@ struct RunningView: View {
     @State private var showMusicSheet = false
     @State private var countdown: Int? = nil
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
+    @State private var stopHoldProgress: CGFloat = 0
+    @State private var stopHoldTimer: Timer? = nil
 
     var body: some View {
         ZStack {
@@ -249,20 +252,24 @@ struct RunningView: View {
             case .idle:
                 idleControls
             case .running:
-                activeControls(isPaused: false)
+                runningControls
             case .paused:
-                activeControls(isPaused: true)
+                pausedControls
             case .finished:
                 EmptyView()
             }
         }
     }
 
+    // idle: 음악 + 시작 + 주변
     private var idleControls: some View {
         HStack(spacing: 40) {
             sideButton(icon: "music.note", label: "음악") { showMusicSheet = true }
 
-            Button { startCountdown() } label: {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                startCountdown()
+            } label: {
                 Text("시작")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(.white)
@@ -276,27 +283,108 @@ struct RunningView: View {
         }
     }
 
-    private func activeControls(isPaused: Bool) -> some View {
-        HStack(spacing: 28) {
-            Button {
-                isPaused ? viewModel.resume() : viewModel.pause()
-            } label: {
-                Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(isPaused ? .white : Color.textPrimary)
-                    .frame(width: 72, height: 72)
-                    .background(isPaused ? Color.main500 : Color(.systemGray5))
+    // running: 정지 버튼만 크게 → 탭하면 종료/재시작 선택지 표시
+    private var runningControls: some View {
+        Group {
+            if showStopConfirm {
+                // 종료 (꾹 눌러야) / 다시 시작
+                HStack(spacing: 24) {
+                    // 종료 — 1초 꾹 누르기
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.3), lineWidth: 4)
+                            .frame(width: 80, height: 80)
+                        Circle()
+                            .trim(from: 0, to: stopHoldProgress)
+                            .stroke(Color.white, lineWidth: 4)
+                            .frame(width: 80, height: 80)
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.05), value: stopHoldProgress)
+
+                        Text("종료")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 80, height: 80)
+                            .background(Color.black.opacity(0.85))
+                            .clipShape(Circle())
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in startStopHold() }
+                            .onEnded { _ in cancelStopHold() }
+                    )
+
+                    // 다시 시작
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showStopConfirm = false
+                        viewModel.resume()
+                    } label: {
+                        Text("재시작")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 80, height: 80)
+                            .background(Color.sub500)
+                            .clipShape(Circle())
+                    }
+                }
+                .transition(.scale.combined(with: .opacity))
+            } else {
+                // 정지 버튼 (크게)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    viewModel.pause()
+                    showStopConfirm = true
+                } label: {
+                    Image(systemName: "pause.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 100, height: 100)
+                        .background(Color.main500)
+                        .clipShape(Circle())
+                }
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .animation(.spring(duration: 0.3), value: showStopConfirm)
+    }
+
+    // paused: 이어서 / 종료 선택
+    private var pausedControls: some View {
+        HStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .stroke(Color.white.opacity(0.3), lineWidth: 4)
+                    .frame(width: 80, height: 80)
+                Circle()
+                    .trim(from: 0, to: stopHoldProgress)
+                    .stroke(Color.white, lineWidth: 4)
+                    .frame(width: 80, height: 80)
+                    .rotationEffect(.degrees(-90))
+                    .animation(.linear(duration: 0.05), value: stopHoldProgress)
+
+                Text("종료")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 80, height: 80)
+                    .background(Color.black.opacity(0.85))
                     .clipShape(Circle())
             }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { _ in startStopHold() }
+                    .onEnded { _ in cancelStopHold() }
+            )
 
             Button {
-                viewModel.stop()
-                showSummary = true
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showStopConfirm = false
+                viewModel.resume()
             } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 22, weight: .semibold))
+                Text("재시작")
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 72, height: 72)
+                    .frame(width: 80, height: 80)
                     .background(Color.sub500)
                     .clipShape(Circle())
             }
@@ -317,6 +405,37 @@ struct RunningView: View {
                     .foregroundStyle(Color.textSecondary)
             }
         }
+    }
+
+    // MARK: - 종료 꾹 누르기
+
+    private func startStopHold() {
+        guard stopHoldTimer == nil else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        stopHoldTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            Task { @MainActor in
+                stopHoldProgress += 0.05
+                // 0.2마다 진동 — 충전 느낌
+                if Int(stopHoldProgress * 20) % 4 == 0 {
+                    UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                }
+                if stopHoldProgress >= 1.0 {
+                    stopHoldTimer?.invalidate()
+                    stopHoldTimer = nil
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    viewModel.stop()
+                    showSummary = true
+                    showStopConfirm = false
+                    stopHoldProgress = 0
+                }
+            }
+        }
+    }
+
+    private func cancelStopHold() {
+        stopHoldTimer?.invalidate()
+        stopHoldTimer = nil
+        withAnimation(.easeOut(duration: 0.2)) { stopHoldProgress = 0 }
     }
 
     // MARK: - 음악 시트

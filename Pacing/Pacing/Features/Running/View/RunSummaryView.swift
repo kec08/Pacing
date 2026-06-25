@@ -12,134 +12,102 @@ struct RunSummaryView: View {
 
     @State private var mapSnapshot: UIImage?
     @State private var isGeneratingSnapshot = false
+    @State private var cameraPosition: MapCameraPosition = .automatic
 
     var body: some View {
         ZStack {
-            Color.backgroundPrimary.ignoresSafeArea()
-
-            ScrollView {
-                VStack(spacing: 0) {
-                    statsHeader
-                    routeMapSection
-                    actionButtons
+            // 전체 화면 지도 (경로 포함)
+            if routeCoordinates.count >= 2 {
+                Map(position: $cameraPosition, interactionModes: []) {
+                    MapPolyline(coordinates: routeCoordinates)
+                        .stroke(Color.main500, lineWidth: 4)
                 }
+                .mapStyle(.standard)
+                .ignoresSafeArea()
+                .onAppear { fitRoute() }
+            } else {
+                Color(.systemGray6).ignoresSafeArea()
+            }
+
+            VStack(spacing: 0) {
+                // 상단 스탯 오버레이
+                statsOverlay
+                    .padding(.top, 60)
+                    .padding(.horizontal, 16)
+
+                Spacer()
+
+                // 확인 버튼 (하단)
+                Button(action: onSave) {
+                    Text("확인")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.main500)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 48)
             }
         }
         .navigationBarHidden(true)
-        .task { await generateSnapshot() }
     }
 
-    // MARK: - Stats Header (Nike 스타일)
+    // MARK: - 상단 스탯
 
-    private var statsHeader: some View {
+    private var statsOverlay: some View {
         VStack(spacing: 0) {
-            // 상단 타이틀
             HStack {
                 Text("러닝 완료")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.textSecondary)
                 Spacer()
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 60)
-            .padding(.bottom, 8)
+            .padding(.bottom, 4)
 
-            // 메인 거리 스탯
+            // 거리 (대형)
             HStack(alignment: .lastTextBaseline, spacing: 6) {
                 Text(formattedDistance)
-                    .font(.system(size: 72, weight: .bold))
+                    .font(.system(size: 64, weight: .bold, design: .rounded))
                     .foregroundStyle(Color.textPrimary)
                 Text("km")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(Color.textSecondary)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 6)
                 Spacer()
             }
-            .padding(.horizontal, 24)
 
-            // 시간 / 페이스 서브 스탯
+            Divider().opacity(0.3).padding(.vertical, 10)
+
+            // 시간 / 페이스
             HStack(spacing: 0) {
-                statItem(value: formattedTime, label: "시간")
-                Divider().frame(height: 40).padding(.horizontal, 16)
-                statItem(value: formattedAvgPace, label: "평균 페이스")
+                subStatItem(value: formattedTime, label: "시간")
+                Divider().frame(height: 36).opacity(0.3)
+                subStatItem(value: formattedAvgPace, label: "평균 페이스")
                 Spacer()
             }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-            .padding(.bottom, 32)
         }
-        .background(Color.backgroundPrimary)
+        .padding(18)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
-    private func statItem(value: String, label: String) -> some View {
+    private func subStatItem(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 28, weight: .bold))
+                .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.textPrimary)
             Text(label)
-                .font(.system(size: 13, weight: .regular))
+                .font(.system(size: 12))
                 .foregroundStyle(Color.textSecondary)
         }
-    }
-
-    // MARK: - Route Map
-
-    private var routeMapSection: some View {
-        Group {
-            if let snapshot = mapSnapshot {
-                Image(uiImage: snapshot)
-                    .resizable()
-                    .aspectRatio(1, contentMode: .fill)
-                    .frame(maxWidth: .infinity)
-                    .clipped()
-            } else if isGeneratingSnapshot {
-                ZStack {
-                    Color.backgroundSecondary
-                    ProgressView()
-                        .tint(Color.main500)
-                }
-                .frame(height: 300)
-            } else {
-                ZStack {
-                    Color.backgroundSecondary
-                    Text("경로 없음")
-                        .font(.system(size: 14))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(height: 300)
-            }
-        }
-    }
-
-    // MARK: - Action Buttons
-
-    private var actionButtons: some View {
-        VStack(spacing: 12) {
-            Button(action: onSave) {
-                Text("저장하기")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 52)
-                    .background(Color.main500)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-            }
-
-            Button(action: onDiscard) {
-                Text("삭제")
-                    .font(.system(size: 15, weight: .regular))
-                    .foregroundStyle(Color.textSecondary)
-            }
-        }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 28)
+        .padding(.horizontal, 16)
     }
 
     // MARK: - Formatting
 
-    private var formattedDistance: String {
-        String(format: "%.2f", distance)
-    }
+    private var formattedDistance: String { String(format: "%.2f", distance) }
 
     private var formattedTime: String {
         let h = elapsedSeconds / 3600
@@ -156,67 +124,20 @@ struct RunSummaryView: View {
         return String(format: "%d'%02d\"", min, sec)
     }
 
-    // MARK: - Map Snapshot
+    // MARK: - 경로에 맞게 카메라 맞추기
 
-    private func generateSnapshot() async {
+    private func fitRoute() {
         guard routeCoordinates.count >= 2 else { return }
-        isGeneratingSnapshot = true
-
-        let region = regionForCoordinates(routeCoordinates)
-        let options = MKMapSnapshotter.Options()
-        options.region = region
-        options.size = CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.width)
-        options.mapType = .standard
-        options.showsBuildings = false
-
-        let snapshotter = MKMapSnapshotter(options: options)
-        do {
-            let snapshot = try await snapshotter.start()
-            let image = drawRoute(on: snapshot)
-            await MainActor.run {
-                self.mapSnapshot = image
-                self.isGeneratingSnapshot = false
-            }
-        } catch {
-            await MainActor.run { isGeneratingSnapshot = false }
-        }
-    }
-
-    private func drawRoute(on snapshot: MKMapSnapshotter.Snapshot) -> UIImage {
-        let renderer = UIGraphicsImageRenderer(size: snapshot.image.size)
-        return renderer.image { ctx in
-            snapshot.image.draw(at: .zero)
-
-            let path = UIBezierPath()
-            var first = true
-            for coord in routeCoordinates {
-                let point = snapshot.point(for: coord)
-                if first { path.move(to: point); first = false }
-                else { path.addLine(to: point) }
-            }
-
-            let cgCtx = ctx.cgContext
-            cgCtx.setStrokeColor(UIColor(Color.main500).cgColor)
-            cgCtx.setLineWidth(4)
-            cgCtx.setLineCap(.round)
-            cgCtx.setLineJoin(.round)
-            path.stroke()
-        }
-    }
-
-    private func regionForCoordinates(_ coords: [CLLocationCoordinate2D]) -> MKCoordinateRegion {
-        let lats = coords.map(\.latitude)
-        let lons = coords.map(\.longitude)
-        let minLat = lats.min()!, maxLat = lats.max()!
-        let minLon = lons.min()!, maxLon = lons.max()!
+        let lats = routeCoordinates.map(\.latitude)
+        let lons = routeCoordinates.map(\.longitude)
         let center = CLLocationCoordinate2D(
-            latitude: (minLat + maxLat) / 2,
-            longitude: (minLon + maxLon) / 2
+            latitude: ((lats.min()! + lats.max()!) / 2),
+            longitude: ((lons.min()! + lons.max()!) / 2)
         )
         let span = MKCoordinateSpan(
-            latitudeDelta: max((maxLat - minLat) * 1.4, 0.002),
-            longitudeDelta: max((maxLon - minLon) * 1.4, 0.002)
+            latitudeDelta: max((lats.max()! - lats.min()!) * 1.5, 0.003),
+            longitudeDelta: max((lons.max()! - lons.min()!) * 1.5, 0.003)
         )
-        return MKCoordinateRegion(center: center, span: span)
+        cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
     }
 }
