@@ -12,7 +12,6 @@ struct MainTabView: View {
                 .tabItem {
                     Label("러닝", systemImage: "figure.run")
                 }
-                .toolbarBackground(.ultraThinMaterial, for: .tabBar)
 
             Text("마이")
                 .tabItem {
