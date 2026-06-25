@@ -72,12 +72,10 @@ struct RunningView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 if musicVM.isLoading {
-                    // 로딩 플레이스홀더
                     ForEach(0..<3, id: \.self) { _ in
                         musicCardSkeleton
                     }
                 } else if musicVM.recentSongs.isEmpty {
-                    // 빈 상태 카드
                     emptyMusicCard
                 } else {
                     ForEach(musicVM.recentSongs, id: \.id) { song in
@@ -89,36 +87,37 @@ struct RunningView: View {
         }
     }
 
+    // 가로 레이아웃 카드 (앨범아트 왼쪽, 곡정보 오른쪽)
     private func musicCardItem(song: Song) -> some View {
         Button { showMusicSheet = true } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                // 앨범 아트
+            HStack(spacing: 10) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10)
+                    RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
-                        .frame(width: 80, height: 80)
+                        .frame(width: 48, height: 48)
                     if let artwork = song.artwork {
-                        ArtworkImage(artwork, width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        ArtworkImage(artwork, width: 48, height: 48)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
                     } else {
                         Image(systemName: "music.note")
-                            .font(.system(size: 24))
+                            .font(.system(size: 18))
                             .foregroundStyle(Color.main500)
                     }
                 }
-                // 곡 정보
-                Text(song.title)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
-                    .frame(width: 80, alignment: .leading)
-                Text(song.artistName)
-                    .font(.system(size: 10))
-                    .foregroundStyle(Color.textSecondary)
-                    .lineLimit(1)
-                    .frame(width: 80, alignment: .leading)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(song.title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                    Text(song.artistName)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
+                }
+                .frame(width: 100, alignment: .leading)
             }
-            .padding(10)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
@@ -126,36 +125,47 @@ struct RunningView: View {
 
     private var emptyMusicCard: some View {
         Button { showMusicSheet = true } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "music.note")
-                    .font(.system(size: 28))
-                    .foregroundStyle(Color.main500)
-                Text("음악 선택")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
-                Text("Apple Music")
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.textSecondary)
+            HStack(spacing: 10) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color(.systemGray5))
+                        .frame(width: 48, height: 48)
+                    Image(systemName: "music.note")
+                        .font(.system(size: 18))
+                        .foregroundStyle(Color.main500)
+                }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("음악 선택")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.textPrimary)
+                    Text("Apple Music")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.textSecondary)
+                }
             }
-            .frame(width: 100, height: 110)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 14))
         }
     }
 
     private var musicCardSkeleton: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            RoundedRectangle(cornerRadius: 10)
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 8)
                 .fill(Color(.systemGray5).opacity(0.6))
-                .frame(width: 80, height: 80)
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(.systemGray5).opacity(0.6))
-                .frame(width: 60, height: 10)
-            RoundedRectangle(cornerRadius: 4)
-                .fill(Color(.systemGray5).opacity(0.6))
-                .frame(width: 45, height: 9)
+                .frame(width: 48, height: 48)
+            VStack(alignment: .leading, spacing: 6) {
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(.systemGray5).opacity(0.6))
+                    .frame(width: 80, height: 11)
+                RoundedRectangle(cornerRadius: 4)
+                    .fill(Color(.systemGray5).opacity(0.6))
+                    .frame(width: 56, height: 10)
+            }
         }
-        .padding(10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 14))
     }
@@ -193,21 +203,21 @@ struct RunningView: View {
 
     private var bottomControlArea: some View {
         ZStack(alignment: .bottom) {
-            // 그라데이션을 더 위까지 확장
+            // 탭바 포함 아래까지 그라데이션 확장
             LinearGradient(
                 stops: [
                     .init(color: .clear, location: 0),
-                    .init(color: Color(.systemBackground).opacity(0.5), location: 0.3),
-                    .init(color: Color(.systemBackground).opacity(0.85), location: 0.55),
-                    .init(color: Color(.systemBackground), location: 0.75),
+                    .init(color: Color(.systemBackground).opacity(0.4), location: 0.25),
+                    .init(color: Color(.systemBackground).opacity(0.82), location: 0.5),
+                    .init(color: Color(.systemBackground), location: 0.68),
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 300)
+            .frame(height: 340)
+            .ignoresSafeArea(edges: .bottom)
             .allowsHitTesting(false)
 
-            // 컨트롤
             VStack(spacing: 20) {
                 switch viewModel.state {
                 case .idle:
