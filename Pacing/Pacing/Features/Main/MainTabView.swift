@@ -13,7 +13,7 @@ struct MainTabView: View {
                     Label("러닝", systemImage: "figure.run")
                 }
 
-            Text("마이")
+            MyView()
                 .tabItem {
                     Label("마이", systemImage: "person.fill")
                 }

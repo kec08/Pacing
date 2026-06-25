@@ -1,7 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "페이싱로고.png",
+      "filename" : "페이싱로고 3.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
@@ -13,7 +13,7 @@
           "value" : "dark"
         }
       ],
-      "filename" : "페이싱로고 1.png",
+      "filename" : "페이싱로고 4.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
