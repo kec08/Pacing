@@ -48,7 +48,7 @@ struct RunningView: View {
                     .ignoresSafeArea()
                 Text("\(cd)")
                     .font(.system(size: 160, weight: .black))
-                    .foregroundStyle(Color(red: 0.96, green: 0.96, blue: 0.63))
+                    .foregroundStyle(Color.main500)
                     .transition(.scale(scale: 1.4).combined(with: .opacity))
                     .id(cd)
             }
@@ -79,13 +79,23 @@ struct RunningView: View {
 
     // MARK: - 뮤직 카드
 
+    private let dummyMusicCards: [(title: String, artist: String)] = [
+        ("음악 선택", "Apple Music"),
+        ("Running Playlist", "Apple Music"),
+        ("Workout Mix", "Apple Music"),
+        ("Energy Boost", "Apple Music"),
+        ("Top Hits", "Apple Music"),
+    ]
+
     private var musicScrollSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 10) {
                 if musicVM.isLoading {
-                    ForEach(0..<3, id: \.self) { _ in musicCardSkeleton }
+                    ForEach(0..<5, id: \.self) { _ in musicCardSkeleton }
                 } else if musicVM.recentSongs.isEmpty {
-                    emptyMusicCard
+                    ForEach(dummyMusicCards, id: \.title) { card in
+                        dummyMusicCard(title: card.title, artist: card.artist)
+                    }
                 } else {
                     ForEach(musicVM.recentSongs, id: \.id) { song in
                         musicCardItem(song: song)
@@ -131,7 +141,7 @@ struct RunningView: View {
         }
     }
 
-    private var emptyMusicCard: some View {
+    private func dummyMusicCard(title: String, artist: String) -> some View {
         Button { showMusicSheet = true } label: {
             HStack(spacing: 10) {
                 ZStack {
@@ -143,13 +153,16 @@ struct RunningView: View {
                         .foregroundStyle(Color.main500)
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("음악 선택")
+                    Text(title)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.textPrimary)
-                    Text("Apple Music")
+                        .lineLimit(1)
+                    Text(artist)
                         .font(.system(size: 11))
                         .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
                 }
+                .frame(width: 100, alignment: .leading)
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
