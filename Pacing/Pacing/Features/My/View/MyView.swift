@@ -55,7 +55,7 @@ struct MyView: View {
 
     // MARK: - Stats Section
     private var statsSection: some View {
-        VStack(spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             // 기간 탭
             HStack(spacing: 0) {
                 ForEach(StatsPeriod.allCases, id: \.self) { period in
@@ -63,10 +63,10 @@ struct MyView: View {
                         vm.changePeriod(period)
                     } label: {
                         Text(period.rawValue)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold))
                             .foregroundStyle(vm.selectedPeriod == period ? Color.white : Color.textSecondary)
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
+                            .padding(.vertical, 5)
                             .background(
                                 vm.selectedPeriod == period
                                 ? Color.main500
@@ -80,48 +80,63 @@ struct MyView: View {
             .background(Color.gray100)
             .clipShape(Capsule())
             .padding(.horizontal, 20)
-            .padding(.top, 16)
+            .padding(.top, 14)
 
-            // 총 거리
-            VStack(spacing: 2) {
+            // 기간 레이블
+            HStack(spacing: 4) {
+                Text(vm.periodLabel)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.textPrimary)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 14)
+
+            // 총 거리 (좌측 정렬)
+            VStack(alignment: .leading, spacing: 0) {
                 Text(String(format: "%.1f", vm.stats.totalDistance))
-                    .font(.system(size: 40, weight: .heavy))
+                    .font(.system(size: 44, weight: .heavy))
                     .foregroundStyle(Color.textPrimary)
                 Text("킬로미터")
                     .font(.system(size: 12))
                     .foregroundStyle(Color.textSecondary)
             }
-            .padding(.top, 14)
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
 
-            // 3컬럼 요약
+            // 3개 통계 (좌측 정렬, 균등 간격)
             HStack(spacing: 0) {
-                summaryColumn(value: "\(vm.stats.totalRuns)회", label: "러닝")
-                Divider().frame(height: 28)
+                summaryColumn(value: "\(vm.stats.totalRuns)", label: "러닝")
                 summaryColumn(value: vm.formattedPace(vm.stats.avgPace), label: "평균 페이스")
-                Divider().frame(height: 28)
                 summaryColumn(value: vm.formattedDuration(vm.stats.totalTime), label: "시간")
             }
-            .padding(.top, 12)
+            .padding(.horizontal, 12)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
 
             // 차트
             activityChart
                 .padding(.horizontal, 20)
-                .padding(.top, 16)
+                .padding(.top, 12)
                 .padding(.bottom, 20)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.backgroundPrimary)
     }
 
     private func summaryColumn(value: String, label: String) -> some View {
-        VStack(spacing: 2) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(value)
-                .font(.system(size: 16, weight: .bold))
+                .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
             Text(label)
                 .font(.system(size: 11))
                 .foregroundStyle(Color.textSecondary)
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
     }
 
     @ViewBuilder

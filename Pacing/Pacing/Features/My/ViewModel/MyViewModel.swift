@@ -140,6 +140,24 @@ final class MyViewModel: ObservableObject {
         }
     }
 
+    var periodLabel: String {
+        let cal = Calendar.current
+        let now = Date()
+        switch selectedPeriod {
+        case .week:
+            return "이번 주"
+        case .month:
+            let year = cal.component(.year, from: now)
+            let month = cal.component(.month, from: now)
+            return "\(year)년 \(month)월"
+        case .year:
+            let year = cal.component(.year, from: now)
+            return "\(year)년"
+        case .all:
+            return "전체"
+        }
+    }
+
     func logout(appState: AppState) {
         appState.isLoggedIn = false
         appState.isProfileComplete = false
