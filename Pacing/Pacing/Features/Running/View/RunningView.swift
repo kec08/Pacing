@@ -373,8 +373,8 @@ struct RunningView: View {
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
-                Text("종료")
-                    .font(.system(size: 16, weight: .bold))
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 80, height: 80)
                     .background(Color.black.opacity(0.85))
