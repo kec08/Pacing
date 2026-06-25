@@ -14,7 +14,6 @@ final class LocationManager: NSObject, ObservableObject {
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         manager.distanceFilter = 5
         manager.activityType = .fitness
-        manager.allowsBackgroundLocationUpdates = true
         manager.pausesLocationUpdatesAutomatically = false
     }
 
