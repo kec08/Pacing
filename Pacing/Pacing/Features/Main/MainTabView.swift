@@ -8,7 +8,7 @@ struct MainTabView: View {
                     Label("홈", systemImage: "house.fill")
                 }
 
-            Text("러닝")
+            RunningView()
                 .tabItem {
                     Label("러닝", systemImage: "figure.run")
                 }
