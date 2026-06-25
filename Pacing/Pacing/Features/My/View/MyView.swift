@@ -74,22 +74,23 @@ struct MyView: View {
             .padding(.top, 22)
 
             // 총 거리 — 핑크 포인트 accent
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .lastTextBaseline, spacing: 6) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("이번 \(vm.selectedPeriod == .week ? "주" : vm.selectedPeriod == .month ? "달" : vm.selectedPeriod == .year ? "해" : "기간")의 총 거리")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+                HStack(alignment: .lastTextBaseline, spacing: 8) {
                     Text(String(format: "%.1f", vm.stats.totalDistance))
-                        .font(.system(size: 54, weight: .heavy))
+                        .font(.system(size: 68, weight: .heavy))
                         .foregroundStyle(Color.textPrimary)
                     Text("km")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 26, weight: .bold))
                         .foregroundStyle(Color.main500)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, 6)
                 }
-                Text("이번 \(vm.selectedPeriod == .week ? "주" : vm.selectedPeriod == .month ? "달" : vm.selectedPeriod == .year ? "해" : "기간")의 총 거리")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.textSecondary)
             }
             .padding(.horizontal, 28)
-            .padding(.top, 14)
+            .padding(.top, 20)
+            .padding(.bottom, 6)
 
             // 3개 통계 카드
             HStack(spacing: 10) {
