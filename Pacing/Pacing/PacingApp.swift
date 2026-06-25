@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct PacingApp: App {
+    @StateObject private var appState = AppState()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SplashView()
+                .environmentObject(appState)
         }
     }
 }
