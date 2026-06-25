@@ -40,7 +40,7 @@ struct OnboardingMusicView: View {
             VStack(spacing: 12) {
                 Button {
                     Task {
-                        await MusicAuthorization.request()
+                        _ = await MusicAuthorization.request()
                         navigateToProfile = true
                     }
                 } label: {

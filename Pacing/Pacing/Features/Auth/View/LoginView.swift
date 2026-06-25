@@ -1,5 +1,6 @@
 import SwiftUI
 import AuthenticationServices
+import CryptoKit
 
 struct LoginView: View {
     @EnvironmentObject var appState: AppState
@@ -32,20 +33,16 @@ struct LoginView: View {
                     ProgressView()
                         .padding(.bottom, 48)
                 } else {
-                    SignInWithAppleButton(.signIn) { request in
-                        request.requestedScopes = [.fullName, .email]
-                        request.nonce = authVM.prepareNonce()
-                    } onCompletion: { result in
+                    AppleSignInButton { result in
                         Task {
                             await authVM.handleSignInWithApple(result, appState: appState)
                             if appState.isLoggedIn {
                                 navigateToOnboarding = true
                             }
                         }
+                    } prepareNonce: {
+                        authVM.prepareNonce()
                     }
-                    .signInWithAppleButtonStyle(.black)
-                    .frame(height: 54)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
                     .padding(.horizontal, 24)
                     .padding(.bottom, 48)
                 }

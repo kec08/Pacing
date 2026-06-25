@@ -81,8 +81,18 @@ final class MyViewModel: ObservableObject {
     }
 
     func loadData() {
-        let all = RunRecord.dummies
-        let filtered = filter(records: all)
+        guard let uid = Auth.auth().currentUser?.uid else {
+            applyData(records: RunRecord.dummies)
+            return
+        }
+        Task { @MainActor in
+            let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? RunRecord.dummies
+            applyData(records: records)
+        }
+    }
+
+    private func applyData(records: [RunRecord]) {
+        let filtered = filter(records: records)
 
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
         let totalTime = filtered.reduce(0) { $0 + $1.duration }
@@ -96,7 +106,7 @@ final class MyViewModel: ObservableObject {
         )
 
         chartEntries = buildChartEntries(from: filtered)
-        runHistory = all.sorted(by: { $0.startedAt > $1.startedAt })
+        runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
     }
 
     private func filter(records: [RunRecord]) -> [RunRecord] {
