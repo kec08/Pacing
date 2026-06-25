@@ -127,41 +127,32 @@ struct MyView: View {
 
     private func statCard(icon: String, value: String, unit: String, label: String) -> some View {
         VStack(spacing: 0) {
-            // 아이콘
             Image(systemName: icon)
-                .font(.system(size: 13, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(Color.main500)
-                .frame(height: 20)
+                .frame(height: 24)
 
-            Spacer().frame(height: 8)
+            Spacer().frame(height: 10)
 
-            // 값
-            HStack(alignment: .lastTextBaseline, spacing: 2) {
+            HStack(alignment: .lastTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                 if !unit.isEmpty {
                     Text(unit)
-                        .font(.system(size: 10, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(Color.textSecondary)
                 }
             }
 
-            Spacer().frame(height: 4)
+            Spacer().frame(height: 6)
 
-            // 레이블
             Text(label)
-                .font(.system(size: 11))
+                .font(.system(size: 12))
                 .foregroundStyle(Color.textSecondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .background(Color.backgroundSecondary)
-        .clipShape(RoundedRectangle(cornerRadius: 12))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .strokeBorder(Color.gray100, lineWidth: 1)
-        )
+        .padding(.vertical, 4)
     }
 
     // 드래그 선택 탭
