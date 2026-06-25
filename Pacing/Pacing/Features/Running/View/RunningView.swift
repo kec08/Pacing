@@ -41,6 +41,17 @@ struct RunningView: View {
                 controlSection
                     .padding(.bottom, 40)
             }
+
+            // 카운트다운 풀스크린 오버레이
+            if let cd = countdown {
+                Color.black.opacity(0.85)
+                    .ignoresSafeArea()
+                Text("\(cd)")
+                    .font(.system(size: 160, weight: .black))
+                    .foregroundStyle(Color(red: 0.96, green: 0.96, blue: 0.63))
+                    .transition(.scale(scale: 1.4).combined(with: .opacity))
+                    .id(cd)
+            }
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
             if viewModel.state == .running {
@@ -217,27 +228,15 @@ struct RunningView: View {
         HStack(spacing: 40) {
             sideButton(icon: "music.note", label: "음악") { showMusicSheet = true }
 
-            ZStack {
-                if let cd = countdown {
-                    Text("\(cd)")
-                        .font(.system(size: 44, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(width: 96, height: 96)
-                        .background(Color.main500)
-                        .clipShape(Circle())
-                        .transition(.scale.combined(with: .opacity))
-                } else {
-                    Button { startCountdown() } label: {
-                        Text("시작")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 96, height: 96)
-                            .background(Color.main500)
-                            .clipShape(Circle())
-                    }
-                }
+            Button { startCountdown() } label: {
+                Text("시작")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 96, height: 96)
+                    .background(Color.main500)
+                    .clipShape(Circle())
             }
-            .animation(.spring(duration: 0.3), value: countdown)
+            .disabled(countdown != nil)
 
             sideButton(icon: "person.2.fill", label: "주변") { }
         }
@@ -344,14 +343,15 @@ struct RunningView: View {
     // MARK: - 카운트다운
 
     private func startCountdown() {
-        countdown = 3
         Task {
             for i in stride(from: 3, through: 1, by: -1) {
-                await MainActor.run { countdown = i }
+                await MainActor.run {
+                    withAnimation(.easeOut(duration: 0.2)) { countdown = i }
+                }
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
             await MainActor.run {
-                countdown = nil
+                withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
                 viewModel.start()
             }
         }
