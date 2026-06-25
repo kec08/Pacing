@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseAuth
 
 struct SplashView: View {
     @EnvironmentObject var appState: AppState
@@ -7,7 +8,6 @@ struct SplashView: View {
     var body: some View {
         Group {
             if isLoading {
-                // 로고 스플래시
                 ZStack {
                     Color.backgroundPrimary.ignoresSafeArea()
                     VStack(spacing: 16) {
@@ -36,14 +36,14 @@ struct SplashView: View {
     }
 
     private func restoreSession() {
-        // UserDefaults에서 로그인/프로필 완료 상태 복원
-        // Firebase 연동 전 임시 처리
-        let loggedIn = UserDefaults.standard.bool(forKey: "isLoggedIn")
-        let profileComplete = UserDefaults.standard.bool(forKey: "isProfileComplete")
-
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            appState.isLoggedIn = loggedIn
-            appState.isProfileComplete = profileComplete
+            if Auth.auth().currentUser != nil {
+                appState.isLoggedIn = true
+                appState.isProfileComplete = UserDefaults.standard.bool(forKey: "isProfileComplete")
+            } else {
+                appState.isLoggedIn = false
+                appState.isProfileComplete = false
+            }
             isLoading = false
         }
     }

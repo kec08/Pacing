@@ -1,4 +1,5 @@
 import SwiftUI
+import FirebaseAuth
 
 struct ProfileSetupView: View {
     @EnvironmentObject var appState: AppState
@@ -7,6 +8,7 @@ struct ProfileSetupView: View {
     @State private var weight: Int = 65
     @State private var age: Int = 25
     @State private var gender: String = "선택 안 함"
+    @State private var isSaving = false
 
     private let genders = ["남", "여", "선택 안 함"]
     private var isValid: Bool { !nickname.trimmingCharacters(in: .whitespaces).isEmpty }
@@ -95,26 +97,51 @@ struct ProfileSetupView: View {
 
                 // 시작하기 버튼
                 Button {
-                    UserDefaults.standard.set(nickname, forKey: "nickname")
-                    UserDefaults.standard.set(height, forKey: "height")
-                    UserDefaults.standard.set(weight, forKey: "weight")
-                    UserDefaults.standard.set(age, forKey: "age")
-                    appState.isLoggedIn = true
-                    appState.isProfileComplete = true
+                    Task { await saveProfile() }
                 } label: {
-                    Text("시작하기")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 54)
-                        .background(isValid ? Color.main500 : Color.gray300)
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                    Group {
+                        if isSaving {
+                            ProgressView().tint(.white)
+                        } else {
+                            Text("시작하기")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 54)
+                    .background(isValid ? Color.main500 : Color.gray300)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .disabled(!isValid)
+                .disabled(!isValid || isSaving)
                 .padding(.bottom, 32)
             }
             .padding(.horizontal, 24)
         }
         .background(Color.backgroundPrimary)
+    }
+
+    private func saveProfile() async {
+        isSaving = true
+        // UserDefaults 저장 (마이탭 즉시 반영용)
+        UserDefaults.standard.set(nickname, forKey: "nickname")
+        UserDefaults.standard.set(height, forKey: "height")
+        UserDefaults.standard.set(weight, forKey: "weight")
+        UserDefaults.standard.set(age, forKey: "age")
+
+        // Firestore 저장
+        if let uid = Auth.auth().currentUser?.uid {
+            try? await FirestoreService.shared.saveUserProfile(
+                uid: uid,
+                nickname: nickname,
+                height: height,
+                weight: weight,
+                age: age
+            )
+        }
+
+        appState.isLoggedIn = true
+        appState.isProfileComplete = true
+        isSaving = false
     }
 }

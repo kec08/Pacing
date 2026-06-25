@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import FirebaseAuth
 
 enum StatsPeriod: String, CaseIterable {
     case week = "주"
@@ -49,10 +50,21 @@ final class MyViewModel: ObservableObject {
     }
 
     private func loadProfile() {
+        // UserDefaults 우선 (즉시 표시), Firestore에서 최신값 덮어씀
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
         height   = UserDefaults.standard.integer(forKey: "height")
         weight   = UserDefaults.standard.integer(forKey: "weight")
         age      = UserDefaults.standard.integer(forKey: "age")
+
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        Task { @MainActor in
+            if let data = try? await FirestoreService.shared.fetchUserProfile(uid: uid) {
+                nickname = data["nickname"] as? String ?? nickname
+                height   = data["height"]   as? Int    ?? height
+                weight   = data["weight"]   as? Int    ?? weight
+                age      = data["age"]      as? Int    ?? age
+            }
+        }
     }
 
     func changePeriod(_ period: StatsPeriod) {
@@ -206,6 +218,7 @@ final class MyViewModel: ObservableObject {
     }
 
     func logout(appState: AppState) {
+        try? Auth.auth().signOut()
         appState.isLoggedIn = false
         appState.isProfileComplete = false
     }
