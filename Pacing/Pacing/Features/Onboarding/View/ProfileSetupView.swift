@@ -95,7 +95,10 @@ struct ProfileSetupView: View {
 
                 // 시작하기 버튼
                 Button {
-                    // TODO: Firestore 저장
+                    UserDefaults.standard.set(nickname, forKey: "nickname")
+                    UserDefaults.standard.set(height, forKey: "height")
+                    UserDefaults.standard.set(weight, forKey: "weight")
+                    UserDefaults.standard.set(age, forKey: "age")
                     appState.isLoggedIn = true
                     appState.isProfileComplete = true
                 } label: {
