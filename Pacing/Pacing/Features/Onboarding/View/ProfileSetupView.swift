@@ -96,6 +96,7 @@ struct ProfileSetupView: View {
                 // 시작하기 버튼
                 Button {
                     // TODO: Firestore 저장
+                    appState.isLoggedIn = true
                     appState.isProfileComplete = true
                 } label: {
                     Text("시작하기")
