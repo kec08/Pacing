@@ -25,16 +25,14 @@ struct RunningView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // 상단 뮤직 카드
-                if viewModel.state == .idle || viewModel.state == .running || viewModel.state == .paused {
-                    musicCard
-                        .padding(.top, 60)
-                }
+                // 상단 수평 스크롤 뮤직 카드
+                musicScrollSection
+                    .padding(.top, 60)
 
                 // 실시간 스탯 오버레이 (러닝 중에만)
                 if viewModel.state != .idle {
                     runningStatsOverlay
-                        .padding(.top, viewModel.state == .idle ? 0 : 12)
+                        .padding(.top, 10)
                 }
 
                 Spacer()
@@ -68,57 +66,98 @@ struct RunningView: View {
         }
     }
 
-    // MARK: - 상단 뮤직 카드
+    // MARK: - 상단 수평 스크롤 뮤직 카드
 
-    private var musicCard: some View {
+    private var musicScrollSection: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 10) {
+                if musicVM.isLoading {
+                    // 로딩 플레이스홀더
+                    ForEach(0..<3, id: \.self) { _ in
+                        musicCardSkeleton
+                    }
+                } else if musicVM.recentSongs.isEmpty {
+                    // 빈 상태 카드
+                    emptyMusicCard
+                } else {
+                    ForEach(musicVM.recentSongs, id: \.id) { song in
+                        musicCardItem(song: song)
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+    }
+
+    private func musicCardItem(song: Song) -> some View {
         Button { showMusicSheet = true } label: {
-            HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
                 // 앨범 아트
                 ZStack {
-                    RoundedRectangle(cornerRadius: 8)
-                        .fill(Color.backgroundSecondary.opacity(0.8))
-                        .frame(width: 44, height: 44)
-                    if musicVM.isLoading {
-                        ProgressView().tint(Color.main500).scaleEffect(0.8)
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color(.systemGray5))
+                        .frame(width: 80, height: 80)
+                    if let artwork = song.artwork {
+                        ArtworkImage(artwork, width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
                     } else {
                         Image(systemName: "music.note")
-                            .font(.system(size: 16))
+                            .font(.system(size: 24))
                             .foregroundStyle(Color.main500)
                     }
                 }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    if let track = musicVM.recommendedTrack {
-                        Text(track.title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.textPrimary)
-                            .lineLimit(1)
-                        Text(track.artistName)
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.textSecondary)
-                            .lineLimit(1)
-                    } else {
-                        Text("음악 선택")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(Color.textPrimary)
-                        Text("Apple Music")
-                            .font(.system(size: 12))
-                            .foregroundStyle(Color.textSecondary)
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
+                // 곡 정보
+                Text(song.title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .frame(width: 80, alignment: .leading)
+                Text(song.artistName)
+                    .font(.system(size: 10))
                     .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+                    .frame(width: 80, alignment: .leading)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(10)
             .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 14))
-            .padding(.horizontal, 16)
         }
+    }
+
+    private var emptyMusicCard: some View {
+        Button { showMusicSheet = true } label: {
+            VStack(spacing: 8) {
+                Image(systemName: "music.note")
+                    .font(.system(size: 28))
+                    .foregroundStyle(Color.main500)
+                Text("음악 선택")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.textPrimary)
+                Text("Apple Music")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .frame(width: 100, height: 110)
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    private var musicCardSkeleton: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color(.systemGray5).opacity(0.6))
+                .frame(width: 80, height: 80)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.systemGray5).opacity(0.6))
+                .frame(width: 60, height: 10)
+            RoundedRectangle(cornerRadius: 4)
+                .fill(Color(.systemGray5).opacity(0.6))
+                .frame(width: 45, height: 9)
+        }
+        .padding(10)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - 실시간 스탯 오버레이
@@ -154,13 +193,18 @@ struct RunningView: View {
 
     private var bottomControlArea: some View {
         ZStack(alignment: .bottom) {
-            // 지도 → 컨트롤 배경 그라데이션 (나이키 런 클럽 스타일)
+            // 그라데이션을 더 위까지 확장
             LinearGradient(
-                colors: [.clear, Color(.systemBackground).opacity(0.85), Color(.systemBackground)],
+                stops: [
+                    .init(color: .clear, location: 0),
+                    .init(color: Color(.systemBackground).opacity(0.5), location: 0.3),
+                    .init(color: Color(.systemBackground).opacity(0.85), location: 0.55),
+                    .init(color: Color(.systemBackground), location: 0.75),
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 220)
+            .frame(height: 300)
             .allowsHitTesting(false)
 
             // 컨트롤
@@ -184,12 +228,10 @@ struct RunningView: View {
 
     private var idleControls: some View {
         HStack(spacing: 32) {
-            // 왼쪽: 음악
             sideButton(icon: "music.note", label: "음악") {
                 showMusicSheet = true
             }
 
-            // 시작 버튼 (카운트다운)
             ZStack {
                 if let cd = countdown {
                     Text("\(cd)")
@@ -212,14 +254,13 @@ struct RunningView: View {
             }
             .animation(.spring(duration: 0.3), value: countdown)
 
-            // 오른쪽: 주변 사용자
             sideButton(icon: "person.2.fill", label: "주변") {
                 // TODO: 주변 사용자 찾기
             }
         }
     }
 
-    // MARK: - running/paused: 일시정지 + 종료
+    // MARK: - running/paused 컨트롤
 
     private func activeControls(isPaused: Bool) -> some View {
         HStack(spacing: 28) {
@@ -271,7 +312,6 @@ struct RunningView: View {
     private var musicSheet: some View {
         NavigationStack {
             VStack(spacing: 24) {
-                // 현재 재생 카드
                 VStack(spacing: 16) {
                     ZStack {
                         RoundedRectangle(cornerRadius: 20)
@@ -282,11 +322,11 @@ struct RunningView: View {
                             .foregroundStyle(Color.main500)
                     }
 
-                    if let track = musicVM.recommendedTrack {
-                        Text(track.title)
+                    if let song = musicVM.recentSongs.first {
+                        Text(song.title)
                             .font(.system(size: 18, weight: .bold))
                             .foregroundStyle(Color.textPrimary)
-                        Text(track.artistName)
+                        Text(song.artistName)
                             .font(.system(size: 15))
                             .foregroundStyle(Color.textSecondary)
                     } else {
@@ -299,7 +339,6 @@ struct RunningView: View {
                     }
                 }
 
-                // 재생 컨트롤 (임시 UI)
                 HStack(spacing: 40) {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 28))
