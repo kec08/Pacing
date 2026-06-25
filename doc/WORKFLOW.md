@@ -100,6 +100,7 @@ git push origin feat/[이슈번호]-[기능명]
 - PR 제목: `[feat] 기능명 (#이슈번호)`
 - PR 본문: PR 템플릿 사용 (아래 참고)
 - Closes #이슈번호 명시
+- ⚠️ `feat → dev` 머지 시 GitHub 이슈 자동 닫기 **미동작** (main 머지 시에만 자동 닫힘) → PR 머지 후 이슈 **수동으로 Close**
 
 **PR 템플릿:**
 ```markdown
