@@ -12,26 +12,46 @@ struct RunningView: View {
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 상단 뮤직 카드 스크롤
-            musicScrollSection
-                .padding(.top, 12)
-                .padding(.bottom, 10)
-
-            // 고정 높이 지도 (인터랙션 비활성)
-            mapSection
-
-            // 러닝 중 스탯 바
-            if viewModel.state != .idle {
-                runningStatsBar
+        ZStack {
+            // 풀스크린 지도 (줌/스크롤 비활성)
+            Map(position: $cameraPosition, interactionModes: []) {
+                if viewModel.locationManager.routeCoordinates.count >= 2 {
+                    MapPolyline(coordinates: viewModel.locationManager.routeCoordinates)
+                        .stroke(Color.main500, lineWidth: 4)
+                }
+                UserAnnotation()
             }
+            .mapStyle(.standard)
+            .ignoresSafeArea()
 
-            // 흰 배경 컨트롤 영역
-            Spacer()
-            controlSection
-                .padding(.bottom, 24)
+            VStack(spacing: 0) {
+                // 상단 뮤직 카드
+                musicScrollSection
+                    .padding(.top, 60)
+
+                // 러닝 중 스탯 오버레이
+                if viewModel.state != .idle {
+                    runningStatsOverlay
+                        .padding(.top, 10)
+                }
+
+                Spacer()
+
+                // 하단 컨트롤 (배경 없음)
+                controlSection
+                    .padding(.bottom, 40)
+            }
         }
-        .background(Color(.systemBackground))
+        .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
+            if viewModel.state == .running {
+                withAnimation(.easeInOut(duration: 1)) {
+                    cameraPosition = .camera(MapCamera(
+                        centerCoordinate: loc.coordinate,
+                        distance: 500
+                    ))
+                }
+            }
+        }
         .task { await musicVM.requestAuthorization() }
         .sheet(isPresented: $showMusicSheet) { musicSheet }
         .fullScreenCover(isPresented: $showSummary) {
@@ -46,160 +66,7 @@ struct RunningView: View {
         }
     }
 
-    // MARK: - 지도 (고정 높이, 줌/스크롤 비활성)
-
-    private var mapSection: some View {
-        Map(position: $cameraPosition, interactionModes: []) {
-            if viewModel.locationManager.routeCoordinates.count >= 2 {
-                MapPolyline(coordinates: viewModel.locationManager.routeCoordinates)
-                    .stroke(Color.main500, lineWidth: 4)
-            }
-            UserAnnotation()
-        }
-        .mapStyle(.standard)
-        .frame(height: 260)
-        .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
-            if viewModel.state == .running {
-                withAnimation(.easeInOut(duration: 1)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: loc.coordinate,
-                        distance: 500
-                    ))
-                }
-            }
-        }
-    }
-
-    // MARK: - 러닝 중 스탯 바
-
-    private var runningStatsBar: some View {
-        HStack(spacing: 0) {
-            statBarItem(value: viewModel.formattedDistance, label: "km")
-            Divider().frame(height: 28)
-            statBarItem(value: viewModel.formattedTime, label: "시간")
-            Divider().frame(height: 28)
-            statBarItem(value: viewModel.formattedPace, label: "페이스")
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .background(Color(.systemGray6))
-    }
-
-    private func statBarItem(value: String, label: String) -> some View {
-        VStack(spacing: 1) {
-            Text(value)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(Color.textPrimary)
-            Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(Color.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - 하단 컨트롤 (흰 배경)
-
-    private var controlSection: some View {
-        VStack(spacing: 20) {
-            switch viewModel.state {
-            case .idle:
-                idleControls
-            case .running:
-                activeControls(isPaused: false)
-            case .paused:
-                activeControls(isPaused: true)
-            case .finished:
-                EmptyView()
-            }
-        }
-        .padding(.top, 20)
-    }
-
-    // MARK: - idle: 시작 + 좌우 버튼
-
-    private var idleControls: some View {
-        HStack(spacing: 40) {
-            sideButton(icon: "music.note", label: "음악") {
-                showMusicSheet = true
-            }
-
-            // 시작 / 카운트다운 버튼
-            ZStack {
-                if let cd = countdown {
-                    Text("\(cd)")
-                        .font(.system(size: 44, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(width: 96, height: 96)
-                        .background(Color.main500)
-                        .clipShape(Circle())
-                        .transition(.scale.combined(with: .opacity))
-                } else {
-                    Button { startCountdown() } label: {
-                        Text("시작")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundStyle(.white)
-                            .frame(width: 96, height: 96)
-                            .background(Color.main500)
-                            .clipShape(Circle())
-                    }
-                }
-            }
-            .animation(.spring(duration: 0.3), value: countdown)
-
-            sideButton(icon: "person.2.fill", label: "주변") {
-                // TODO: 주변 사용자
-            }
-        }
-    }
-
-    // MARK: - 러닝 중 컨트롤
-
-    private func activeControls(isPaused: Bool) -> some View {
-        HStack(spacing: 28) {
-            Button {
-                isPaused ? viewModel.resume() : viewModel.pause()
-            } label: {
-                Image(systemName: isPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(isPaused ? .white : Color.textPrimary)
-                    .frame(width: 72, height: 72)
-                    .background(isPaused ? Color.main500 : Color(.systemGray5))
-                    .clipShape(Circle())
-            }
-
-            Button {
-                viewModel.stop()
-                showSummary = true
-            } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 22, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 72, height: 72)
-                    .background(Color.sub500)
-                    .clipShape(Circle())
-            }
-        }
-    }
-
-    // MARK: - 사이드 버튼
-
-    private func sideButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundStyle(Color.textPrimary)
-                    .frame(width: 52, height: 52)
-                    .background(Color(.systemGray6))
-                    .clipShape(Circle())
-                Text(label)
-                    .font(.system(size: 11))
-                    .foregroundStyle(Color.textSecondary)
-            }
-        }
-    }
-
-    // MARK: - 뮤직 카드 스크롤
+    // MARK: - 뮤직 카드
 
     private var musicScrollSection: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -248,7 +115,7 @@ struct RunningView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(Color(.systemGray6))
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -275,7 +142,7 @@ struct RunningView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(Color(.systemGray6))
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -296,8 +163,127 @@ struct RunningView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Color(.systemGray6))
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    // MARK: - 러닝 중 스탯 오버레이
+
+    private var runningStatsOverlay: some View {
+        HStack(spacing: 0) {
+            statItem(value: viewModel.formattedDistance, label: "km")
+            Divider().frame(height: 28).opacity(0.4)
+            statItem(value: viewModel.formattedTime, label: "시간")
+            Divider().frame(height: 28).opacity(0.4)
+            statItem(value: viewModel.formattedPace, label: "페이스")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 16)
+    }
+
+    private func statItem(value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
+            Text(label)
+                .font(.system(size: 10))
+                .foregroundStyle(Color.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: - 하단 컨트롤
+
+    private var controlSection: some View {
+        VStack(spacing: 20) {
+            switch viewModel.state {
+            case .idle:
+                idleControls
+            case .running:
+                activeControls(isPaused: false)
+            case .paused:
+                activeControls(isPaused: true)
+            case .finished:
+                EmptyView()
+            }
+        }
+    }
+
+    private var idleControls: some View {
+        HStack(spacing: 40) {
+            sideButton(icon: "music.note", label: "음악") { showMusicSheet = true }
+
+            ZStack {
+                if let cd = countdown {
+                    Text("\(cd)")
+                        .font(.system(size: 44, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 96, height: 96)
+                        .background(Color.main500)
+                        .clipShape(Circle())
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    Button { startCountdown() } label: {
+                        Text("시작")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 96, height: 96)
+                            .background(Color.main500)
+                            .clipShape(Circle())
+                    }
+                }
+            }
+            .animation(.spring(duration: 0.3), value: countdown)
+
+            sideButton(icon: "person.2.fill", label: "주변") { }
+        }
+    }
+
+    private func activeControls(isPaused: Bool) -> some View {
+        HStack(spacing: 28) {
+            Button {
+                isPaused ? viewModel.resume() : viewModel.pause()
+            } label: {
+                Image(systemName: isPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(isPaused ? .white : Color.textPrimary)
+                    .frame(width: 72, height: 72)
+                    .background(isPaused ? Color.main500 : Color(.systemGray5))
+                    .clipShape(Circle())
+            }
+
+            Button {
+                viewModel.stop()
+                showSummary = true
+            } label: {
+                Image(systemName: "stop.fill")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 72, height: 72)
+                    .background(Color.sub500)
+                    .clipShape(Circle())
+            }
+        }
+    }
+
+    private func sideButton(icon: String, label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundStyle(Color.textPrimary)
+                    .frame(width: 52, height: 52)
+                    .background(.ultraThinMaterial)
+                    .clipShape(Circle())
+                Text(label)
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color.textSecondary)
+            }
+        }
     }
 
     // MARK: - 음악 시트
@@ -313,7 +299,6 @@ struct RunningView: View {
                         .font(.system(size: 60))
                         .foregroundStyle(Color.main500)
                 }
-
                 VStack(spacing: 6) {
                     if let song = musicVM.recentSongs.first {
                         Text(song.title)
@@ -331,7 +316,6 @@ struct RunningView: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                 }
-
                 HStack(spacing: 40) {
                     Image(systemName: "backward.fill")
                         .font(.system(size: 28))
@@ -343,7 +327,6 @@ struct RunningView: View {
                         .font(.system(size: 28))
                         .foregroundStyle(Color.textPrimary)
                 }
-
                 Spacer()
             }
             .padding(.top, 32)
