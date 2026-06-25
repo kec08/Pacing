@@ -28,19 +28,21 @@ struct RunningView: View {
             .ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // 상단 뮤직 카드
-                musicScrollSection
-                    .padding(.top, 60)
+                // 뮤직 카드: idle 상태에서만 표시
+                if viewModel.state == .idle {
+                    musicScrollSection
+                        .padding(.top, 60)
+                }
 
-                // 러닝 중 스탯 오버레이
+                // 스탯 오버레이: idle이 아닐 때 상단으로 올라옴
                 if viewModel.state != .idle {
                     runningStatsOverlay
-                        .padding(.top, 10)
+                        .padding(.top, 60)
+                        .padding(.horizontal, 0)
                 }
 
                 Spacer()
 
-                // 하단 컨트롤 (배경 없음)
                 controlSection
                     .padding(.bottom, 40)
             }
@@ -283,7 +285,7 @@ struct RunningView: View {
         }
     }
 
-    // running: 정지 버튼만 크게 → 탭하면 종료/재시작 선택지 표시
+    // running: 좌(음악) + 정지(크게) + 우(주변) → 정지 탭 시 종료/재시작
     private var runningControls: some View {
         Group {
             if showStopConfirm {
@@ -330,18 +332,26 @@ struct RunningView: View {
                 }
                 .transition(.scale.combined(with: .opacity))
             } else {
-                // 정지 버튼 (크게)
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    viewModel.pause()
-                    showStopConfirm = true
-                } label: {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 100, height: 100)
-                        .background(Color.main500)
-                        .clipShape(Circle())
+                // 좌(음악) + 정지(크게) + 우(주변)
+                HStack(spacing: 32) {
+                    sideButton(icon: "music.note", label: "음악") {
+                        showMusicSheet = true
+                    }
+
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        viewModel.pause()
+                        showStopConfirm = true
+                    } label: {
+                        Image(systemName: "pause.fill")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 100, height: 100)
+                            .background(Color.main500)
+                            .clipShape(Circle())
+                    }
+
+                    sideButton(icon: "person.2.fill", label: "주변") { }
                 }
                 .transition(.scale.combined(with: .opacity))
             }
