@@ -75,9 +75,6 @@ struct MyView: View {
 
             // 총 거리 — 핑크 포인트 accent
             VStack(alignment: .leading, spacing: 6) {
-                Text("이번 \(vm.selectedPeriod == .week ? "주" : vm.selectedPeriod == .month ? "달" : vm.selectedPeriod == .year ? "해" : "기간")의 총 거리")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.textSecondary)
                 HStack(alignment: .lastTextBaseline, spacing: 8) {
                     Text(String(format: "%.1f", vm.stats.totalDistance))
                         .font(.system(size: 68, weight: .heavy))
@@ -87,6 +84,9 @@ struct MyView: View {
                         .foregroundStyle(Color.main500)
                         .padding(.bottom, 6)
                 }
+                Text("이번 \(vm.selectedPeriod == .week ? "주" : vm.selectedPeriod == .month ? "달" : vm.selectedPeriod == .year ? "해" : "기간")의 총 거리")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
             }
             .padding(.horizontal, 28)
             .padding(.top, 20)
