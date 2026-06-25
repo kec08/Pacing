@@ -3,7 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     var body: some View {
         TabView {
-            Text("홈")
+            HomeView()
                 .tabItem {
                     Label("홈", systemImage: "house.fill")
                 }
@@ -18,6 +18,6 @@ struct MainTabView: View {
                     Label("마이", systemImage: "person.fill")
                 }
         }
-        .tint(.main500)
+        .tint(Color.main500)
     }
 }
