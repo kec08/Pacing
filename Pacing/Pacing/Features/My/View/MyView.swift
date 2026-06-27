@@ -18,7 +18,6 @@ struct MyView: View {
             }
         }
         .background(Color.backgroundPrimary)
-        .onAppear { vm.loadData() }
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
             periodPickerSheet
