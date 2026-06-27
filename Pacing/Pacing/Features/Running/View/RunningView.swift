@@ -2,12 +2,15 @@ import SwiftUI
 import MapKit
 import Combine
 import MusicKit
+import FirebaseAuth
 
 struct RunningView: View {
     @StateObject private var viewModel = RunningViewModel()
     @StateObject private var musicVM = RunningMusicViewModel()
+    @StateObject private var nearbyVM = NearbyRunnerViewModel()
     @State private var showSummary = false
     @State private var showMusicSheet = false
+    @State private var showNearbySheet = false
     @State private var countdown: Int? = nil
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
@@ -31,6 +34,29 @@ struct RunningView: View {
                             Circle()
                                 .fill(.white)
                                 .frame(width: 8, height: 8)
+                        }
+                    }
+                }
+                // 주변 러너 핀
+                ForEach(nearbyVM.nearbyRunners) { runner in
+                    Annotation("", coordinate: runner.coordinate) {
+                        VStack(spacing: 2) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.main500)
+                                    .frame(width: 36, height: 36)
+                                    .overlay(Circle().stroke(.white, lineWidth: 2))
+                                Text(String(runner.nickname.prefix(1)))
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundStyle(.white)
+                            }
+                            Text(runner.nickname)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.main500.opacity(0.85))
+                                .clipShape(Capsule())
                         }
                     }
                 }
@@ -80,7 +106,22 @@ struct RunningView: View {
             }
         }
         .task { await musicVM.requestAuthorization() }
+        .onAppear {
+            viewModel.musicViewModel = musicVM
+        }
+        .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
+            nearbyVM.updateMyLocation(loc.coordinate)
+        }
+        .onChange(of: viewModel.state) { _, newState in
+            if newState == .running, !nearbyVM.isObserving {
+                let uid = Auth.auth().currentUser?.uid ?? ""
+                nearbyVM.startObserving(uid: uid)
+            } else if newState == .finished || newState == .idle {
+                nearbyVM.stopObserving()
+            }
+        }
         .sheet(isPresented: $showMusicSheet) { musicSheet }
+        .sheet(isPresented: $showNearbySheet) { nearbySheet }
         .fullScreenCover(isPresented: $showSummary) {
             RunSummaryView(
                 distance: viewModel.distance,
@@ -298,7 +339,7 @@ struct RunningView: View {
             }
             .disabled(countdown != nil)
 
-            sideButton(icon: "person.2.fill", label: "주변") { }
+            sideButton(icon: "person.2.fill", label: "주변") { showNearbySheet = true }
         }
     }
 
@@ -368,7 +409,7 @@ struct RunningView: View {
                             .clipShape(Circle())
                     }
 
-                    sideButton(icon: "person.2.fill", label: "주변") { }
+                    sideButton(icon: "person.2.fill", label: "주변") { showNearbySheet = true }
                 }
                 .transition(.scale.combined(with: .opacity))
             }
@@ -647,6 +688,120 @@ struct RunningView: View {
                 .font(.system(size: 60))
                 .foregroundStyle(Color.main500)
         }
+    }
+
+    // MARK: - 주변 러너 시트
+
+    private var nearbySheet: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 반경 세그먼트 피커
+                Picker("반경", selection: Binding(
+                    get: { nearbyVM.selectedRadius },
+                    set: { nearbyVM.changeRadius($0) }
+                )) {
+                    ForEach(SearchRadius.allCases, id: \.self) { r in
+                        Text(r.label).tag(r)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+
+                Divider()
+
+                if nearbyVM.nearbyRunners.isEmpty {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.2.slash")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("주변에 러너가 없어요")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                        Text("\(nearbyVM.selectedRadius.label) 반경 내 러닝 중인 사람이 없어요")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(nearbyVM.nearbyRunners) { runner in
+                                nearbyRunnerCard(runner: runner)
+                                Divider().padding(.leading, 72)
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                }
+            }
+            .navigationTitle("주변 러너")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("완료") { showNearbySheet = false }
+                        .foregroundStyle(Color.main500)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func nearbyRunnerCard(runner: NearbyRunner) -> some View {
+        HStack(spacing: 14) {
+            // 아바타
+            ZStack {
+                Circle()
+                    .fill(Color.main500)
+                    .frame(width: 44, height: 44)
+                Text(String(runner.nickname.prefix(1)))
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(runner.nickname)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                if !runner.songTitle.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.main500)
+                        Text("\(runner.songTitle) · \(runner.artist)")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+
+                Text(nearbyVM.formattedDistance(runner.distance))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // 같이 듣기 버튼 (feat #08 예약)
+            Button {
+                // feat #08에서 구현
+            } label: {
+                Text("같이 듣기")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.main500)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.main500, lineWidth: 1)
+                    )
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
     }
 
     // MARK: - 카운트다운

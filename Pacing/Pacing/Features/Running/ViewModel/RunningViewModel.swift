@@ -18,6 +18,9 @@ final class RunningViewModel: ObservableObject {
 
     let locationManager = LocationManager()
 
+    // 주변 러너 브로드캐스트용
+    var musicViewModel: RunningMusicViewModel?
+
     private var timer: AnyCancellable?
     private var lastLocation: CLLocation?
     private var cancellables = Set<AnyCancellable>()
@@ -38,6 +41,7 @@ final class RunningViewModel: ObservableObject {
         locationManager.startTracking()
         state = .running
         startTimer()
+        startBroadcast()
     }
 
     func pause() {
@@ -56,6 +60,7 @@ final class RunningViewModel: ObservableObject {
         timer?.cancel()
         locationManager.stopTracking()
         state = .finished
+        stopBroadcast()
     }
 
     func reset() {
@@ -66,6 +71,24 @@ final class RunningViewModel: ObservableObject {
         currentPace = 0
         lastLocation = nil
         state = .idle
+    }
+
+    // MARK: - 브로드캐스트
+    private func startBroadcast() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
+        RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) { [weak self] in
+            self?.locationManager.currentLocation?.coordinate
+        } songProvider: { [weak self] in
+            let title = self?.musicViewModel?.currentSong?.title ?? ""
+            let artist = self?.musicViewModel?.currentSong?.artistName ?? ""
+            return (title, artist)
+        }
+    }
+
+    private func stopBroadcast() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        RealtimeDBService.shared.stopBroadcast(uid: uid)
     }
 
     // MARK: - Formatting
