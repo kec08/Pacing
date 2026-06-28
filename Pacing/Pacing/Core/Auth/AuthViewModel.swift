@@ -41,6 +41,18 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
+    // MARK: - 익명 로그인 (테스트용)
+    func signInAnonymously(appState: AppState) async {
+        isLoading = true
+        do {
+            try await Auth.auth().signInAnonymously()
+            appState.isLoggedIn = true
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        isLoading = false
+    }
+
     // MARK: - 로그아웃
     func signOut(appState: AppState) {
         try? Auth.auth().signOut()

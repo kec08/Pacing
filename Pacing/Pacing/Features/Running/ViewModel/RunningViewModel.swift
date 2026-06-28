@@ -2,6 +2,8 @@ import SwiftUI
 import Combine
 import CoreLocation
 import FirebaseAuth
+import MusicKit
+import MusicKit
 
 enum RunningState {
     case idle
@@ -17,6 +19,9 @@ final class RunningViewModel: ObservableObject {
     @Published var currentPace: Double = 0    // 분/km
 
     let locationManager = LocationManager()
+
+    // 주변 러너 브로드캐스트용
+    var musicViewModel: RunningMusicViewModel?
 
     private var timer: AnyCancellable?
     private var lastLocation: CLLocation?

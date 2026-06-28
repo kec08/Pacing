@@ -33,15 +33,39 @@ struct LoginView: View {
                     ProgressView()
                         .padding(.bottom, 48)
                 } else {
-                    AppleSignInButton { result in
-                        Task {
-                            await authVM.handleSignInWithApple(result, appState: appState)
-                            if appState.isLoggedIn {
-                                navigateToOnboarding = true
+                    VStack(spacing: 12) {
+                        AppleSignInButton { result in
+                            Task {
+                                await authVM.handleSignInWithApple(result, appState: appState)
+                                if appState.isLoggedIn {
+                                    navigateToOnboarding = true
+                                }
                             }
+                        } prepareNonce: {
+                            authVM.prepareNonce()
                         }
-                    } prepareNonce: {
-                        authVM.prepareNonce()
+
+                        Button {
+                            Task {
+                                await authVM.signInAnonymously(appState: appState)
+                                if appState.isLoggedIn {
+                                    navigateToOnboarding = true
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: "person.fill.questionmark")
+                                Text("게스트로 시작")
+                            }
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                            )
+                        }
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 48)

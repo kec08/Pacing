@@ -2,17 +2,21 @@ import SwiftUI
 import MapKit
 import Combine
 import MusicKit
+import FirebaseAuth
 
 struct RunningView: View {
     @StateObject private var viewModel = RunningViewModel()
     @StateObject private var musicVM = RunningMusicViewModel()
+    @StateObject private var nearbyVM = NearbyRunnerViewModel()
     @State private var showSummary = false
     @State private var showMusicSheet = false
+    @State private var showNearbySheet = false
     @State private var countdown: Int? = nil
     @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
+    @State private var collapsedPinIDs: Set<String> = []
 
     var body: some View {
         ZStack {
@@ -34,6 +38,12 @@ struct RunningView: View {
                         }
                     }
                 }
+                // 주변 러너 핀
+                ForEach(nearbyVM.nearbyRunners) { runner in
+                    Annotation("", coordinate: runner.coordinate) {
+                        runnerMapPin(runner: runner)
+                    }
+                }
             }
             .mapStyle(.standard)
             .ignoresSafeArea()
@@ -42,7 +52,7 @@ struct RunningView: View {
                 // 뮤직 카드: idle 상태에서만 표시
                 if viewModel.state == .idle {
                     musicScrollSection
-                        .padding(.top, 60)
+                        .padding(.top, 44)
                 }
 
                 // 스탯 오버레이: idle이 아닐 때 상단으로 올라옴
@@ -80,7 +90,38 @@ struct RunningView: View {
             }
         }
         .task { await musicVM.requestAuthorization() }
+        .onAppear {
+            viewModel.musicViewModel = musicVM
+            startAppBroadcast()
+        }
+        .onDisappear {
+            if let uid = Auth.auth().currentUser?.uid {
+                RealtimeDBService.shared.stopBroadcast(uid: uid)
+            }
+            nearbyVM.stopObserving()
+        }
+        .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
+            nearbyVM.updateMyLocation(loc.coordinate)
+        }
+        .onChange(of: viewModel.state) { _, newState in
+            if newState == .finished {
+                nearbyVM.stopObserving()
+            }
+        }
+        .onChange(of: musicVM.currentSong) { _, _ in
+            // 곡 바뀌면 즉시 업데이트
+            if let uid = Auth.auth().currentUser?.uid {
+                let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
+                RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) {
+                    self.viewModel.locationManager.currentLocation?.coordinate
+                } songProvider: {
+                    (self.musicVM.currentSong?.title ?? "", self.musicVM.currentSong?.artistName ?? "")
+                }
+            }
+        }
+        .preferredColorScheme(.light)
         .sheet(isPresented: $showMusicSheet) { musicSheet }
+        .sheet(isPresented: $showNearbySheet) { nearbySheet }
         .fullScreenCover(isPresented: $showSummary) {
             RunSummaryView(
                 distance: viewModel.distance,
@@ -108,21 +149,29 @@ struct RunningView: View {
     ]
 
     private var musicScrollSection: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
-                if musicVM.isLoading {
-                    ForEach(0..<5, id: \.self) { _ in musicCardSkeleton }
-                } else if musicVM.playlists.isEmpty {
-                    ForEach(dummyMusicCards, id: \.title) { card in
-                        dummyMusicCard(title: card.title, artist: card.artist)
-                    }
-                } else {
-                    ForEach(musicVM.playlists, id: \.id) { playlist in
-                        playlistCardItem(playlist: playlist)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("플레이리스트")
+                .font(.system(size: 17, weight: .bold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    if musicVM.isLoading {
+                        ForEach(0..<5, id: \.self) { _ in musicCardSkeleton }
+                    } else if musicVM.playlists.isEmpty {
+                        ForEach(dummyMusicCards, id: \.title) { card in
+                            dummyMusicCard(title: card.title, artist: card.artist)
+                        }
+                    } else {
+                        ForEach(musicVM.playlists, id: \.id) { playlist in
+                            playlistCardItem(playlist: playlist)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
             }
-            .padding(.horizontal, 16)
         }
     }
 
@@ -298,7 +347,7 @@ struct RunningView: View {
             }
             .disabled(countdown != nil)
 
-            sideButton(icon: "person.2.fill", label: "주변") { }
+            sideButton(icon: "person.2.fill", label: "주변") { showNearbySheet = true }
         }
     }
 
@@ -368,7 +417,7 @@ struct RunningView: View {
                             .clipShape(Circle())
                     }
 
-                    sideButton(icon: "person.2.fill", label: "주변") { }
+                    sideButton(icon: "person.2.fill", label: "주변") { showNearbySheet = true }
                 }
                 .transition(.scale.combined(with: .opacity))
             }
@@ -649,9 +698,248 @@ struct RunningView: View {
         }
     }
 
+    // MARK: - 러너 맵 핀 카드뷰
+
+    @ViewBuilder
+    private func runnerMapPin(runner: NearbyRunner) -> some View {
+        let isCollapsed = collapsedPinIDs.contains(runner.id)
+        let avatarColor: Color = runner.isMe ? Color.main500 : Color(.systemGray3)
+        let cardBg: Color = runner.isMe ? Color.main500.opacity(0.12) : Color.clear
+        let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
+
+        Button {
+            collapsedPinIDs.formSymmetricDifference([runner.id])
+        } label: {
+            VStack(spacing: 0) {
+
+                // ── 풀 카드 (펼쳐진 상태) ──
+                VStack(spacing: 0) {
+                    HStack(spacing: 6) {
+                        ZStack {
+                            Circle()
+                                .fill(avatarColor)
+                                .frame(width: 26, height: 26)
+                            Text(String(runner.nickname.prefix(1)))
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                        HStack(alignment: .top, spacing: 4) {
+                            if !runner.songTitle.isEmpty {
+                                Image(systemName: "music.note")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(Color.main500)
+                                    .padding(.top, 16)
+                            }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(runner.nickname)
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundStyle(nameColor)
+                                    .lineLimit(1)
+                                if !runner.songTitle.isEmpty {
+                                    Text(runner.songTitle)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(Color(.label))
+                                        .lineLimit(1)
+                                    if !runner.artist.isEmpty {
+                                        Text(runner.artist)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Color(.secondaryLabel))
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12).fill(Color(.systemBackground))
+                            RoundedRectangle(cornerRadius: 12).fill(cardBg)
+                        }
+                        .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
+                    )
+                    Triangle()
+                        .fill(Color(.systemBackground))
+                        .frame(width: 10, height: 6)
+                }
+                .scaleEffect(isCollapsed ? 0.1 : 1, anchor: .bottom)
+                .opacity(isCollapsed ? 0 : 1)
+                .animation(.easeInOut(duration: 0.4), value: isCollapsed)
+
+                // ── 아바타 + 말풍선 뱃지 (항상 표시) ──
+                ZStack(alignment: .topTrailing) {
+                    Circle()
+                        .fill(avatarColor)
+                        .frame(width: 34, height: 34)
+                        .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
+                    Text(String(runner.nickname.prefix(1)))
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+
+                    // 음표 뱃지 (접힌 상태 + 노래 있을 때만)
+                    if !runner.songTitle.isEmpty {
+                        ZStack {
+                            Circle()
+                                .fill(Color(.systemBackground))
+                                .frame(width: 18, height: 18)
+                            Image(systemName: "music.note")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(Color.main500)
+                        }
+                        .offset(x: 4, y: -4)
+                        .scaleEffect(isCollapsed ? 1 : 0.1)
+                        .opacity(isCollapsed ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.4), value: isCollapsed)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - 앱 레벨 브로드캐스트
+
+    private func startAppBroadcast() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
+        RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) { [self] in
+            self.viewModel.locationManager.currentLocation?.coordinate
+        } songProvider: { [self] in
+            (self.musicVM.currentSong?.title ?? "", self.musicVM.currentSong?.artistName ?? "")
+        }
+        nearbyVM.startObserving(uid: uid)
+    }
+
+    // MARK: - 주변 러너 시트
+
+    private var nearbySheet: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 필터 피커
+                Picker("필터", selection: Binding(
+                    get: { nearbyVM.selectedFilter },
+                    set: { nearbyVM.changeFilter($0) }
+                )) {
+                    ForEach(RunnerFilter.allCases, id: \.self) { f in
+                        Text(f.rawValue).tag(f)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+
+                Divider()
+
+                if nearbyVM.nearbyRunners.isEmpty {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: nearbyVM.selectedFilter == .friends ? "person.2.slash" : "figure.run")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text(nearbyVM.selectedFilter == .friends ? "친구가 없어요" : "주변에 러너가 없어요")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                        Text(nearbyVM.selectedFilter == .friends ? "친구를 추가하면 여기서 볼 수 있어요" : "1km 반경 내 러닝 중인 사람이 없어요")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(nearbyVM.nearbyRunners) { runner in
+                                nearbyRunnerCard(runner: runner)
+                                Divider().padding(.leading, 72)
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                }
+            }
+            .navigationTitle("주변 러너")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("완료") { showNearbySheet = false }
+                        .foregroundStyle(Color.main500)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color(.systemBackground))
+        .preferredColorScheme(.light)
+    }
+
+    private func nearbyRunnerCard(runner: NearbyRunner) -> some View {
+        HStack(spacing: 14) {
+            // 아바타
+            ZStack {
+                Circle()
+                    .fill(Color.main500)
+                    .frame(width: 44, height: 44)
+                Text(String(runner.nickname.prefix(1)))
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(runner.nickname)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                if !runner.songTitle.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 11))
+                            .foregroundStyle(Color.main500)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(runner.songTitle)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                            if !runner.artist.isEmpty {
+                                Text(runner.artist)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                }
+
+                Text(nearbyVM.formattedDistance(runner))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            // 같이 듣기 버튼 (feat #08 예약)
+            Button {
+                // feat #08에서 구현
+            } label: {
+                Text("같이 듣기")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.main500)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.main500, lineWidth: 1)
+                    )
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
+    }
+
     // MARK: - 카운트다운
 
     private func startCountdown() {
+
         Task {
             for i in stride(from: 3, through: 1, by: -1) {
                 await MainActor.run {
@@ -664,5 +952,16 @@ struct RunningView: View {
                 viewModel.start()
             }
         }
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY))
+        path.closeSubpath()
+        return path
     }
 }
