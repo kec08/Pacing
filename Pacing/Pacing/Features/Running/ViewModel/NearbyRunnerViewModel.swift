@@ -1,18 +1,10 @@
 import SwiftUI
+import Combine
 import CoreLocation
 
-enum SearchRadius: Int, CaseIterable {
-    case small = 300
-    case medium = 500
-    case large = 1000
-
-    var label: String {
-        switch self {
-        case .small:  return "300m"
-        case .medium: return "500m"
-        case .large:  return "1km"
-        }
-    }
+enum RunnerFilter: String, CaseIterable {
+    case friends = "친구"
+    case nearby = "가까운 러너"
 }
 
 struct NearbyRunner: Identifiable {
@@ -22,14 +14,16 @@ struct NearbyRunner: Identifiable {
     let songTitle: String
     let artist: String
     let distance: Double    // 미터
+    var isMe: Bool = false
 }
 
 @MainActor
 final class NearbyRunnerViewModel: ObservableObject {
     @Published var nearbyRunners: [NearbyRunner] = []
-    @Published var selectedRadius: SearchRadius = .medium
+    @Published var selectedFilter: RunnerFilter = .nearby
     @Published var isObserving: Bool = false
 
+    private let radiusMeters: Double = 1000
     private var myUID: String = ""
     private var allRunners: [ActiveRunner] = []
     private var myLocation: CLLocationCoordinate2D?
@@ -56,8 +50,8 @@ final class NearbyRunnerViewModel: ObservableObject {
         filterRunners()
     }
 
-    func changeRadius(_ radius: SearchRadius) {
-        selectedRadius = radius
+    func changeFilter(_ filter: RunnerFilter) {
+        selectedFilter = filter
         filterRunners()
     }
 
@@ -67,31 +61,32 @@ final class NearbyRunnerViewModel: ObservableObject {
             return
         }
         let myPoint = CLLocation(latitude: myLoc.latitude, longitude: myLoc.longitude)
-        let radiusMeters = Double(selectedRadius.rawValue)
 
         nearbyRunners = allRunners
-            .filter { $0.id != myUID }
             .compactMap { runner in
+                let isMe = runner.id == myUID
                 let point = CLLocation(latitude: runner.coordinate.latitude, longitude: runner.coordinate.longitude)
-                let dist = myPoint.distance(from: point)
-                guard dist <= radiusMeters else { return nil }
+                let dist = isMe ? 0 : myPoint.distance(from: point)
+                guard isMe || dist <= radiusMeters else { return nil }
                 return NearbyRunner(
                     id: runner.id,
-                    nickname: runner.nickname,
+                    nickname: isMe ? "나" : runner.nickname,
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
-                    distance: dist
+                    distance: dist,
+                    isMe: isMe
                 )
             }
             .sorted { $0.distance < $1.distance }
     }
 
-    func formattedDistance(_ meters: Double) -> String {
-        if meters < 1000 {
-            return "\(Int(meters))m 떨어져 있어요"
+    func formattedDistance(_ runner: NearbyRunner) -> String {
+        if runner.isMe { return "나의 위치" }
+        if runner.distance < 1000 {
+            return "\(Int(runner.distance))m 떨어져 있어요"
         } else {
-            return String(format: "%.1fkm 떨어져 있어요", meters / 1000)
+            return String(format: "%.1fkm 떨어져 있어요", runner.distance / 1000)
         }
     }
 }
