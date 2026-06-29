@@ -25,6 +25,7 @@ final class RunningViewModel: ObservableObject {
 
     private var timer: AnyCancellable?
     private var lastLocation: CLLocation?
+    private var paceBuffer: [Double] = []
     private var cancellables = Set<AnyCancellable>()
 
     init() {
@@ -48,11 +49,13 @@ final class RunningViewModel: ObservableObject {
     func pause() {
         state = .paused
         timer?.cancel()
+        lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
         locationManager.stopTracking()
     }
 
     func resume() {
         state = .running
+        lastLocation = nil
         locationManager.startTracking()
         startTimer()
     }
@@ -70,6 +73,7 @@ final class RunningViewModel: ObservableObject {
         distance = 0
         currentPace = 0
         lastLocation = nil
+        paceBuffer = []
         state = .idle
     }
 
@@ -120,17 +124,27 @@ final class RunningViewModel: ObservableObject {
         guard state == .running else { return }
         defer { lastLocation = newLocation }
         guard let last = lastLocation else { return }
-        let delta = newLocation.distance(from: last) / 1000.0
-        guard delta > 0 else { return }
-        distance += delta
-        // 페이스: 최근 이동 거리 기반 순간 페이스
+
+        let deltaMeters = newLocation.distance(from: last)
         let timeDelta = newLocation.timestamp.timeIntervalSince(last.timestamp)
-        if timeDelta > 0 {
-            currentPace = (timeDelta / 60.0) / delta
-        }
+        guard deltaMeters > 0, timeDelta > 0 else { return }
+
+        // GPS 스파이크 필터: 36 km/h(10 m/s) 초과는 GPS 오류로 간주하고 무시
+        let speedMs = deltaMeters / timeDelta
+        guard speedMs < 10.0 else { return }
+
+        let deltaKm = deltaMeters / 1000.0
+        distance += deltaKm
+
+        // 페이스 스무딩: 최근 5개 샘플 평균
+        let rawPace = (timeDelta / 60.0) / deltaKm
+        paceBuffer.append(rawPace)
+        if paceBuffer.count > 5 { paceBuffer.removeFirst() }
+        currentPace = paceBuffer.reduce(0, +) / Double(paceBuffer.count)
     }
 
     func saveRecord() async {
+        guard elapsedSeconds >= 60 else { return }  // 1분 미만은 저장하지 않음
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let record = RunRecord(
             id: UUID().uuidString,

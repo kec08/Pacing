@@ -22,7 +22,7 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     func startTracking() {
-        routeCoordinates = []
+        // routeCoordinates는 여기서 리셋하지 않음 — resetRoute() 또는 reset()에서만 초기화
         manager.startUpdatingLocation()
     }
 

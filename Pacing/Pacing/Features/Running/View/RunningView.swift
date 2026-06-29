@@ -8,6 +8,7 @@ struct RunningView: View {
     @StateObject private var viewModel = RunningViewModel()
     @StateObject private var musicVM = RunningMusicViewModel()
     @StateObject private var nearbyVM = NearbyRunnerViewModel()
+    @StateObject private var listenVM = ListenTogetherViewModel()
     @State private var showSummary = false
     @State private var showMusicSheet = false
     @State private var showNearbySheet = false
@@ -17,14 +18,25 @@ struct RunningView: View {
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
     @State private var collapsedPinIDs: Set<String> = []
+    @State private var mapZoomDistance: Double = 400
+    @State private var isFollowingUser: Bool = true      // 내 위치 자동 추적
+    @State private var isProgrammaticMove: Bool = false  // 코드 카메라 이동 플래그
+    @State private var showListenSheet = false
 
     var body: some View {
         ZStack {
-            // 풀스크린 지도 (줌/스크롤 비활성)
-            Map(position: $cameraPosition, interactionModes: []) {
+            // 풀스크린 지도
+            Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
                 if viewModel.locationManager.routeCoordinates.count >= 2 {
                     MapPolyline(coordinates: viewModel.locationManager.routeCoordinates)
-                        .stroke(Color.main500, lineWidth: 4)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.main500, Color(red: 0.18, green: 0.46, blue: 1.0)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            lineWidth: 5
+                        )
                 }
                 if let loc = viewModel.locationManager.currentLocation {
                     Annotation("", coordinate: loc.coordinate) {
@@ -48,6 +60,72 @@ struct RunningView: View {
             .mapStyle(.standard)
             .ignoresSafeArea()
 
+            // 맵 버튼 오버레이
+            VStack {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        if viewModel.state == .idle {
+                            // idle: 줌 +/-  +  내 위치
+                            Button {
+                                let newDist = max(100, mapZoomDistance / 1.5)
+                                mapZoomDistance = newDist
+                                recenterCamera(distance: newDist)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            Button {
+                                let newDist = min(3000, mapZoomDistance * 1.5)
+                                mapZoomDistance = newDist
+                                recenterCamera(distance: newDist)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            Button {
+                                isFollowingUser = true
+                                recenterCamera(distance: mapZoomDistance)
+                            } label: {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color.main500)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        } else {
+                            // 러닝 중: 항상 내 위치 버튼 표시 (추적 중이면 파란색)
+                            Button {
+                                isFollowingUser = true
+                                recenterCamera(distance: mapZoomDistance)
+                            } label: {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(isFollowingUser ? Color.main500 : Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+                    .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                    .padding(.trailing, 16)
+                    .padding(.top, 220)
+                    .animation(.spring(duration: 0.3), value: viewModel.state)
+                    .animation(.spring(duration: 0.3), value: isFollowingUser)
+                }
+                Spacer()
+            }
+
             VStack(spacing: 0) {
                 // 뮤직 카드: idle 상태에서만 표시
                 if viewModel.state == .idle {
@@ -68,24 +146,94 @@ struct RunningView: View {
                     .padding(.bottom, 40)
             }
 
-            // 카운트다운 풀스크린 오버레이
+            // 수신 요청 배너 (항상 최상단)
+            if let request = listenVM.incomingRequest {
+                VStack {
+                    incomingRequestBanner(session: request)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    Spacer()
+                }
+                .animation(.spring(duration: 0.4), value: listenVM.incomingRequest?.id)
+                .zIndex(10)
+            }
+
+            // 같이 듣기 플로팅 버튼 (세션 활성 시 항상 표시)
+            if let session = listenVM.activeSession, session.status == "active" {
+                VStack {
+                    HStack {
+                        Spacer()
+                        Button { showListenSheet = true } label: {
+                            ZStack(alignment: .topTrailing) {
+                                ZStack {
+                                    Circle()
+                                        .fill(Color.main500)
+                                        .frame(width: 48, height: 48)
+                                        .shadow(color: Color.main500.opacity(0.4), radius: 8, y: 4)
+                                    Image(systemName: "music.note")
+                                        .font(.system(size: 20, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                }
+                                // 인원 배지
+                                ZStack {
+                                    Circle().fill(Color.white).frame(width: 20, height: 20)
+                                    Text("2")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(Color.main500)
+                                }
+                                .offset(x: 4, y: -4)
+                            }
+                        }
+                        .padding(.trailing, 16)
+                    }
+                    .padding(.top, 6)
+                    Spacer()
+                }
+                .transition(.scale.combined(with: .opacity))
+                .animation(.spring(duration: 0.4), value: session.id)
+                .zIndex(11)
+            }
+
+            // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
             if let cd = countdown {
-                Color.black.opacity(0.85)
-                    .ignoresSafeArea()
-                Text("\(cd)")
-                    .font(.system(size: 160, weight: .black))
-                    .foregroundStyle(Color.main500)
-                    .transition(.scale(scale: 1.4).combined(with: .opacity))
-                    .id(cd)
+                ZStack {
+                    Color.black.opacity(0.85)
+                        .ignoresSafeArea()
+                    Text("\(cd)")
+                        .font(.system(size: 160, weight: .black))
+                        .foregroundStyle(Color.main500)
+                        .transition(.scale(scale: 1.4).combined(with: .opacity))
+                        .id(cd)
+                }
+                .zIndex(20)
             }
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
-            if viewModel.state == .running {
-                withAnimation(.linear(duration: 2)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: loc.coordinate,
-                        distance: 500
-                    ))
+            if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+                recenterCamera(distance: mapZoomDistance)
+            }
+        }
+        .onMapCameraChange(frequency: .continuous) { context in
+            guard !isProgrammaticMove else { return }
+            mapZoomDistance = min(max(context.camera.distance, 100), 3000)
+            isFollowingUser = false
+        }
+        .onMapCameraChange(frequency: .onEnd) { context in
+            guard !isProgrammaticMove else { return }
+            let dist = context.camera.distance
+            mapZoomDistance = min(max(dist, 100), 3000)
+            guard dist > 3000 || dist < 100 else { return }
+            let clamped = min(max(dist, 100), 3000)
+            let center = viewModel.locationManager.currentLocation?.coordinate
+                ?? context.camera.centerCoordinate
+            // 관성 이동이 완전히 끝난 뒤 스냅백 (즉시 덮어쓰면 충돌)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                isProgrammaticMove = true
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
+                    cameraPosition = .camera(MapCamera(centerCoordinate: center, distance: clamped))
+                }
+                isFollowingUser = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                    isProgrammaticMove = false
                 }
             }
         }
@@ -93,12 +241,14 @@ struct RunningView: View {
         .onAppear {
             viewModel.musicViewModel = musicVM
             startAppBroadcast()
+            listenVM.startObservingRequests()
         }
         .onDisappear {
             if let uid = Auth.auth().currentUser?.uid {
                 RealtimeDBService.shared.stopBroadcast(uid: uid)
             }
             nearbyVM.stopObserving()
+            listenVM.stopObservingRequests()
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
             nearbyVM.updateMyLocation(loc.coordinate)
@@ -109,7 +259,7 @@ struct RunningView: View {
             }
         }
         .onChange(of: musicVM.currentSong) { _, _ in
-            // 곡 바뀌면 즉시 업데이트
+            // 곡 바뀌면 즉시 브로드캐스트
             if let uid = Auth.auth().currentUser?.uid {
                 let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
                 RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) {
@@ -118,10 +268,13 @@ struct RunningView: View {
                     (self.musicVM.currentSong?.title ?? "", self.musicVM.currentSong?.artistName ?? "")
                 }
             }
+            // 호스트면 세션에도 브로드캐스트
+            listenVM.broadcastIfHost(musicVM: musicVM)
         }
         .preferredColorScheme(.light)
         .sheet(isPresented: $showMusicSheet) { musicSheet }
         .sheet(isPresented: $showNearbySheet) { nearbySheet }
+        .sheet(isPresented: $showListenSheet) { listenSheet }
         .fullScreenCover(isPresented: $showSummary) {
             RunSummaryView(
                 distance: viewModel.distance,
@@ -799,6 +952,212 @@ struct RunningView: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - 같이 듣기 배너
+
+    private func incomingRequestBanner(session: ListenSession) -> some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                ZStack {
+                    Circle().fill(Color.main500).frame(width: 36, height: 36)
+                    Text(String(session.hostNickname.prefix(1)))
+                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(session.hostNickname)님이 같이 듣기를 요청했어요")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.textPrimary)
+                    if !session.songTitle.isEmpty {
+                        HStack(spacing: 4) {
+                            Image(systemName: "music.note")
+                                .font(.system(size: 11)).foregroundStyle(Color.main500)
+                            Text("\(session.songTitle) - \(session.artistName)")
+                                .font(.system(size: 12)).foregroundStyle(Color.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                Spacer()
+            }
+            HStack(spacing: 10) {
+                Button {
+                    Task { await listenVM.acceptRequest(musicVM: musicVM) }
+                } label: {
+                    Text("수락")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
+                        .frame(maxWidth: .infinity).frame(height: 36)
+                        .background(Color.main500).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                Button {
+                    listenVM.declineRequest()
+                } label: {
+                    Text("거절")
+                        .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.textSecondary)
+                        .frame(maxWidth: .infinity).frame(height: 36)
+                        .background(Color(.systemGray5)).clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+            }
+        }
+        .padding(14)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 56)
+    }
+
+    // MARK: - 같이 듣기 시트
+    private var listenSheet: some View {
+        NavigationStack {
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+            VStack(spacing: 0) {
+                if let session = listenVM.activeSession {
+                    let myUID = Auth.auth().currentUser?.uid ?? ""
+                    let partnerName = session.hostUID == myUID ? session.guestNickname : session.hostNickname
+                    let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
+                    let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
+
+                    VStack(spacing: 12) {
+                        // 함께 듣는 중 헤더
+                        HStack(spacing: 8) {
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.main500)
+                            Text("함께 듣는 중")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.textPrimary)
+                            Spacer()
+                            if !session.songTitle.isEmpty {
+                                Text("\(session.songTitle)")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Color.textSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 8)
+
+                        Divider()
+
+                        // 참여자 카드 목록
+                        ScrollView {
+                            VStack(spacing: 12) {
+                                listenParticipantCard(
+                                    name: myName,
+                                    isMe: true,
+                                    role: listenVM.isHost ? "호스트" : "게스트",
+                                    song: session.songTitle,
+                                    artist: session.artistName,
+                                    duration: listenDuration
+                                )
+                                listenParticipantCard(
+                                    name: partnerName,
+                                    isMe: false,
+                                    role: listenVM.isHost ? "게스트" : "호스트",
+                                    song: session.songTitle,
+                                    artist: session.artistName,
+                                    duration: listenDuration
+                                )
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                        }
+
+                        Spacer()
+
+                        // 종료 버튼
+                        Button {
+                            listenVM.endSession()
+                            showListenSheet = false
+                        } label: {
+                            Text("같이 듣기 종료")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 52)
+                                .background(Color.main500)
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 32)
+                    }
+                } else {
+                    Spacer()
+                    VStack(spacing: 12) {
+                        Image(systemName: "music.note.list")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+                        Text("같이 듣기 세션이 없어요")
+                            .font(.system(size: 16))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+            }
+            .navigationTitle("같이 듣기")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("완료") { showListenSheet = false }
+                        .foregroundStyle(Color.main500)
+                }
+            }
+            } // TimelineView
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Color(.systemBackground))
+        .preferredColorScheme(.light)
+    }
+
+    private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(isMe ? Color.main500 : Color(.systemGray3))
+                    .frame(width: 50, height: 50)
+                Text(String(name.prefix(1)))
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.primary)
+                    Text(role)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(isMe ? Color.main500 : Color.textSecondary)
+                        .padding(.horizontal, 7).padding(.vertical, 2)
+                        .background(isMe ? Color.main500.opacity(0.12) : Color(.systemGray6))
+                        .clipShape(Capsule())
+                }
+                if !song.isEmpty {
+                    HStack(spacing: 4) {
+                        Image(systemName: "music.note")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color.main500)
+                        Text(artist.isEmpty ? song : "\(song) - \(artist)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                // 함께 들은 시간
+                let mins = duration / 60
+                let secs = duration % 60
+                Text(mins > 0 ? "\(mins)분 \(secs)초 함께 들음" : "\(secs)초 함께 들음")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Color(.tertiaryLabel))
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(Color(.secondarySystemBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+
     // MARK: - 앱 레벨 브로드캐스트
 
     private func startAppBroadcast() {
@@ -917,23 +1276,39 @@ struct RunningView: View {
 
             Spacer()
 
-            // 같이 듣기 버튼 (feat #08 예약)
+            // 같이 듣기 버튼
             Button {
-                // feat #08에서 구현
+                showNearbySheet = false
+                listenVM.sendRequest(to: runner, musicVM: musicVM)
             } label: {
-                Text("같이 듣기")
+                Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.main500)
+                    .foregroundStyle(listenVM.activeSession != nil ? Color.textSecondary : Color.main500)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.main500, lineWidth: 1)
+                            .stroke(listenVM.activeSession != nil ? Color.gray300 : Color.main500, lineWidth: 1)
                     )
             }
+            .disabled(listenVM.activeSession != nil)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    // MARK: - 카메라
+
+    private func recenterCamera(distance: Double) {
+        guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
+        isProgrammaticMove = true
+        withAnimation(.interpolatingSpring(stiffness: 40, damping: 12)) {
+            cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: distance))
+        }
+        // 애니메이션 완료 후 플래그 해제 (0.6초면 충분)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            isProgrammaticMove = false
+        }
     }
 
     // MARK: - 카운트다운
