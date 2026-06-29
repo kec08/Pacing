@@ -157,7 +157,7 @@ struct RunningView: View {
                 .zIndex(10)
             }
 
-            // 같이 듣기 플로팅 버튼 (세션 활성 시)
+            // 같이 듣기 플로팅 버튼 (세션 활성 시 항상 표시)
             if let session = listenVM.activeSession, session.status == "active" {
                 VStack {
                     HStack {
@@ -193,15 +193,18 @@ struct RunningView: View {
                 .zIndex(11)
             }
 
-            // 카운트다운 풀스크린 오버레이
+            // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
             if let cd = countdown {
-                Color.black.opacity(0.85)
-                    .ignoresSafeArea()
-                Text("\(cd)")
-                    .font(.system(size: 160, weight: .black))
-                    .foregroundStyle(Color.main500)
-                    .transition(.scale(scale: 1.4).combined(with: .opacity))
-                    .id(cd)
+                ZStack {
+                    Color.black.opacity(0.85)
+                        .ignoresSafeArea()
+                    Text("\(cd)")
+                        .font(.system(size: 160, weight: .black))
+                        .foregroundStyle(Color.main500)
+                        .transition(.scale(scale: 1.4).combined(with: .opacity))
+                        .id(cd)
+                }
+                .zIndex(20)
             }
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
