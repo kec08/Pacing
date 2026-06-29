@@ -35,7 +35,19 @@ struct WeeklyStats {
 
 struct ListenSession: Identifiable {
     let id: String
-    let partnerNickname: String
-    let songTitle: String
-    let date: Date
+    let hostUID: String
+    let hostNickname: String
+    let guestUID: String
+    let guestNickname: String
+    var songStoreID: String
+    var songTitle: String
+    var artistName: String
+    var playbackPosition: Double
+    var serverTimestamp: Double
+    var status: String          // pending / active / ended / rejected
+    var isPlaying: Bool
+
+    // 홈탭 최근 활동 표시용 편의 프로퍼티
+    var partnerNickname: String { guestNickname }
+    var date: Date { Date(timeIntervalSince1970: serverTimestamp / 1000.0) }
 }

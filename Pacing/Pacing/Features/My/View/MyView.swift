@@ -5,6 +5,7 @@ struct MyView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = MyViewModel()
     @State private var showPicker = false
+    @State private var showAllHistory = false
 
     var body: some View {
         ScrollView {
@@ -362,9 +363,29 @@ struct MyView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
-                ForEach(vm.runHistory) { record in
+                let displayed = showAllHistory ? vm.runHistory : Array(vm.runHistory.prefix(5))
+                ForEach(displayed) { record in
                     RunHistoryCard(record: record, vm: vm)
                         .padding(.horizontal, 20)
+                }
+
+                if vm.runHistory.count > 5 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showAllHistory.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(showAllHistory ? "접기" : "더보기 (\(vm.runHistory.count - 5)개)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.main500)
+                            Image(systemName: showAllHistory ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.main500)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
                 }
             }
         }

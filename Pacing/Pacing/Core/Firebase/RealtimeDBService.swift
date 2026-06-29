@@ -92,4 +92,134 @@ final class RealtimeDBService {
             observeHandle = nil
         }
     }
+
+    // MARK: - 같이 듣기 세션 생성 (호스트)
+    @discardableResult
+    func createListenSession(
+        hostUID: String, hostNickname: String,
+        guestUID: String, guestNickname: String,
+        songStoreID: String, songTitle: String, artistName: String,
+        position: Double
+    ) -> String {
+        let sessionRef = db.child("listenSessions").childByAutoId()
+        let sessionID = sessionRef.key ?? UUID().uuidString
+        let data: [String: Any] = [
+            "hostUID": hostUID,
+            "hostNickname": hostNickname,
+            "guestUID": guestUID,
+            "guestNickname": guestNickname,
+            "songStoreID": songStoreID,
+            "songTitle": songTitle,
+            "artistName": artistName,
+            "playbackPosition": position,
+            "serverTimestamp": ServerValue.timestamp(),
+            "status": "pending",
+            "isPlaying": true
+        ]
+        sessionRef.setValue(data)
+        // 게스트에게 수신 알림 경로에도 기록
+        db.child("incomingRequests").child(guestUID).child(sessionID).setValue(data)
+        return sessionID
+    }
+
+    // MARK: - 세션 수락 (게스트)
+    func acceptSession(sessionID: String, guestUID: String) {
+        db.child("listenSessions").child(sessionID).updateChildValues(["status": "active"])
+        db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
+    }
+
+    // MARK: - 세션 거절 (게스트)
+    func rejectSession(sessionID: String, guestUID: String) {
+        db.child("listenSessions").child(sessionID).updateChildValues(["status": "rejected"])
+        db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
+    }
+
+    // MARK: - 재생 상태 브로드캐스트 (호스트)
+    func updateSessionPlayback(
+        sessionID: String,
+        songStoreID: String, songTitle: String, artistName: String,
+        position: Double, isPlaying: Bool
+    ) {
+        db.child("listenSessions").child(sessionID).updateChildValues([
+            "songStoreID": songStoreID,
+            "songTitle": songTitle,
+            "artistName": artistName,
+            "playbackPosition": position,
+            "serverTimestamp": ServerValue.timestamp(),
+            "isPlaying": isPlaying
+        ])
+    }
+
+    // MARK: - 세션 구독
+    private var sessionHandle: DatabaseHandle?
+
+    func observeSession(sessionID: String, onChange: @escaping (ListenSession) -> Void) {
+        sessionHandle = db.child("listenSessions").child(sessionID).observe(.value) { snapshot in
+            guard let d = snapshot.value as? [String: Any] else { return }
+            let session = ListenSession(
+                id: sessionID,
+                hostUID: d["hostUID"] as? String ?? "",
+                hostNickname: d["hostNickname"] as? String ?? "",
+                guestUID: d["guestUID"] as? String ?? "",
+                guestNickname: d["guestNickname"] as? String ?? "",
+                songStoreID: d["songStoreID"] as? String ?? "",
+                songTitle: d["songTitle"] as? String ?? "",
+                artistName: d["artistName"] as? String ?? "",
+                playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
+                serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
+                status: d["status"] as? String ?? "ended",
+                isPlaying: d["isPlaying"] as? Bool ?? false
+            )
+            onChange(session)
+        }
+    }
+
+    func stopObservingSession() {
+        if let handle = sessionHandle {
+            db.child("listenSessions").removeObserver(withHandle: handle)
+            sessionHandle = nil
+        }
+    }
+
+    // MARK: - 수신 요청 구독 (게스트)
+    private var incomingHandle: DatabaseHandle?
+
+    func observeIncomingRequests(uid: String, onChange: @escaping (ListenSession?) -> Void) {
+        incomingHandle = db.child("incomingRequests").child(uid).observe(.value) { snapshot in
+            guard snapshot.childrenCount > 0 else { onChange(nil); return }
+            // 가장 최신 요청 하나만 처리
+            if let child = snapshot.children.allObjects.last as? DataSnapshot,
+               let d = child.value as? [String: Any] {
+                let session = ListenSession(
+                    id: child.key,
+                    hostUID: d["hostUID"] as? String ?? "",
+                    hostNickname: d["hostNickname"] as? String ?? "",
+                    guestUID: d["guestUID"] as? String ?? "",
+                    guestNickname: d["guestNickname"] as? String ?? "",
+                    songStoreID: d["songStoreID"] as? String ?? "",
+                    songTitle: d["songTitle"] as? String ?? "",
+                    artistName: d["artistName"] as? String ?? "",
+                    playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
+                    serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
+                    status: d["status"] as? String ?? "pending",
+                    isPlaying: d["isPlaying"] as? Bool ?? true
+                )
+                onChange(session)
+            } else {
+                onChange(nil)
+            }
+        }
+    }
+
+    func stopObservingIncomingRequests(uid: String) {
+        if let handle = incomingHandle {
+            db.child("incomingRequests").child(uid).removeObserver(withHandle: handle)
+            incomingHandle = nil
+        }
+    }
+
+    // MARK: - 세션 종료
+    func endSession(sessionID: String) {
+        db.child("listenSessions").child(sessionID).updateChildValues(["status": "ended"])
+    }
 }

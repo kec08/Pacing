@@ -82,11 +82,11 @@ final class MyViewModel: ObservableObject {
 
     func loadData() {
         guard let uid = Auth.auth().currentUser?.uid else {
-            applyData(records: RunRecord.dummies)
+            applyData(records: [])
             return
         }
         Task { @MainActor in
-            let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? RunRecord.dummies
+            let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? []
             applyData(records: records)
         }
     }

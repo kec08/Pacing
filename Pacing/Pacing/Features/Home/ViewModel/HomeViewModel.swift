@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import FirebaseAuth
 
 final class HomeViewModel: ObservableObject {
     @Published var weeklyStats: WeeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
@@ -8,14 +9,40 @@ final class HomeViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var nickname: String = "러너"
 
+    private let cal = Calendar.current
+
     func loadHomeData() async {
-        await MainActor.run { isLoading = true }
-        // TODO: Firestore 연동으로 교체
-        try? await Task.sleep(nanoseconds: 500_000_000)
         await MainActor.run {
-            loadDummyData()
+            isLoading = true
+            nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
+        }
+
+        guard let uid = Auth.auth().currentUser?.uid else {
+            await MainActor.run { isLoading = false }
+            return
+        }
+
+        let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? []
+
+        await MainActor.run {
+            recentRuns = Array(records.prefix(3))
+            weeklyStats = calcWeeklyStats(from: records)
+            recentListenSessions = []
             isLoading = false
         }
+    }
+
+    private func calcWeeklyStats(from records: [RunRecord]) -> WeeklyStats {
+        let now = Date()
+        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)),
+              let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else {
+            return WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+        }
+        let weekly = records.filter { $0.startedAt >= weekStart && $0.startedAt < weekEnd }
+        let dist = weekly.reduce(0.0) { $0 + $1.distance }
+        let dur  = weekly.reduce(0)   { $0 + $1.duration }
+        let pace = weekly.isEmpty ? 0.0 : weekly.reduce(0.0) { $0 + $1.avgPace } / Double(weekly.count)
+        return WeeklyStats(totalDistance: dist, totalDuration: dur, avgPace: pace)
     }
 
     func formatPace(_ pace: Double) -> String {
@@ -41,20 +68,5 @@ final class HomeViewModel: ObservableObject {
         f.dateFormat = "M월 d일"
         f.locale = Locale(identifier: "ko_KR")
         return f.string(from: date)
-    }
-
-    private func loadDummyData() {
-        let now = Date()
-        recentRuns = [
-            RunRecord(id: "1", startedAt: now.addingTimeInterval(-86400),    duration: 2100, distance: 5.2,  avgPace: 6.7, routeCoordinates: []),
-            RunRecord(id: "2", startedAt: now.addingTimeInterval(-172800),   duration: 3600, distance: 8.1,  avgPace: 7.4, routeCoordinates: []),
-            RunRecord(id: "3", startedAt: now.addingTimeInterval(-345600),   duration: 1800, distance: 4.0,  avgPace: 7.5, routeCoordinates: []),
-        ]
-        weeklyStats = WeeklyStats(totalDistance: 17.3, totalDuration: 7500, avgPace: 7.2)
-        recentListenSessions = [
-            ListenSession(id: "1", partnerNickname: "달리기좋아", songTitle: "Blinding Lights", date: now.addingTimeInterval(-86400)),
-            ListenSession(id: "2", partnerNickname: "새벽러너",   songTitle: "As It Was",        date: now.addingTimeInterval(-172800)),
-        ]
-        nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
     }
 }
