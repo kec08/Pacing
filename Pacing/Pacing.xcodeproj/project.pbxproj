@@ -16,6 +16,7 @@
 		BC5793752FF2672C006C925A /* KakaoSDKCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793742FF2672C006C925A /* KakaoSDKCommon */; };
 		BC5793772FF2672C006C925A /* KakaoSDKUser in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793762FF2672C006C925A /* KakaoSDKUser */; };
 		BC5793792FF26808006C925A /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793782FF26808006C925A /* FirebaseFunctions */; };
+		BC57937C2FF2CC58006C925A /* NaverThirdPartyLogin in Frameworks */ = {isa = PBXBuildFile; productRef = BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -85,6 +86,7 @@
 				BC5793772FF2672C006C925A /* KakaoSDKUser in Frameworks */,
 				BC5791DF2FED131F006C925A /* FirebaseAuth in Frameworks */,
 				BC5791E32FED131F006C925A /* FirebaseFirestore in Frameworks */,
+				BC57937C2FF2CC58006C925A /* NaverThirdPartyLogin in Frameworks */,
 				BC5793732FF2672C006C925A /* KakaoSDKAuth in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -155,6 +157,7 @@
 				BC5793742FF2672C006C925A /* KakaoSDKCommon */,
 				BC5793762FF2672C006C925A /* KakaoSDKUser */,
 				BC5793782FF26808006C925A /* FirebaseFunctions */,
+				BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */,
 			);
 			productName = Pacing;
 			productReference = BC57901A2FEC4AEF006C925A /* Pacing.app */;
@@ -242,6 +245,7 @@
 				BC5791DD2FED131F006C925A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				BC57936A2FF2415D006C925A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				BC5793712FF2672C006C925A /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */,
+				BC57937A2FF2CC58006C925A /* XCRemoteSwiftPackageReference "naveridlogin-sdk-ios" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BC57901B2FEC4AEF006C925A /* Products */;
@@ -674,6 +678,14 @@
 				minimumVersion = 2.28.0;
 			};
 		};
+		BC57937A2FF2CC58006C925A /* XCRemoteSwiftPackageReference "naveridlogin-sdk-ios" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/naver/naveridlogin-sdk-ios";
+			requirement = {
+				branch = master;
+				kind = branch;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -720,6 +732,11 @@
 		BC5793782FF26808006C925A /* FirebaseFunctions */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = FirebaseFunctions;
+		};
+		BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BC57937A2FF2CC58006C925A /* XCRemoteSwiftPackageReference "naveridlogin-sdk-ios" */;
+			productName = NaverThirdPartyLogin;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

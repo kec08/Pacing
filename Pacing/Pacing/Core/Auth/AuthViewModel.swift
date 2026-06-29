@@ -5,6 +5,7 @@ import FirebaseCore
 import FirebaseFunctions
 import AuthenticationServices
 import CryptoKit
+import NaverThirdPartyLogin
 #if canImport(GoogleSignIn)
 import GoogleSignIn
 #endif
@@ -16,7 +17,7 @@ import KakaoSDKUser
 
 @MainActor
 final class AuthViewModel: ObservableObject {
-    @Published var isLoading = false
+    @Published var isLoading = false  // LoginView에서 scenePhase 감지로 리셋 가능
     @Published var errorMessage: String?
 
     private var currentNonce: String?
@@ -153,6 +154,74 @@ final class AuthViewModel: ObservableObject {
         ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
     }
 
+    // MARK: - 네이버 로그인 (ASWebAuthenticationSession + Firebase Hosting 리다이렉트)
+    nonisolated(unsafe) static var naverLoginCompletion: ((Result<String, Error>) -> Void)?
+    nonisolated(unsafe) private static var _naverSession: ASWebAuthenticationSession?
+    nonisolated(unsafe) private static var _naverContext: NaverPresentationContext?
+
+    func signInWithNaver(appState: AppState) async {
+        isLoading = true
+        defer { isLoading = false; appState.isAuthLoading = false }
+
+        let clientID = "hxrh7_6fG3iRc6tKxOuY"
+        let redirectURI = "https://pacing-a8639.web.app/naver-callback"
+        let state = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+
+        var comps = URLComponents(string: "https://nid.naver.com/oauth2.0/authorize")!
+        comps.queryItems = [
+            URLQueryItem(name: "response_type", value: "code"),
+            URLQueryItem(name: "client_id",     value: clientID),
+            URLQueryItem(name: "redirect_uri",  value: redirectURI),
+            URLQueryItem(name: "state",         value: state),
+        ]
+        guard let authURL = comps.url else { return }
+
+        do {
+            let callbackURL: URL = try await withCheckedThrowingContinuation { continuation in
+                guard let scene = UIApplication.shared.connectedScenes
+                    .first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene,
+                      let window = scene.windows.first(where: { $0.isKeyWindow })
+                else { continuation.resume(throwing: NSError(domain: "NaverLogin", code: -2)); return }
+
+                let ctx = NaverPresentationContext(window: window)
+                Self._naverContext = ctx
+
+                let session = ASWebAuthenticationSession(
+                    url: authURL, callbackURLScheme: "naverPacing"
+                ) { url, error in
+                    Self._naverSession = nil
+                    Self._naverContext = nil
+                    if let url        { continuation.resume(returning: url) }
+                    else if let error { continuation.resume(throwing: error) }
+                    else              { continuation.resume(throwing: NSError(domain: "NaverLogin", code: -1)) }
+                }
+                session.prefersEphemeralWebBrowserSession = false
+                session.presentationContextProvider = ctx
+                Self._naverSession = session
+                session.start()
+            }
+
+            guard let parts = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false),
+                  let code  = parts.queryItems?.first(where: { $0.name == "code" })?.value
+            else { errorMessage = "네이버 로그인에 실패했어요."; return }
+
+            let functions = Functions.functions(region: "asia-northeast3")
+            let result = try await functions.httpsCallable("naverLogin").call(["code": code, "state": state])
+            guard let data        = result.data as? [String: Any],
+                  let customToken = data["customToken"] as? String
+            else { errorMessage = "네이버 로그인 응답이 올바르지 않아요."; return }
+
+            try await Auth.auth().signIn(withCustomToken: customToken)
+            appState.isLoggedIn = true
+            appState.isAuthLoading = true
+            await restoreProfile(appState: appState)
+        } catch {
+            let nsErr = error as NSError
+            if nsErr.domain == ASWebAuthenticationSessionErrorDomain && nsErr.code == 1 { return }
+            if let msg = Self.koreanAuthError(error) { errorMessage = msg }
+        }
+    }
+
     // MARK: - 카카오 로그인
     func signInWithKakao(appState: AppState) async {
         #if canImport(KakaoSDKUser)
@@ -261,3 +330,31 @@ final class AuthViewModel: ObservableObject {
         return hash.compactMap { String(format: "%02x", $0) }.joined()
     }
 }
+
+// MARK: - ASWebAuthenticationSession context
+final class NaverPresentationContext: NSObject, ASWebAuthenticationPresentationContextProviding {
+    private let window: UIWindow
+    init(window: UIWindow) { self.window = window }
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor { window }
+}
+
+// MARK: - 네이버 SDK Delegate (requestThirdPartyLogin 미사용 시에도 SDK 초기화 필요)
+final class NaverLoginDelegate: NSObject, NaverThirdPartyLoginConnectionDelegate {
+    func oauth20ConnectionDidFinishRequestACTokenWithAuthCode() {
+        guard let token = NaverThirdPartyLoginConnection.getSharedInstance()?.accessToken else {
+            AuthViewModel.naverLoginCompletion?(.failure(NSError(domain: "NaverLogin", code: -1)))
+            return
+        }
+        AuthViewModel.naverLoginCompletion?(.success(token))
+    }
+
+    func oauth20ConnectionDidFinishRequestACTokenWithRefreshToken() {}
+
+    func oauth20ConnectionDidFinishDeleteToken() {}
+
+    func oauth20Connection(_ oauthConnection: NaverThirdPartyLoginConnection!, didFailWithError error: Error!) {
+        AuthViewModel.naverLoginCompletion?(.failure(error ?? NSError(domain: "NaverLogin", code: -2)))
+    }
+}
+
+
