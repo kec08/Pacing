@@ -2,6 +2,7 @@ import SwiftUI
 import MapKit
 import Combine
 import MusicKit
+import MediaPlayer
 import FirebaseAuth
 
 struct RunningView: View {
@@ -22,6 +23,9 @@ struct RunningView: View {
     @State private var isFollowingUser: Bool = true      // 내 위치 자동 추적
     @State private var isProgrammaticMove: Bool = false  // 코드 카메라 이동 플래그
     @State private var showListenSheet = false
+    @State private var showPlaylistInSheet = false   // 음악 시트 내 플레이리스트 토글
+    @State private var isSeeking = false             // 스크러버 드래그 중
+    @State private var seekValue: Double = 0         // 드래그 중 임시 시간값
 
     var body: some View {
         ZStack {
@@ -671,173 +675,300 @@ struct RunningView: View {
 
     private var musicSheet: some View {
         NavigationStack {
-            ZStack {
-                Color.clear
-
-                VStack(spacing: 0) {
-                    // 앨범 커버
-                    if musicVM.queueSongs.isEmpty {
-                        artworkPlaceholder
-                            .frame(width: 220, height: 220)
-                            .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
-                            .padding(.top, 36)
-                            .padding(.bottom, 28)
-                    } else {
-                        TabView(selection: Binding(
-                            get: { musicVM.currentSongIndex },
-                            set: { newIndex in
-                                musicVM.isGoingForward = newIndex > musicVM.currentSongIndex
-                                musicVM.currentSongIndex = newIndex
-                                Task { await musicVM.play(at: newIndex) }
-                            }
-                        )) {
-                            ForEach(musicVM.queueSongs.indices, id: \.self) { idx in
-                                let song = musicVM.queueSongs[idx]
-                                Group {
-                                    if let artwork = song.artwork {
-                                        ArtworkImage(artwork, width: 220, height: 220)
-                                            .clipShape(RoundedRectangle(cornerRadius: 20))
-                                    } else {
-                                        artworkPlaceholder
+            ZStack(alignment: .bottom) {
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // MARK: 앨범 커버
+                        let artSize: CGFloat = 260
+                        Group {
+                            if musicVM.queueSongs.isEmpty {
+                                artworkPlaceholder
+                                    .frame(width: artSize, height: artSize)
+                            } else {
+                                TabView(selection: Binding(
+                                    get: { musicVM.currentSongIndex },
+                                    set: { newIndex in
+                                        musicVM.isGoingForward = newIndex > musicVM.currentSongIndex
+                                        musicVM.currentSongIndex = newIndex
+                                        Task { await musicVM.play(at: newIndex) }
+                                    }
+                                )) {
+                                    ForEach(musicVM.queueSongs.indices, id: \.self) { idx in
+                                        let song = musicVM.queueSongs[idx]
+                                        Group {
+                                            if let artwork = song.artwork {
+                                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                            } else {
+                                                artworkPlaceholder
+                                            }
+                                        }
+                                        .frame(width: artSize, height: artSize)
+                                        .tag(idx)
                                     }
                                 }
-                                .frame(width: 220, height: 220)
-                                .shadow(color: .black.opacity(0.25), radius: 16, y: 8)
-                                .padding(.top, 12)
-                                .padding(.bottom, 28)
-                                .tag(idx)
+                                .tabViewStyle(.page(indexDisplayMode: .never))
+                                .frame(width: artSize, height: artSize)
                             }
                         }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
-                        .frame(height: 276)
-                        .padding(.top, 24)
-                    }
+                        .scaleEffect(musicVM.isPlaying ? 1.0 : 0.88)
+                        .shadow(color: .black.opacity(musicVM.isPlaying ? 0.3 : 0.15), radius: musicVM.isPlaying ? 20 : 10, y: 8)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.7), value: musicVM.isPlaying)
+                        .padding(.top, 28)
+                        .padding(.bottom, 28)
 
-                    // 곡 정보
-                    let insertEdge: Edge = musicVM.isGoingForward ? .trailing : .leading
-                    let removeEdge: Edge = musicVM.isGoingForward ? .leading : .trailing
-                    VStack(spacing: 6) {
-                        Text(musicVM.currentSong?.title ?? "플레이리스트를 선택하세요")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .id(musicVM.currentSong?.id)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: insertEdge).combined(with: .opacity),
-                                removal: .move(edge: removeEdge).combined(with: .opacity)
-                            ))
-                        Text(musicVM.currentSong?.artistName ?? "Apple Music")
-                            .font(.system(size: 15))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .id(musicVM.currentSong?.artistName)
-                            .transition(.asymmetric(
-                                insertion: .move(edge: insertEdge).combined(with: .opacity),
-                                removal: .move(edge: removeEdge).combined(with: .opacity)
-                            ))
-                    }
-                    .animation(.easeInOut(duration: 0.25), value: musicVM.currentSong?.id)
-                    .padding(.horizontal, 32)
-
-                    // 재생 컨트롤
-                    HStack(spacing: 48) {
-                        Button {
-                            Task { await musicVM.skipToPrevious() }
-                        } label: {
-                            Image(systemName: "backward.fill")
-                                .font(.system(size: 28))
+                        // MARK: 곡 정보
+                        let insertEdge: Edge = musicVM.isGoingForward ? .trailing : .leading
+                        let removeEdge: Edge = musicVM.isGoingForward ? .leading : .trailing
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(musicVM.currentSong?.title ?? "플레이리스트를 선택하세요")
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.primary)
-                        }
-
-                        Button {
-                            Task { await musicVM.togglePlayPause() }
-                        } label: {
-                            Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
-                                .font(.system(size: 64))
-                                .foregroundStyle(Color.main500)
-                        }
-
-                        Button {
-                            Task { await musicVM.skipToNext() }
-                        } label: {
-                            Image(systemName: "forward.fill")
-                                .font(.system(size: 28))
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                    .padding(.top, 28)
-
-                    // 플레이리스트 섹션
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("내 플레이리스트")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 24)
-
-                        if musicVM.isLoading {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 20)
-                        } else if musicVM.playlists.isEmpty {
-                            Text("플레이리스트가 없어요")
-                                .font(.system(size: 14))
+                                .lineLimit(1)
+                                .id(musicVM.currentSong?.id)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertEdge).combined(with: .opacity),
+                                    removal: .move(edge: removeEdge).combined(with: .opacity)
+                                ))
+                            Text(musicVM.currentSong?.artistName ?? "Apple Music")
+                                .font(.system(size: 16))
                                 .foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 20)
-                        } else {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HStack(spacing: 16) {
-                                    ForEach(musicVM.playlists, id: \.id) { playlist in
-                                        Button {
-                                            Task { await musicVM.play(playlist: playlist) }
-                                        } label: {
-                                            VStack(spacing: 8) {
-                                                Group {
-                                                    if let artwork = playlist.artwork {
-                                                        ArtworkImage(artwork, width: 100, height: 100)
-                                                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                                                    } else {
-                                                        ZStack {
-                                                            RoundedRectangle(cornerRadius: 12)
-                                                                .fill(.ultraThinMaterial)
-                                                                .frame(width: 100, height: 100)
-                                                            Image(systemName: "music.note.list")
-                                                                .font(.system(size: 28))
-                                                                .foregroundStyle(Color.main500)
+                                .lineLimit(1)
+                                .id(musicVM.currentSong?.artistName)
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: insertEdge).combined(with: .opacity),
+                                    removal: .move(edge: removeEdge).combined(with: .opacity)
+                                ))
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .animation(.easeInOut(duration: 0.25), value: musicVM.currentSong?.id)
+                        .padding(.horizontal, 28)
+
+                        // MARK: 스크러버
+                        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                            let duration = musicVM.playbackDuration
+                            let current: Double = isSeeking
+                                ? seekValue
+                                : (duration > 0 ? min(musicVM.currentPlaybackTime, duration) : 0)
+                            let progress: Double = duration > 0 ? current / duration : 0
+
+                            VStack(spacing: 4) {
+                                Slider(
+                                    value: Binding(
+                                        get: { progress },
+                                        set: { val in
+                                            isSeeking = true
+                                            seekValue = val * duration
+                                        }
+                                    ),
+                                    in: 0...1,
+                                    onEditingChanged: { editing in
+                                        if !editing {
+                                            musicVM.seek(to: seekValue)
+                                            isSeeking = false
+                                        }
+                                    }
+                                )
+                                .tint(Color.main500)
+
+                                HStack {
+                                    Text(formatPlaybackTime(current))
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Text(duration > 0 ? "-\(formatPlaybackTime(max(0, duration - current)))" : "-0:00")
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.top, 16)
+                        }
+
+                        // MARK: 재생 컨트롤
+                        HStack(spacing: 52) {
+                            Button {
+                                Task { await musicVM.skipToPrevious() }
+                            } label: {
+                                Image(systemName: "backward.fill")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.primary)
+                            }
+
+                            Button {
+                                Task { await musicVM.togglePlayPause() }
+                            } label: {
+                                Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
+                                    .font(.system(size: 68))
+                                    .foregroundStyle(Color.main500)
+                            }
+
+                            Button {
+                                Task { await musicVM.skipToNext() }
+                            } label: {
+                                Image(systemName: "forward.fill")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        .padding(.top, 20)
+
+                        // MARK: 음량 슬라이더
+                        HStack(alignment: .center, spacing: 10) {
+                            Image(systemName: "speaker.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 16)
+                            VolumeSliderView()
+                                .frame(height: 28)
+                                .offset(y: 5)
+                            Image(systemName: "speaker.wave.3.fill")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 18)
+                        }
+                        .padding(.horizontal, 28)
+                        .padding(.top, 48)
+
+                        // 하단 플레이리스트 버튼 공간 확보
+                        Color.clear.frame(height: 80)
+                    }
+                }
+                .scrollIndicators(.hidden)
+
+                // MARK: 플레이리스트 토글 버튼 (하단 고정)
+                VStack(spacing: 0) {
+                    // 플레이리스트 섹션 (토글 시 슬라이드업)
+                    if showPlaylistInSheet {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                Text("내 플레이리스트")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Button {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        showPlaylistInSheet = false
+                                    }
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(Color(.systemGray3))
+                                }
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.top, 16)
+
+                            if musicVM.isLoading {
+                                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 16)
+                            } else if musicVM.playlists.isEmpty {
+                                Text("플레이리스트가 없어요")
+                                    .font(.system(size: 14))
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 16)
+                            } else {
+                                ScrollView(.horizontal, showsIndicators: false) {
+                                    HStack(spacing: 14) {
+                                        ForEach(musicVM.playlists, id: \.id) { playlist in
+                                            Button {
+                                                Task { await musicVM.play(playlist: playlist) }
+                                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                    showPlaylistInSheet = false
+                                                }
+                                            } label: {
+                                                VStack(spacing: 8) {
+                                                    Group {
+                                                        if let artwork = playlist.artwork {
+                                                            ArtworkImage(artwork, width: 88, height: 88)
+                                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                                        } else {
+                                                            ZStack {
+                                                                RoundedRectangle(cornerRadius: 12)
+                                                                    .fill(Color(.systemGray5))
+                                                                    .frame(width: 88, height: 88)
+                                                                Image(systemName: "music.note.list")
+                                                                    .font(.system(size: 24))
+                                                                    .foregroundStyle(Color.main500)
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                .frame(width: 100, height: 100)
-                                                .shadow(color: .black.opacity(0.15), radius: 6, y: 3)
+                                                    .frame(width: 88, height: 88)
+                                                    .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
 
-                                                Text(playlist.name)
-                                                    .font(.system(size: 12, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                    .lineLimit(1)
-                                                    .frame(width: 100)
+                                                    Text(playlist.name)
+                                                        .font(.system(size: 11, weight: .medium))
+                                                        .foregroundStyle(.primary)
+                                                        .lineLimit(1)
+                                                        .frame(width: 88)
+                                                }
                                             }
                                         }
                                     }
+                                    .padding(.horizontal, 20)
                                 }
-                                .padding(.horizontal, 24)
                             }
+                            Spacer().frame(height: 8)
                         }
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                        .shadow(color: .black.opacity(0.1), radius: 10, y: -4)
+                        .padding(.horizontal, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
-                    .padding(.top, 32)
 
-                    Spacer()
+                    // 글래스 버튼
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showPlaylistInSheet.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "music.note.list")
+                                .font(.system(size: 15, weight: .semibold))
+                            Text("플레이리스트")
+                                .font(.system(size: 15, weight: .semibold))
+                        }
+                        .foregroundStyle(showPlaylistInSheet ? Color.main500 : .primary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(.ultraThinMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 16))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 16)
+                                .stroke(showPlaylistInSheet ? Color.main500.opacity(0.4) : Color.clear, lineWidth: 1.5)
+                        )
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 12)
+                    .shadow(color: .black.opacity(0.08), radius: 8, y: -2)
                 }
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showPlaylistInSheet)
             }
             .navigationTitle("음악")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("완료") { showMusicSheet = false }
-                        .foregroundStyle(Color.main500)
+                    Button("완료") {
+                        showMusicSheet = false
+                        showPlaylistInSheet = false
+                    }
+                    .foregroundStyle(Color.main500)
                 }
+            }
+            // 곡이 바뀌면 스크러버 초기화 (드래그 잔상 방지)
+            .onChange(of: musicVM.currentSong?.id) { _, _ in
+                isSeeking = false
+                seekValue = 0
             }
         }
         .presentationBackground(.ultraThinMaterial)
+    }
+
+    private func formatPlaybackTime(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds >= 0 else { return "0:00" }
+        let s = Int(seconds)
+        return "\(s / 60):\(String(format: "%02d", s % 60))"
     }
 
     private var artworkPlaceholder: some View {
@@ -1328,6 +1459,31 @@ struct RunningView: View {
             }
         }
     }
+}
+
+// MARK: - MPVolumeView 래퍼
+private struct VolumeSliderView: UIViewRepresentable {
+    func makeUIView(context: Context) -> MPVolumeView {
+        let v = MPVolumeView(frame: .zero)
+        v.showsRouteButton = false
+        v.showsVolumeSlider = true
+        v.setVolumeThumbImage(UIImage(), for: .normal) // 기본 thumb 제거 후 재설정
+        // 트랙 컬러
+        v.tintColor = UIColor(Color.main500)
+        // 커스텀 thumb (작은 흰 원, 그림자)
+        let size = CGSize(width: 16, height: 16)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let thumb = renderer.image { ctx in
+            let rect = CGRect(origin: .zero, size: size).insetBy(dx: 1, dy: 1)
+            ctx.cgContext.setShadow(offset: CGSize(width: 0, height: 1), blur: 2, color: UIColor.black.withAlphaComponent(0.25).cgColor)
+            UIColor.white.setFill()
+            ctx.cgContext.fillEllipse(in: rect)
+        }
+        v.setVolumeThumbImage(thumb, for: .normal)
+        v.setVolumeThumbImage(thumb, for: .highlighted)
+        return v
+    }
+    func updateUIView(_ uiView: MPVolumeView, context: Context) {}
 }
 
 private struct Triangle: Shape {

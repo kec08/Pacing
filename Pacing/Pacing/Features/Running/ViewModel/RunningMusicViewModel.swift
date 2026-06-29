@@ -92,6 +92,14 @@ final class RunningMusicViewModel: ObservableObject {
         isManualSeeking = false
     }
 
+    // MARK: - 재생 시간
+    var currentPlaybackTime: TimeInterval { player.currentPlaybackTime }
+    var playbackDuration: TimeInterval { player.nowPlayingItem?.playbackDuration ?? 0 }
+
+    func seek(to time: TimeInterval) {
+        player.currentPlaybackTime = max(0, min(time, playbackDuration))
+    }
+
     // MARK: - 재생/일시정지
     func togglePlayPause() async {
         if isPlaying {
