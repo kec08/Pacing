@@ -9,14 +9,17 @@ final class FirestoreService {
     private init() {}
 
     // MARK: - 프로필 저장
-    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, age: Int) async throws {
-        let data: [String: Any] = [
+    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, age: Int, profileImageBase64: String? = nil) async throws {
+        var data: [String: Any] = [
             "nickname": nickname,
             "height": height,
             "weight": weight,
             "age": age,
             "createdAt": FieldValue.serverTimestamp()
         ]
+        if let img = profileImageBase64 {
+            data["profileImageBase64"] = img
+        }
         try await db.collection("users").document(uid).setData(data, merge: true)
     }
 
@@ -24,6 +27,16 @@ final class FirestoreService {
     func fetchUserProfile(uid: String) async throws -> [String: Any] {
         let doc = try await db.collection("users").document(uid).getDocument()
         return doc.data() ?? [:]
+    }
+
+    // MARK: - 프로필 존재 여부 (로그인 후 재입력 방지)
+    func hasUserProfile(uid: String) async -> Bool {
+        guard let doc = try? await db.collection("users").document(uid).getDocument(),
+              doc.exists,
+              let nickname = doc.data()?["nickname"] as? String,
+              !nickname.trimmingCharacters(in: .whitespaces).isEmpty
+        else { return false }
+        return true
     }
 
     // MARK: - 러닝기록 저장

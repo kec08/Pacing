@@ -29,6 +29,7 @@ final class MyViewModel: ObservableObject {
     @Published var height: Int = 0
     @Published var weight: Int = 0
     @Published var age: Int = 0
+    @Published var profileImage: UIImage? = nil
     @Published var selectedPeriod: StatsPeriod = .week
 
     // 주: 0=이번주, -1=저번주, ...
@@ -55,6 +56,7 @@ final class MyViewModel: ObservableObject {
         height   = UserDefaults.standard.integer(forKey: "height")
         weight   = UserDefaults.standard.integer(forKey: "weight")
         age      = UserDefaults.standard.integer(forKey: "age")
+        profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
         guard let uid = Auth.auth().currentUser?.uid else { return }
         Task { @MainActor in
@@ -63,8 +65,17 @@ final class MyViewModel: ObservableObject {
                 height   = data["height"]   as? Int    ?? height
                 weight   = data["weight"]   as? Int    ?? weight
                 age      = data["age"]      as? Int    ?? age
+                if let img = data["profileImageBase64"] as? String {
+                    UserDefaults.standard.set(img, forKey: "profileImageBase64")
+                    profileImage = Self.decodeImage(img)
+                }
             }
         }
+    }
+
+    private static func decodeImage(_ base64: String?) -> UIImage? {
+        guard let base64, let data = Data(base64Encoded: base64) else { return nil }
+        return UIImage(data: data)
     }
 
     func changePeriod(_ period: StatsPeriod) {
@@ -231,6 +242,9 @@ final class MyViewModel: ObservableObject {
         try? Auth.auth().signOut()
         appState.isLoggedIn = false
         appState.isProfileComplete = false
+        // 계정 전환 시 이전 프로필 잔상 방지
+        let d = UserDefaults.standard
+        ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
     }
 
     func formattedPace(_ pace: Double) -> String {
