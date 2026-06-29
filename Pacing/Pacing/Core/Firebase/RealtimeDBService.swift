@@ -26,6 +26,7 @@ final class RealtimeDBService {
         locationProvider: @escaping () -> CLLocationCoordinate2D?,
         songProvider: @escaping () -> (title: String, artist: String)
     ) {
+        guard !uid.isEmpty else { return }
         stopBroadcast(uid: uid)
         db.child("activeRunners").child(uid).onDisconnectRemoveValue()
 
@@ -38,6 +39,7 @@ final class RealtimeDBService {
     }
 
     private func upload(uid: String, nickname: String, coord: CLLocationCoordinate2D?, song: (title: String, artist: String)) {
+        guard !uid.isEmpty else { return }
         var data: [String: Any] = [
             "nickname": nickname,
             "currentSongTitle": song.title,
@@ -55,6 +57,7 @@ final class RealtimeDBService {
     func stopBroadcast(uid: String) {
         broadcastTimer?.invalidate()
         broadcastTimer = nil
+        guard !uid.isEmpty else { return }
         db.child("activeRunners").child(uid).removeValue()
     }
 
@@ -101,6 +104,7 @@ final class RealtimeDBService {
         songStoreID: String, songTitle: String, artistName: String,
         position: Double
     ) -> String {
+        guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
         let sessionRef = db.child("listenSessions").childByAutoId()
         let sessionID = sessionRef.key ?? UUID().uuidString
         let data: [String: Any] = [
@@ -124,12 +128,14 @@ final class RealtimeDBService {
 
     // MARK: - 세션 수락 (게스트)
     func acceptSession(sessionID: String, guestUID: String) {
+        guard !sessionID.isEmpty, !guestUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "active"])
         db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
     }
 
     // MARK: - 세션 거절 (게스트)
     func rejectSession(sessionID: String, guestUID: String) {
+        guard !sessionID.isEmpty, !guestUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "rejected"])
         db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
     }
@@ -140,6 +146,7 @@ final class RealtimeDBService {
         songStoreID: String, songTitle: String, artistName: String,
         position: Double, isPlaying: Bool
     ) {
+        guard !sessionID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues([
             "songStoreID": songStoreID,
             "songTitle": songTitle,
@@ -154,6 +161,7 @@ final class RealtimeDBService {
     private var sessionHandle: DatabaseHandle?
 
     func observeSession(sessionID: String, onChange: @escaping (ListenSession) -> Void) {
+        guard !sessionID.isEmpty else { return }
         sessionHandle = db.child("listenSessions").child(sessionID).observe(.value) { snapshot in
             guard let d = snapshot.value as? [String: Any] else { return }
             let session = ListenSession(
@@ -185,6 +193,7 @@ final class RealtimeDBService {
     private var incomingHandle: DatabaseHandle?
 
     func observeIncomingRequests(uid: String, onChange: @escaping (ListenSession?) -> Void) {
+        guard !uid.isEmpty else { return }
         incomingHandle = db.child("incomingRequests").child(uid).observe(.value) { snapshot in
             guard snapshot.childrenCount > 0 else { onChange(nil); return }
             // 가장 최신 요청 하나만 처리
@@ -212,7 +221,7 @@ final class RealtimeDBService {
     }
 
     func stopObservingIncomingRequests(uid: String) {
-        if let handle = incomingHandle {
+        if let handle = incomingHandle, !uid.isEmpty {
             db.child("incomingRequests").child(uid).removeObserver(withHandle: handle)
             incomingHandle = nil
         }
@@ -220,6 +229,7 @@ final class RealtimeDBService {
 
     // MARK: - 세션 종료
     func endSession(sessionID: String) {
+        guard !sessionID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "ended"])
     }
 }

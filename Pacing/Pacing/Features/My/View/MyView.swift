@@ -6,6 +6,7 @@ struct MyView: View {
     @StateObject private var vm = MyViewModel()
     @State private var showPicker = false
     @State private var showAllHistory = false
+    @State private var showLogoutAlert = false
 
     var body: some View {
         ScrollView {
@@ -119,12 +120,20 @@ struct MyView: View {
     private var profileHeader: some View {
         HStack(spacing: 14) {
             ZStack {
-                Circle()
-                    .fill(Color.main500)
-                    .frame(width: 44, height: 44)
-                Text(String(vm.nickname.prefix(1)))
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
+                if let img = vm.profileImage {
+                    Image(uiImage: img)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 44, height: 44)
+                        .clipShape(Circle())
+                } else {
+                    Circle()
+                        .fill(Color.main500)
+                        .frame(width: 44, height: 44)
+                    Text(String(vm.nickname.prefix(1)))
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                }
             }
             VStack(alignment: .leading, spacing: 3) {
                 Text(vm.nickname)
@@ -399,7 +408,15 @@ struct MyView: View {
             settingsRow(icon: "person.fill", label: "프로필 수정") {}
             Divider().padding(.leading, 54)
             settingsRow(icon: "rectangle.portrait.and.arrow.right", label: "로그아웃", tint: .accent500) {
-                vm.logout(appState: appState)
+                showLogoutAlert = true
+            }
+            .alert("로그아웃", isPresented: $showLogoutAlert) {
+                Button("취소", role: .cancel) {}
+                Button("로그아웃", role: .destructive) {
+                    vm.logout(appState: appState)
+                }
+            } message: {
+                Text("로그아웃 하시겠습니까?")
             }
         }
         .background(Color.backgroundPrimary)
