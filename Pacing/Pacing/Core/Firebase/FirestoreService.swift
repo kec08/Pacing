@@ -54,12 +54,12 @@ final class FirestoreService {
 
         return snapshot.documents.compactMap { doc -> RunRecord? in
             let d = doc.data()
-            guard
-                let ts = d["startedAt"] as? Timestamp,
-                let duration = d["duration"] as? Int,
-                let distance = d["distance"] as? Double,
-                let avgPace = d["avgPace"] as? Double
-            else { return nil }
+            guard let ts = d["startedAt"] as? Timestamp else { return nil }
+
+            // Firestore는 정수값을 Int64로 저장하므로 NSNumber로 통일해서 읽기
+            let duration = (d["duration"] as? NSNumber)?.intValue ?? 0
+            let distance = (d["distance"] as? NSNumber)?.doubleValue ?? 0
+            let avgPace  = (d["avgPace"]  as? NSNumber)?.doubleValue ?? 0
 
             let geoPoints = (d["routeCoordinates"] as? [GeoPoint]) ?? []
             let coords = geoPoints.map {
