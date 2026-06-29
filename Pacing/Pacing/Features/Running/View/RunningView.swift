@@ -17,14 +17,24 @@ struct RunningView: View {
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
     @State private var collapsedPinIDs: Set<String> = []
+    @State private var mapZoomDistance: Double = 400
+    @State private var isFollowingUser: Bool = true      // 내 위치 자동 추적
+    @State private var isProgrammaticMove: Bool = false  // 코드 카메라 이동 플래그
 
     var body: some View {
         ZStack {
-            // 풀스크린 지도 (줌/스크롤 비활성)
-            Map(position: $cameraPosition, interactionModes: []) {
+            // 풀스크린 지도
+            Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
                 if viewModel.locationManager.routeCoordinates.count >= 2 {
                     MapPolyline(coordinates: viewModel.locationManager.routeCoordinates)
-                        .stroke(Color.main500, lineWidth: 4)
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.main500, Color(red: 0.18, green: 0.46, blue: 1.0)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            lineWidth: 5
+                        )
                 }
                 if let loc = viewModel.locationManager.currentLocation {
                     Annotation("", coordinate: loc.coordinate) {
@@ -47,6 +57,62 @@ struct RunningView: View {
             }
             .mapStyle(.standard)
             .ignoresSafeArea()
+
+            // 맵 버튼 오버레이
+            VStack {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 6) {
+                        if viewModel.state == .idle {
+                            // idle: 줌 +/-
+                            Button {
+                                let newDist = max(100, mapZoomDistance / 1.5)
+                                mapZoomDistance = newDist
+                                recenterCamera(distance: newDist)
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            Button {
+                                let newDist = min(3000, mapZoomDistance * 1.5)
+                                mapZoomDistance = newDist
+                                recenterCamera(distance: newDist)
+                            } label: {
+                                Image(systemName: "minus")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                        } else if !isFollowingUser {
+                            // 러닝 중 & pan한 경우: 내 위치로 버튼만
+                            Button {
+                                isFollowingUser = true
+                                recenterCamera(distance: mapZoomDistance)
+                            } label: {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color.main500)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .transition(.scale.combined(with: .opacity))
+                        }
+                    }
+                    .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                    .padding(.trailing, 16)
+                    .padding(.top, 220)
+                    .animation(.spring(duration: 0.3), value: viewModel.state)
+                    .animation(.spring(duration: 0.3), value: isFollowingUser)
+                }
+                Spacer()
+            }
 
             VStack(spacing: 0) {
                 // 뮤직 카드: idle 상태에서만 표시
@@ -80,13 +146,30 @@ struct RunningView: View {
             }
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
-            if viewModel.state == .running {
-                withAnimation(.linear(duration: 2)) {
-                    cameraPosition = .camera(MapCamera(
-                        centerCoordinate: loc.coordinate,
-                        distance: 500
-                    ))
-                }
+            if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+                recenterCamera(distance: mapZoomDistance)
+            }
+        }
+        .onMapCameraChange(frequency: .continuous) { context in
+            let dist = context.camera.distance
+            if dist > 3000 {
+                // 줌 아웃 한계 초과 시에만 개입
+                mapZoomDistance = 3000
+                cameraPosition = .camera(MapCamera(
+                    centerCoordinate: context.camera.centerCoordinate,
+                    distance: 3000
+                ))
+            } else if dist < 100 {
+                // 줌 인 한계 초과 시에만 개입
+                mapZoomDistance = 100
+                cameraPosition = .camera(MapCamera(
+                    centerCoordinate: context.camera.centerCoordinate,
+                    distance: 100
+                ))
+            } else if !isProgrammaticMove {
+                // 정상 범위: 상태만 업데이트, cameraPosition 건드리지 않음
+                mapZoomDistance = dist
+                isFollowingUser = false
             }
         }
         .task { await musicVM.requestAuthorization() }
@@ -934,6 +1017,20 @@ struct RunningView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    // MARK: - 카메라
+
+    private func recenterCamera(distance: Double) {
+        guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
+        isProgrammaticMove = true
+        withAnimation(.interpolatingSpring(stiffness: 40, damping: 12)) {
+            cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: distance))
+        }
+        // 애니메이션 완료 후 플래그 해제 (0.6초면 충분)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            isProgrammaticMove = false
+        }
     }
 
     // MARK: - 카운트다운
