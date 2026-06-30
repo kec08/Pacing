@@ -163,7 +163,12 @@ struct FriendsView: View {
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.friends) { friend in
-                        FriendUserRow(user: friend)
+                        NavigationLink {
+                            FriendProfileView(friend: friend)
+                        } label: {
+                            FriendUserRow(user: friend)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }

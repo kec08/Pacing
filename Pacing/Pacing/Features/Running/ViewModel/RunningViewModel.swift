@@ -155,5 +155,14 @@ final class RunningViewModel: ObservableObject {
             routeCoordinates: locationManager.routeCoordinates
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
+
+        if let song = await musicViewModel?.currentSongSnapshot() {
+            try? await FirestoreService.shared.saveRecentSong(
+                uid: uid,
+                title: song.title,
+                artistName: song.artistName,
+                songStoreID: song.songStoreID
+            )
+        }
     }
 }

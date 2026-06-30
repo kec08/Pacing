@@ -96,6 +96,15 @@ final class RunningMusicViewModel: ObservableObject {
     var currentPlaybackTime: TimeInterval { player.currentPlaybackTime }
     var playbackDuration: TimeInterval { player.nowPlayingItem?.playbackDuration ?? 0 }
 
+    func currentSongSnapshot() -> (title: String, artistName: String, songStoreID: String)? {
+        guard let currentSong else { return nil }
+        return (
+            title: currentSong.title,
+            artistName: currentSong.artistName,
+            songStoreID: "\(currentSong.id)"
+        )
+    }
+
     func seek(to time: TimeInterval) {
         player.currentPlaybackTime = max(0, min(time, playbackDuration))
     }

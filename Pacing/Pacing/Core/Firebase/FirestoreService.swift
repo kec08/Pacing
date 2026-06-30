@@ -90,6 +90,66 @@ final class FirestoreService {
         }
     }
 
+    // MARK: - 친구 프로필 통계 조회
+    func fetchFriendProfileStats(uid: String) async throws -> FriendProfileStats {
+        let records = try await fetchRunHistory(uid: uid, limit: 100)
+        guard !records.isEmpty else { return .empty }
+
+        let totalDistance = records.reduce(0) { $0 + $1.distance }
+        let totalDuration = records.reduce(0) { $0 + $1.duration }
+        let averagePace = totalDistance > 0
+            ? Double(totalDuration) / 60.0 / totalDistance
+            : 0
+
+        return FriendProfileStats(
+            averagePace: averagePace,
+            totalDuration: totalDuration,
+            totalDistance: totalDistance
+        )
+    }
+
+    // MARK: - 최근 들은 노래 저장
+    func saveRecentSong(uid: String, title: String, artistName: String, songStoreID: String?) async throws {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uid.isEmpty, !trimmedTitle.isEmpty else { return }
+
+        let documentID = songStoreID?.isEmpty == false ? songStoreID! : UUID().uuidString
+        let data: [String: Any] = [
+            "title": trimmedTitle,
+            "artistName": artistName,
+            "songStoreID": songStoreID ?? "",
+            "playedAt": FieldValue.serverTimestamp()
+        ]
+
+        try await db.collection("users").document(uid)
+            .collection("recentSongs").document(documentID)
+            .setData(data, merge: true)
+    }
+
+    // MARK: - 최근 들은 노래 조회
+    func fetchRecentSongs(uid: String, limit: Int = 10) async throws -> [FriendRecentSong] {
+        let snapshot = try await db.collection("users").document(uid)
+            .collection("recentSongs")
+            .order(by: "playedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { doc in
+            let data = doc.data()
+            guard let title = data["title"] as? String,
+                  !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+
+            return FriendRecentSong(
+                id: doc.documentID,
+                title: title,
+                artistName: data["artistName"] as? String ?? "",
+                playedAt: (data["playedAt"] as? Timestamp)?.dateValue(),
+                songStoreID: data["songStoreID"] as? String
+            )
+        }
+    }
+
     // MARK: - 친구 목록 조회
     func fetchFriends(uid: String) async throws -> [FriendUser] {
         let snapshot = try await db.collection("users").document(uid)
@@ -107,6 +167,11 @@ final class FirestoreService {
                 source: .friend
             )
         }
+    }
+
+    // MARK: - 친구 프로필 조회
+    func fetchFriendUserProfile(uid: String, source: FriendRecommendationSource = .friend) async throws -> FriendUser {
+        try await fetchFriendUser(uid: uid, source: source)
     }
 
     // MARK: - 받은 친구 요청 조회
