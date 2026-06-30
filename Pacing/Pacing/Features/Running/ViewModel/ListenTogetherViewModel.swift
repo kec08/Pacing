@@ -33,25 +33,23 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - 같이 듣기 요청 보내기 (호스트)
     func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) {
         let player = MPMusicPlayerController.systemMusicPlayer
-        let songStoreID = player.nowPlayingItem?.playbackStoreID ?? ""
-        let songTitle = musicVM.currentSong?.title ?? ""
-        let artistName = musicVM.currentSong?.artistName ?? ""
+        let song = currentSongSnapshot(from: musicVM, player: player)
         let position = player.currentPlaybackTime
 
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
             guestUID: runner.id, guestNickname: runner.nickname,
-            songStoreID: songStoreID, songTitle: songTitle, artistName: artistName,
+            songStoreID: song.storeID, songTitle: song.title, artistName: song.artist,
             position: position
         )
 
         activeSession = ListenSession(
             id: sessionID, hostUID: myUID, hostNickname: myNickname,
             guestUID: runner.id, guestNickname: runner.nickname,
-            songStoreID: songStoreID, songTitle: songTitle, artistName: artistName,
+            songStoreID: song.storeID, songTitle: song.title, artistName: song.artist,
             playbackPosition: position,
             serverTimestamp: Date().timeIntervalSince1970,
-            status: "pending", isPlaying: true
+            status: "pending", isPlaying: player.playbackState == .playing
         )
         isHost = true
         sessionStartDate = Date()
@@ -90,11 +88,12 @@ final class ListenTogetherViewModel: ObservableObject {
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
+        let song = currentSongSnapshot(from: musicVM, player: player)
         RealtimeDBService.shared.updateSessionPlayback(
             sessionID: session.id,
-            songStoreID: player.nowPlayingItem?.playbackStoreID ?? "",
-            songTitle: musicVM.currentSong?.title ?? "",
-            artistName: musicVM.currentSong?.artistName ?? "",
+            songStoreID: song.storeID,
+            songTitle: song.title,
+            artistName: song.artist,
             position: player.currentPlaybackTime,
             isPlaying: player.playbackState == .playing
         )
@@ -111,8 +110,8 @@ final class ListenTogetherViewModel: ObservableObject {
                     self.cleanup()
                 case "active":
                     if !self.isHost {
-                        // 곡이 바뀌었으면 동기화
-                        if self.activeSession?.songStoreID != session.songStoreID {
+                        // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
+                        if self.shouldSyncMusic(with: session) {
                             await self.syncMusic(session: session)
                         }
                         // 재생/일시정지 동기화
@@ -132,15 +131,48 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     // MARK: - MusicKit 싱크 (게스트)
-    // MPMediaPropertyPredicate는 playbackStoreID 필터링을 지원하지 않으므로
-    // 제목/아티스트 텍스트 매칭으로 라이브러리에서 검색
     private func syncMusic(session: ListenSession) async {
-        guard !session.songTitle.isEmpty else { return }
+        guard !session.songStoreID.isEmpty || !session.songTitle.isEmpty else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
 
         let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
         let targetPosition = max(0, session.playbackPosition + latency)
 
+        if await syncByStoreID(session: session, targetPosition: targetPosition, player: player) {
+            return
+        }
+
+        await syncByLibrarySearch(session: session, targetPosition: targetPosition, player: player)
+    }
+
+    private func syncByStoreID(
+        session: ListenSession,
+        targetPosition: TimeInterval,
+        player: MPMusicPlayerController
+    ) async -> Bool {
+        guard !session.songStoreID.isEmpty else { return false }
+        player.setQueue(with: [session.songStoreID])
+        do {
+            try await player.prepareToPlay()
+            player.currentPlaybackTime = targetPosition
+            if session.isPlaying {
+                player.play()
+            } else {
+                player.pause()
+            }
+            return true
+        } catch {
+            print("[ListenTogether] storeID sync failed: \(session.songStoreID), error: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func syncByLibrarySearch(
+        session: ListenSession,
+        targetPosition: TimeInterval,
+        player: MPMusicPlayerController
+    ) async {
+        guard !session.songTitle.isEmpty else { return }
         let titlePredicate = MPMediaPropertyPredicate(
             value: session.songTitle,
             forProperty: MPMediaItemPropertyTitle,
@@ -154,9 +186,41 @@ final class ListenTogetherViewModel: ObservableObject {
             player.setQueue(with: collection)
             try? await player.prepareToPlay()
             player.currentPlaybackTime = targetPosition
-            if session.isPlaying { player.play() }
+            if session.isPlaying {
+                player.play()
+            } else {
+                player.pause()
+            }
+        } else {
+            print("[ListenTogether] library fallback failed: \(session.songTitle) - \(session.artistName)")
         }
-        // 라이브러리에 없으면 배너에 곡명만 표시
+    }
+
+    private func shouldSyncMusic(with session: ListenSession) -> Bool {
+        let player = MPMusicPlayerController.systemMusicPlayer
+        let currentStoreID = player.nowPlayingItem?.playbackStoreID ?? ""
+        if !session.songStoreID.isEmpty, currentStoreID != session.songStoreID {
+            return true
+        }
+        return activeSession?.songStoreID != session.songStoreID
+    }
+
+    private func currentSongSnapshot(
+        from musicVM: RunningMusicViewModel,
+        player: MPMusicPlayerController
+    ) -> (storeID: String, title: String, artist: String) {
+        let musicSnapshot = musicVM.currentSongSnapshot()
+        let mediaItem = player.nowPlayingItem
+        let storeID = mediaItem?.playbackStoreID.nonEmpty
+            ?? musicSnapshot?.songStoreID.nonEmpty
+            ?? ""
+        let title = musicSnapshot?.title.nonEmpty
+            ?? mediaItem?.title?.nonEmpty
+            ?? ""
+        let artist = musicSnapshot?.artistName.nonEmpty
+            ?? mediaItem?.artist?.nonEmpty
+            ?? ""
+        return (storeID, title, artist)
     }
 
     private func cleanup() {
@@ -165,5 +229,11 @@ final class ListenTogetherViewModel: ObservableObject {
         incomingRequest = nil
         isHost = false
         sessionStartDate = nil
+    }
+}
+
+private extension String {
+    var nonEmpty: String? {
+        isEmpty ? nil : self
     }
 }
