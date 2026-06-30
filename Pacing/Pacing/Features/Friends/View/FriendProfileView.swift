@@ -74,11 +74,20 @@ struct FriendProfileView: View {
     }
 
     private var statsSection: some View {
-        HStack(spacing: 10) {
-            FriendProfileStatCard(title: "평균 페이스", value: vm.formattedAveragePace)
-            FriendProfileStatCard(title: "운동 시간", value: vm.formattedTotalDuration)
-            FriendProfileStatCard(title: "누적 거리", value: vm.formattedTotalDistance)
+        HStack(spacing: 0) {
+            FriendProfileStatItem(title: "누적 거리", value: vm.formattedTotalDistance)
+            statDivider
+            FriendProfileStatItem(title: "운동 시간", value: vm.formattedTotalDuration)
+            statDivider
+            FriendProfileStatItem(title: "평균 페이스", value: vm.formattedAveragePace)
         }
+        .padding(.vertical, 6)
+    }
+
+    private var statDivider: some View {
+        Rectangle()
+            .fill(Color.gray300.opacity(0.7))
+            .frame(width: 1, height: 34)
     }
 
     private var recentSongsSection: some View {
@@ -150,7 +159,7 @@ private struct FriendProfileAvatar: View {
     }
 }
 
-private struct FriendProfileStatCard: View {
+private struct FriendProfileStatItem: View {
     let title: String
     let value: String
 
@@ -169,8 +178,6 @@ private struct FriendProfileStatCard: View {
                 .minimumScaleFactor(0.8)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 72)
-        .glassRounded(cornerRadius: 16)
     }
 }
 
