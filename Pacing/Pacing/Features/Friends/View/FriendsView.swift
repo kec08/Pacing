@@ -451,8 +451,8 @@ private struct FriendUserRow: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                 Text(user.statusText)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
+                    .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
             }
 
             Spacer()

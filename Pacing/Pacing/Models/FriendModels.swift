@@ -63,3 +63,29 @@ struct FriendRecentSong: Identifiable, Equatable {
     let songStoreID: String?
     let artworkURL: String?
 }
+
+enum FriendActivityText {
+    static func runningStatus(lastRunDate: Date?) -> String {
+        guard let lastRunDate else {
+            return "러닝 기록 없음"
+        }
+
+        let calendar = Calendar.current
+        if calendar.isDateInToday(lastRunDate) {
+            return "오늘 러닝 완료"
+        }
+
+        if calendar.isDateInYesterday(lastRunDate) {
+            return "어제 러닝 완료"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일"
+        return "\(formatter.string(from: lastRunDate)) 러닝 완료"
+    }
+
+    static func isTodayStatus(_ text: String) -> Bool {
+        text == "오늘 러닝 완료"
+    }
+}

@@ -109,6 +109,17 @@ final class FirestoreService {
         )
     }
 
+    // MARK: - 마지막 러닝 날짜 조회
+    private func fetchLastRunDate(uid: String) async throws -> Date? {
+        let snapshot = try await db.collection("users").document(uid)
+            .collection("runHistory")
+            .order(by: "startedAt", descending: true)
+            .limit(to: 1)
+            .getDocuments()
+
+        return (snapshot.documents.first?.data()["startedAt"] as? Timestamp)?.dateValue()
+    }
+
     // MARK: - 최근 들은 노래 저장
     func saveRecentSong(
         uid: String,
@@ -168,16 +179,19 @@ final class FirestoreService {
             .order(by: "createdAt", descending: true)
             .getDocuments()
 
-        return snapshot.documents.map { doc in
+        var friends: [FriendUser] = []
+        for doc in snapshot.documents {
             let data = doc.data()
-            return FriendUser(
+            let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
+            friends.append(FriendUser(
                 id: doc.documentID,
                 nickname: data["nickname"] as? String ?? "러너",
                 profileImageBase64: data["profileImageBase64"] as? String,
-                statusText: data["statusText"] as? String ?? "최근 활동 없음",
+                statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
                 source: .friend
-            )
+            ))
         }
+        return friends
     }
 
     // MARK: - 친구 프로필 조회
