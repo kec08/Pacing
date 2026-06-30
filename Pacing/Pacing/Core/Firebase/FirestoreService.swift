@@ -114,7 +114,6 @@ final class FirestoreService {
         let snapshot = try await db.collection("friendRequests")
             .whereField("toUID", isEqualTo: uid)
             .whereField("status", isEqualTo: FriendRequestStatus.pending.rawValue)
-            .order(by: "createdAt", descending: true)
             .getDocuments()
 
         var requests: [FriendRequest] = []
@@ -133,7 +132,9 @@ final class FirestoreService {
                 )
             )
         }
-        return requests
+        return requests.sorted {
+            ($0.createdAt ?? .distantPast) > ($1.createdAt ?? .distantPast)
+        }
     }
 
     // MARK: - 닉네임 검색
