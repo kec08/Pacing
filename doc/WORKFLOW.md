@@ -35,7 +35,7 @@
 ## 단계별 상세
 
 ### 1단계 — 계획서 작성
-- 위치: `doc/plans/[feature]-plan.md`
+- 위치: `doc/fe/plans/[feature]-plan.md`
 - 포함 내용:
   - 기능 목적 및 사용자 시나리오
   - 화면 구성 및 UI 설명
