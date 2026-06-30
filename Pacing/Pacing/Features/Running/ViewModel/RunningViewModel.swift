@@ -3,7 +3,6 @@ import Combine
 import CoreLocation
 import FirebaseAuth
 import MusicKit
-import MusicKit
 
 enum RunningState {
     case idle
@@ -156,12 +155,13 @@ final class RunningViewModel: ObservableObject {
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
 
-        if let song = await musicViewModel?.currentSongSnapshot() {
+        if let song = musicViewModel?.currentSongSnapshot() {
             try? await FirestoreService.shared.saveRecentSong(
                 uid: uid,
                 title: song.title,
                 artistName: song.artistName,
-                songStoreID: song.songStoreID
+                songStoreID: song.songStoreID,
+                artworkURL: song.artworkURL
             )
         }
     }

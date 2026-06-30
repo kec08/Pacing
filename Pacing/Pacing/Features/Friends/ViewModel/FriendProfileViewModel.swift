@@ -26,7 +26,7 @@ final class FriendProfileViewModel: ObservableObject {
         do {
             async let profileTask = service.fetchFriendUserProfile(uid: friend.id, source: .friend)
             async let statsTask = service.fetchFriendProfileStats(uid: friend.id)
-            async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 10)
+            async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 5)
             async let relationshipTask = fetchRelationship()
 
             friend = try await profileTask

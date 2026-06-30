@@ -109,17 +109,26 @@ final class FirestoreService {
     }
 
     // MARK: - 최근 들은 노래 저장
-    func saveRecentSong(uid: String, title: String, artistName: String, songStoreID: String?) async throws {
+    func saveRecentSong(
+        uid: String,
+        title: String,
+        artistName: String,
+        songStoreID: String?,
+        artworkURL: String? = nil
+    ) async throws {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uid.isEmpty, !trimmedTitle.isEmpty else { return }
 
         let documentID = songStoreID?.isEmpty == false ? songStoreID! : UUID().uuidString
-        let data: [String: Any] = [
+        var data: [String: Any] = [
             "title": trimmedTitle,
             "artistName": artistName,
             "songStoreID": songStoreID ?? "",
             "playedAt": FieldValue.serverTimestamp()
         ]
+        if let artworkURL, !artworkURL.isEmpty {
+            data["artworkURL"] = artworkURL
+        }
 
         try await db.collection("users").document(uid)
             .collection("recentSongs").document(documentID)
@@ -145,7 +154,8 @@ final class FirestoreService {
                 title: title,
                 artistName: data["artistName"] as? String ?? "",
                 playedAt: (data["playedAt"] as? Timestamp)?.dateValue(),
-                songStoreID: data["songStoreID"] as? String
+                songStoreID: data["songStoreID"] as? String,
+                artworkURL: data["artworkURL"] as? String
             )
         }
     }

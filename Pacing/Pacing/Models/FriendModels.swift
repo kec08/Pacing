@@ -59,4 +59,5 @@ struct FriendRecentSong: Identifiable, Equatable {
     let artistName: String
     let playedAt: Date?
     let songStoreID: String?
+    let artworkURL: String?
 }

@@ -162,7 +162,7 @@ struct FriendsView: View {
             if vm.isLoading && vm.friends.isEmpty {
                 loadingCard
             } else if vm.friends.isEmpty {
-                emptyCard("아직 친구가 없어요")
+                emptyFriendsState
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.friends) { friend in
@@ -250,6 +250,27 @@ struct FriendsView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 18)
         .glassRounded(cornerRadius: 16)
+    }
+
+    private var emptyFriendsState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "person.2")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(Color.gray500)
+
+            VStack(spacing: 4) {
+                Text("친구가 없습니다")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+
+                Text("추천 친구를 통해 친구를 추가해보세요")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
     }
 
     private var errorBinding: Binding<Bool> {

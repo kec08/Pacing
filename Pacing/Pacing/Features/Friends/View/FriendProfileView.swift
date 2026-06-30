@@ -202,7 +202,6 @@ struct FriendProfileView: View {
                         FriendRecentSongRow(song: song)
                     }
                 }
-                .glassRounded(cornerRadius: 16)
             }
         }
     }
@@ -275,11 +274,7 @@ private struct FriendRecentSongRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "music.note")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.main500)
-                .frame(width: 36, height: 36)
-                .glassCircle(tint: Color.main500.opacity(0.12))
+            albumArtwork
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(song.title)
@@ -306,6 +301,38 @@ private struct FriendRecentSongRow: View {
         .overlay(alignment: .bottom) {
             Divider()
                 .padding(.leading, 62)
+        }
+    }
+
+    private var albumArtwork: some View {
+        Group {
+            if let artworkURL = song.artworkURL, let url = URL(string: artworkURL) {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        artworkPlaceholder
+                    }
+                }
+            } else {
+                artworkPlaceholder
+            }
+        }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var artworkPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.main200.opacity(0.32))
+
+            Image(systemName: "music.note")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.main500)
         }
     }
 
