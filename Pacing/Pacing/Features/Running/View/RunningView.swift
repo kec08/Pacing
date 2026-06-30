@@ -286,7 +286,18 @@ struct RunningView: View {
                 avgPace: viewModel.avgPace,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
                 onSave: {
-                    Task { await viewModel.saveRecord() }
+                    let savedDistance = viewModel.distance
+                    let savedElapsedSeconds = viewModel.elapsedSeconds
+                    let savedAveragePace = viewModel.avgPace
+                    let savedRouteCoordinates = viewModel.locationManager.routeCoordinates
+                    Task {
+                        await viewModel.saveRecord(
+                            distance: savedDistance,
+                            elapsedSeconds: savedElapsedSeconds,
+                            avgPace: savedAveragePace,
+                            routeCoordinates: savedRouteCoordinates
+                        )
+                    }
                     showSummary = false
                     viewModel.reset()
                 },
