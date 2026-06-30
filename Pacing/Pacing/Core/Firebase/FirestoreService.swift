@@ -174,6 +174,43 @@ final class FirestoreService {
         try await fetchFriendUser(uid: uid, source: source)
     }
 
+    // MARK: - 보낸 친구 요청 조회
+    func fetchPendingSentFriendRequestUIDs(uid: String) async throws -> Set<String> {
+        let snapshot = try await db.collection("friendRequests")
+            .whereField("fromUID", isEqualTo: uid)
+            .whereField("status", isEqualTo: FriendRequestStatus.pending.rawValue)
+            .getDocuments()
+
+        return Set(snapshot.documents.compactMap { doc in
+            doc.data()["toUID"] as? String
+        })
+    }
+
+    // MARK: - 친구 관계 조회
+    func fetchFriendRelationship(currentUID: String, targetUID: String) async throws -> FriendRelationship {
+        guard !currentUID.isEmpty, !targetUID.isEmpty, currentUID != targetUID else {
+            return .none
+        }
+
+        let friendDoc = try await db.collection("users").document(currentUID)
+            .collection("friends").document(targetUID)
+            .getDocument()
+
+        if friendDoc.exists {
+            return .friend
+        }
+
+        let requestDoc = try await db.collection("friendRequests")
+            .document("\(currentUID)_\(targetUID)")
+            .getDocument()
+
+        if requestDoc.data()?["status"] as? String == FriendRequestStatus.pending.rawValue {
+            return .requestPending
+        }
+
+        return .none
+    }
+
     // MARK: - 받은 친구 요청 조회
     func fetchIncomingFriendRequests(uid: String) async throws -> [FriendRequest] {
         let snapshot = try await db.collection("friendRequests")

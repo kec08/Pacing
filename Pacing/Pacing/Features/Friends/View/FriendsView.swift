@@ -145,7 +145,9 @@ struct FriendsView: View {
                             user: user,
                             buttonTitle: vm.buttonTitle(for: user),
                             isEnabled: vm.canSendRequest(to: user),
+                            relationship: relationship(for: user),
                             onSend: { Task { await vm.sendRequest(to: user) } },
+                            onRequestSent: { vm.markRequestSent(to: user) },
                             onDismiss: { vm.dismissSearchResult(user) }
                         )
                     }
@@ -164,7 +166,7 @@ struct FriendsView: View {
                 listStack(spacing: 12) {
                     ForEach(vm.friends) { friend in
                         NavigationLink {
-                            FriendProfileView(friend: friend)
+                            FriendProfileView(friend: friend, initialRelationship: .friend)
                         } label: {
                             FriendUserRow(user: friend)
                         }
@@ -196,7 +198,9 @@ struct FriendsView: View {
                                 user: user,
                                 buttonTitle: vm.buttonTitle(for: user),
                                 isEnabled: vm.canSendRequest(to: user),
+                                relationship: relationship(for: user),
                                 onSend: { Task { await vm.sendRequest(to: user) } },
+                                onRequestSent: { vm.markRequestSent(to: user) },
                                 onDismiss: { vm.dismissRecommendation(user) }
                             )
                         }
@@ -251,6 +255,10 @@ struct FriendsView: View {
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } }
         )
+    }
+
+    private func relationship(for user: FriendUser) -> FriendRelationship {
+        vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
     }
 }
 
@@ -440,21 +448,34 @@ private struct FriendCandidateRow: View {
     let user: FriendUser
     let buttonTitle: String
     let isEnabled: Bool
+    let relationship: FriendRelationship
     let onSend: () -> Void
+    let onRequestSent: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            FriendAvatar(user: user)
+            NavigationLink {
+                FriendProfileView(
+                    friend: user,
+                    initialRelationship: relationship,
+                    onRequestSent: { _ in onRequestSent() }
+                )
+            } label: {
+                HStack(spacing: 12) {
+                    FriendAvatar(user: user)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(user.nickname)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                Text(user.source.rawValue)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSecondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(user.nickname)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                        Text(user.source.rawValue)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                }
             }
+            .buttonStyle(.plain)
 
             Spacer(minLength: 8)
 
@@ -485,13 +506,24 @@ private struct FriendRecommendationCard: View {
     let user: FriendUser
     let buttonTitle: String
     let isEnabled: Bool
+    let relationship: FriendRelationship
     let onSend: () -> Void
+    let onRequestSent: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
-                FriendAvatar(user: user, size: 44, fontSize: 18)
+                NavigationLink {
+                    FriendProfileView(
+                        friend: user,
+                        initialRelationship: relationship,
+                        onRequestSent: { _ in onRequestSent() }
+                    )
+                } label: {
+                    FriendAvatar(user: user, size: 44, fontSize: 18)
+                }
+                .buttonStyle(.plain)
 
                 Spacer()
 
@@ -504,11 +536,20 @@ private struct FriendRecommendationCard: View {
                 .buttonStyle(.plain)
             }
 
-            Text(user.nickname)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(Color.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            NavigationLink {
+                FriendProfileView(
+                    friend: user,
+                    initialRelationship: relationship,
+                    onRequestSent: { _ in onRequestSent() }
+                )
+            } label: {
+                Text(user.nickname)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .buttonStyle(.plain)
 
             Button(action: onSend) {
                 Text(buttonTitle)

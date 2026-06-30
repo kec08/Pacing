@@ -42,12 +42,15 @@ final class FriendsViewModel: ObservableObject {
         do {
             async let friendsTask = service.fetchFriends(uid: uid)
             async let requestsTask = service.fetchIncomingFriendRequests(uid: uid)
+            async let sentRequestsTask = service.fetchPendingSentFriendRequestUIDs(uid: uid)
 
             let loadedFriends = try await friendsTask
             let loadedRequests = try await requestsTask
+            let loadedSentRequestUIDs = try await sentRequestsTask
 
             friends = loadedFriends
             incomingRequests = loadedRequests
+            sentRequestUIDs = loadedSentRequestUIDs
             recommendedUsers = try await service.fetchRecommendedUsers(
                 currentUID: uid,
                 excluding: excludedUIDs
@@ -103,6 +106,12 @@ final class FriendsViewModel: ObservableObject {
 
     func dismissSearchResult(_ user: FriendUser) {
         searchResults.removeAll { $0.id == user.id }
+    }
+
+    func markRequestSent(to user: FriendUser) {
+        sentRequestUIDs.insert(user.id)
+        searchResults.removeAll { $0.id == user.id }
+        recommendedUsers.removeAll { $0.id == user.id }
     }
 
     func sendRequest(to user: FriendUser) async {

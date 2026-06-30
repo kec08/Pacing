@@ -35,6 +35,12 @@ enum FriendRequestStatus: String {
     case rejected
 }
 
+enum FriendRelationship: Equatable {
+    case friend
+    case requestPending
+    case none
+}
+
 struct FriendProfileStats: Equatable {
     let averagePace: Double
     let totalDuration: Int

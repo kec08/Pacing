@@ -1,18 +1,22 @@
 import Foundation
 import Combine
+import FirebaseAuth
 
 @MainActor
 final class FriendProfileViewModel: ObservableObject {
     @Published var friend: FriendUser
+    @Published var relationship: FriendRelationship
     @Published var stats: FriendProfileStats = .empty
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var isLoading: Bool = false
+    @Published var isSendingRequest: Bool = false
     @Published var errorMessage: String?
 
     private let service = FirestoreService.shared
 
-    init(friend: FriendUser) {
+    init(friend: FriendUser, initialRelationship: FriendRelationship) {
         self.friend = friend
+        self.relationship = initialRelationship
     }
 
     func load() async {
@@ -23,15 +27,45 @@ final class FriendProfileViewModel: ObservableObject {
             async let profileTask = service.fetchFriendUserProfile(uid: friend.id, source: .friend)
             async let statsTask = service.fetchFriendProfileStats(uid: friend.id)
             async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 10)
+            async let relationshipTask = fetchRelationship()
 
             friend = try await profileTask
             stats = try await statsTask
             recentSongs = try await songsTask
+            relationship = try await relationshipTask
         } catch {
             errorMessage = "친구 프로필을 불러오지 못했어요."
         }
 
         isLoading = false
+    }
+
+    func sendFriendRequest() async -> Bool {
+        guard relationship == .none, let uid = Auth.auth().currentUser?.uid else {
+            return false
+        }
+
+        isSendingRequest = true
+        errorMessage = nil
+
+        do {
+            try await service.sendFriendRequest(from: uid, to: friend.id)
+            relationship = .requestPending
+            isSendingRequest = false
+            return true
+        } catch {
+            errorMessage = "친구 요청을 보내지 못했어요."
+            isSendingRequest = false
+            return false
+        }
+    }
+
+    private func fetchRelationship() async throws -> FriendRelationship {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            return relationship
+        }
+
+        return try await service.fetchFriendRelationship(currentUID: uid, targetUID: friend.id)
     }
 
     var formattedAveragePace: String {
@@ -54,5 +88,20 @@ final class FriendProfileViewModel: ObservableObject {
 
     var formattedTotalDistance: String {
         String(format: "%.1fkm", stats.totalDistance)
+    }
+
+    var actionTitle: String {
+        switch relationship {
+        case .friend:
+            return "친구"
+        case .requestPending:
+            return "요청 대기중"
+        case .none:
+            return "친구 추가"
+        }
+    }
+
+    var canSendRequest: Bool {
+        relationship == .none && !isSendingRequest
     }
 }

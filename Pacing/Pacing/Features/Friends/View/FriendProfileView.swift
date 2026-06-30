@@ -3,9 +3,20 @@ import UIKit
 
 struct FriendProfileView: View {
     @StateObject private var vm: FriendProfileViewModel
+    private let onRequestSent: ((FriendUser) -> Void)?
 
-    init(friend: FriendUser) {
-        _vm = StateObject(wrappedValue: FriendProfileViewModel(friend: friend))
+    init(
+        friend: FriendUser,
+        initialRelationship: FriendRelationship = .friend,
+        onRequestSent: ((FriendUser) -> Void)? = nil
+    ) {
+        _vm = StateObject(
+            wrappedValue: FriendProfileViewModel(
+                friend: friend,
+                initialRelationship: initialRelationship
+            )
+        )
+        self.onRequestSent = onRequestSent
     }
 
     var body: some View {
@@ -15,6 +26,7 @@ struct FriendProfileView: View {
             ScrollView {
                 VStack(spacing: 24) {
                     profileHeader
+                    relationshipAction
                     statsSection
                     recentSongsSection
                 }
@@ -71,6 +83,70 @@ struct FriendProfileView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 10)
+    }
+
+    private var relationshipAction: some View {
+        Button {
+            Task {
+                let didSend = await vm.sendFriendRequest()
+                if didSend {
+                    onRequestSent?(vm.friend)
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if vm.isSendingRequest {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: relationshipIcon)
+                        .font(.system(size: 17, weight: .bold))
+                }
+
+                Text(vm.actionTitle)
+                    .font(.system(size: 17, weight: .bold))
+            }
+            .foregroundStyle(relationshipForeground)
+            .frame(maxWidth: .infinity)
+            .frame(height: 52)
+            .glassRounded(cornerRadius: 16, tint: relationshipTint)
+        }
+        .buttonStyle(.plain)
+        .disabled(!vm.canSendRequest)
+        .animation(.easeInOut(duration: 0.2), value: vm.relationship)
+    }
+
+    private var relationshipIcon: String {
+        switch vm.relationship {
+        case .friend:
+            return "person.2.fill"
+        case .requestPending:
+            return "clock.fill"
+        case .none:
+            return "person.badge.plus"
+        }
+    }
+
+    private var relationshipForeground: Color {
+        switch vm.relationship {
+        case .friend:
+            return Color.main500
+        case .requestPending:
+            return Color.textSecondary
+        case .none:
+            return Color.main500
+        }
+    }
+
+    private var relationshipTint: Color {
+        switch vm.relationship {
+        case .friend:
+            return Color.main500.opacity(0.12)
+        case .requestPending:
+            return Color.gray100.opacity(0.82)
+        case .none:
+            return Color.main500.opacity(0.13)
+        }
     }
 
     private var statsSection: some View {
@@ -246,13 +322,16 @@ private extension View {
         }
     }
 
-    func glassRounded(cornerRadius: CGFloat) -> some View {
+    func glassRounded(
+        cornerRadius: CGFloat,
+        tint: Color = Color.backgroundPrimary.opacity(0.58)
+    ) -> some View {
         background {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(.ultraThinMaterial)
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .fill(Color.backgroundPrimary.opacity(0.58))
+                        .fill(tint)
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
