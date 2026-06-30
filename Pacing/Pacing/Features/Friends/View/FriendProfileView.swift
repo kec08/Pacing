@@ -72,16 +72,14 @@ struct FriendProfileView: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
 
-                Text(vm.isLoading ? "러닝 기록 확인 중" : vm.activityText)
-                    .font(.system(size: 13, weight: vm.isTodayActivity ? .bold : .medium))
-                    .foregroundStyle(vm.isTodayActivity ? Color.green : Color.textSecondary)
-                    .lineLimit(1)
-            }
-
-            if vm.isLoading {
-                ProgressView()
-                    .controlSize(.small)
-                    .padding(.top, 4)
+                if vm.isLoading {
+                    SkeletonBlock(width: 92, height: 13, cornerRadius: 7)
+                } else {
+                    Text(vm.activityText)
+                        .font(.system(size: 13, weight: vm.isTodayActivity ? .bold : .medium))
+                        .foregroundStyle(vm.isTodayActivity ? Color.green : Color.textSecondary)
+                        .lineLimit(1)
+                }
             }
         }
         .frame(maxWidth: .infinity)
@@ -163,12 +161,26 @@ struct FriendProfileView: View {
     }
 
     private var statsSection: some View {
-        HStack(spacing: 0) {
-            FriendProfileStatItem(title: "누적 거리", value: vm.formattedTotalDistance)
-            statDivider
-            FriendProfileStatItem(title: "운동 시간", value: vm.formattedTotalDuration)
-            statDivider
-            FriendProfileStatItem(title: "평균 페이스", value: vm.formattedAveragePace)
+        Group {
+            if vm.isLoading {
+                HStack(spacing: 18) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        VStack(spacing: 8) {
+                            SkeletonBlock(width: 64, height: 22, cornerRadius: 8)
+                            SkeletonBlock(width: 48, height: 11, cornerRadius: 6)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+            } else {
+                HStack(spacing: 0) {
+                    FriendProfileStatItem(title: "누적 거리", value: vm.formattedTotalDistance)
+                    statDivider
+                    FriendProfileStatItem(title: "운동 시간", value: vm.formattedTotalDuration)
+                    statDivider
+                    FriendProfileStatItem(title: "평균 페이스", value: vm.formattedAveragePace)
+                }
+            }
         }
         .padding(.vertical, 6)
     }
@@ -185,7 +197,15 @@ struct FriendProfileView: View {
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
 
-            if vm.recentSongs.isEmpty {
+            if vm.isLoading && vm.recentSongs.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        SkeletonRow(avatarSize: 44)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                    }
+                }
+            } else if vm.recentSongs.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "music.note")
                         .font(.system(size: 24, weight: .semibold))
