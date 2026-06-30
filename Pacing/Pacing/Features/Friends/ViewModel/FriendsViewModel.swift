@@ -114,6 +114,10 @@ final class FriendsViewModel: ObservableObject {
         recommendedUsers.removeAll { $0.id == user.id }
     }
 
+    func markRequestCanceled(to user: FriendUser) {
+        sentRequestUIDs.remove(user.id)
+    }
+
     func sendRequest(to user: FriendUser) async {
         guard let uid = currentUID else { return }
 

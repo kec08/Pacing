@@ -4,11 +4,13 @@ import UIKit
 struct FriendProfileView: View {
     @StateObject private var vm: FriendProfileViewModel
     private let onRequestSent: ((FriendUser) -> Void)?
+    private let onRequestCanceled: ((FriendUser) -> Void)?
 
     init(
         friend: FriendUser,
         initialRelationship: FriendRelationship = .friend,
-        onRequestSent: ((FriendUser) -> Void)? = nil
+        onRequestSent: ((FriendUser) -> Void)? = nil,
+        onRequestCanceled: ((FriendUser) -> Void)? = nil
     ) {
         _vm = StateObject(
             wrappedValue: FriendProfileViewModel(
@@ -17,6 +19,7 @@ struct FriendProfileView: View {
             )
         )
         self.onRequestSent = onRequestSent
+        self.onRequestCanceled = onRequestCanceled
     }
 
     var body: some View {
@@ -88,14 +91,24 @@ struct FriendProfileView: View {
     private var relationshipAction: some View {
         Button {
             Task {
-                let didSend = await vm.sendFriendRequest()
-                if didSend {
-                    onRequestSent?(vm.friend)
+                switch vm.relationship {
+                case .none:
+                    let didSend = await vm.sendFriendRequest()
+                    if didSend {
+                        onRequestSent?(vm.friend)
+                    }
+                case .requestPending:
+                    let didCancel = await vm.cancelFriendRequest()
+                    if didCancel {
+                        onRequestCanceled?(vm.friend)
+                    }
+                case .friend:
+                    break
                 }
             }
         } label: {
             HStack(spacing: 8) {
-                if vm.isSendingRequest {
+                if vm.isUpdatingRelationship {
                     ProgressView()
                         .controlSize(.small)
                 } else {
@@ -112,7 +125,7 @@ struct FriendProfileView: View {
             .glassRounded(cornerRadius: 16, tint: relationshipTint)
         }
         .buttonStyle(.plain)
-        .disabled(!vm.canSendRequest)
+        .disabled(!vm.canTapAction)
         .animation(.easeInOut(duration: 0.2), value: vm.relationship)
     }
 

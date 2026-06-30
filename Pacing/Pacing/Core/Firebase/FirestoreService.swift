@@ -298,6 +298,15 @@ final class FirestoreService {
             .setData(data, merge: true)
     }
 
+    // MARK: - 보낸 친구 요청 취소
+    func cancelSentFriendRequest(from fromUID: String, to toUID: String) async throws {
+        guard !fromUID.isEmpty, !toUID.isEmpty, fromUID != toUID else { return }
+
+        try await db.collection("friendRequests")
+            .document("\(fromUID)_\(toUID)")
+            .updateData(["status": FriendRequestStatus.rejected.rawValue])
+    }
+
     // MARK: - 친구 요청 수락
     func acceptFriendRequest(_ request: FriendRequest, currentUserNickname: String) async throws {
         let fromUser = request.sender

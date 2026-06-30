@@ -146,11 +146,12 @@ struct FriendsView: View {
                             buttonTitle: vm.buttonTitle(for: user),
                             isEnabled: vm.canSendRequest(to: user),
                             relationship: relationship(for: user),
-                            onSend: { Task { await vm.sendRequest(to: user) } },
-                            onRequestSent: { vm.markRequestSent(to: user) },
-                            onDismiss: { vm.dismissSearchResult(user) }
-                        )
-                    }
+                                onSend: { Task { await vm.sendRequest(to: user) } },
+                                onRequestSent: { vm.markRequestSent(to: user) },
+                                onRequestCanceled: { vm.markRequestCanceled(to: user) },
+                                onDismiss: { vm.dismissSearchResult(user) }
+                            )
+                        }
                 }
             }
         }
@@ -201,6 +202,7 @@ struct FriendsView: View {
                                 relationship: relationship(for: user),
                                 onSend: { Task { await vm.sendRequest(to: user) } },
                                 onRequestSent: { vm.markRequestSent(to: user) },
+                                onRequestCanceled: { vm.markRequestCanceled(to: user) },
                                 onDismiss: { vm.dismissRecommendation(user) }
                             )
                         }
@@ -451,6 +453,7 @@ private struct FriendCandidateRow: View {
     let relationship: FriendRelationship
     let onSend: () -> Void
     let onRequestSent: () -> Void
+    let onRequestCanceled: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -459,7 +462,8 @@ private struct FriendCandidateRow: View {
                 FriendProfileView(
                     friend: user,
                     initialRelationship: relationship,
-                    onRequestSent: { _ in onRequestSent() }
+                    onRequestSent: { _ in onRequestSent() },
+                    onRequestCanceled: { _ in onRequestCanceled() }
                 )
             } label: {
                 HStack(spacing: 12) {
@@ -509,6 +513,7 @@ private struct FriendRecommendationCard: View {
     let relationship: FriendRelationship
     let onSend: () -> Void
     let onRequestSent: () -> Void
+    let onRequestCanceled: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
@@ -518,7 +523,8 @@ private struct FriendRecommendationCard: View {
                     FriendProfileView(
                         friend: user,
                         initialRelationship: relationship,
-                        onRequestSent: { _ in onRequestSent() }
+                        onRequestSent: { _ in onRequestSent() },
+                        onRequestCanceled: { _ in onRequestCanceled() }
                     )
                 } label: {
                     FriendAvatar(user: user, size: 44, fontSize: 18)
@@ -540,7 +546,8 @@ private struct FriendRecommendationCard: View {
                 FriendProfileView(
                     friend: user,
                     initialRelationship: relationship,
-                    onRequestSent: { _ in onRequestSent() }
+                    onRequestSent: { _ in onRequestSent() },
+                    onRequestCanceled: { _ in onRequestCanceled() }
                 )
             } label: {
                 Text(user.nickname)

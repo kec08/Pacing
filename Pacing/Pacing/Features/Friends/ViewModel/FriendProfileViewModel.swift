@@ -9,7 +9,7 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var stats: FriendProfileStats = .empty
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var isLoading: Bool = false
-    @Published var isSendingRequest: Bool = false
+    @Published var isUpdatingRelationship: Bool = false
     @Published var errorMessage: String?
 
     private let service = FirestoreService.shared
@@ -45,17 +45,37 @@ final class FriendProfileViewModel: ObservableObject {
             return false
         }
 
-        isSendingRequest = true
+        isUpdatingRelationship = true
         errorMessage = nil
 
         do {
             try await service.sendFriendRequest(from: uid, to: friend.id)
             relationship = .requestPending
-            isSendingRequest = false
+            isUpdatingRelationship = false
             return true
         } catch {
             errorMessage = "친구 요청을 보내지 못했어요."
-            isSendingRequest = false
+            isUpdatingRelationship = false
+            return false
+        }
+    }
+
+    func cancelFriendRequest() async -> Bool {
+        guard relationship == .requestPending, let uid = Auth.auth().currentUser?.uid else {
+            return false
+        }
+
+        isUpdatingRelationship = true
+        errorMessage = nil
+
+        do {
+            try await service.cancelSentFriendRequest(from: uid, to: friend.id)
+            relationship = .none
+            isUpdatingRelationship = false
+            return true
+        } catch {
+            errorMessage = "친구 요청을 취소하지 못했어요."
+            isUpdatingRelationship = false
             return false
         }
     }
@@ -101,7 +121,7 @@ final class FriendProfileViewModel: ObservableObject {
         }
     }
 
-    var canSendRequest: Bool {
-        relationship == .none && !isSendingRequest
+    var canTapAction: Bool {
+        relationship != .friend && !isUpdatingRelationship
     }
 }
