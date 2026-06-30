@@ -42,6 +42,7 @@ final class MyViewModel: ObservableObject {
     @Published var stats: MyStats = .empty
     @Published var chartEntries: [BarChartEntry] = []
     @Published var runHistory: [RunRecord] = []
+    @Published var isLoading: Bool = true
 
     private let cal = Calendar.current
 
@@ -94,11 +95,14 @@ final class MyViewModel: ObservableObject {
     func loadData() {
         guard let uid = Auth.auth().currentUser?.uid else {
             applyData(records: [])
+            isLoading = false
             return
         }
         Task { @MainActor in
+            isLoading = true
             let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? []
             applyData(records: records)
+            isLoading = false
         }
     }
 

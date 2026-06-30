@@ -136,8 +136,10 @@ struct FriendsView: View {
 
     private var searchResultsSection: some View {
         section("검색 결과") {
-            if vm.searchResults.isEmpty {
-                emptyCard(vm.isSearching ? "검색 중이에요" : "검색 결과가 없어요")
+            if vm.isSearching && vm.searchResults.isEmpty {
+                friendRowsSkeleton(count: 3)
+            } else if vm.searchResults.isEmpty {
+                emptyCard("검색 결과가 없어요")
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.searchResults) { user in
@@ -160,7 +162,7 @@ struct FriendsView: View {
     private var friendsSection: some View {
         section("친구") {
             if vm.isLoading && vm.friends.isEmpty {
-                loadingCard
+                friendRowsSkeleton(count: 3)
             } else if vm.friends.isEmpty {
                 emptyFriendsState
             } else {
@@ -188,7 +190,7 @@ struct FriendsView: View {
             }
 
             if vm.isLoading && vm.recommendedUsers.isEmpty {
-                loadingCard
+                recommendationSkeleton
             } else if vm.recommendedUsers.isEmpty {
                 emptyCard("추천할 러너를 찾는 중이에요")
             } else {
@@ -215,19 +217,6 @@ struct FriendsView: View {
         }
     }
 
-    private var loadingCard: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            Text("불러오는 중")
-                .font(.system(size: 14))
-                .foregroundStyle(Color.textSecondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .glassRounded(cornerRadius: 16)
-    }
-
     private func section<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(title)
@@ -235,6 +224,36 @@ struct FriendsView: View {
                 .foregroundStyle(Color.textPrimary)
             content()
         }
+    }
+
+    private func friendRowsSkeleton(count: Int) -> some View {
+        listStack(spacing: 12) {
+            ForEach(0..<count, id: \.self) { _ in
+                SkeletonRow(trailingWidth: 34)
+                    .padding(.vertical, 2)
+            }
+        }
+    }
+
+    private var recommendationSkeleton: some View {
+        ScrollView(.horizontal) {
+            HStack(spacing: 12) {
+                ForEach(0..<3, id: \.self) { _ in
+                    VStack(spacing: 10) {
+                        SkeletonCircle(size: 54)
+                        SkeletonBlock(width: 82, height: 14, cornerRadius: 7)
+                        SkeletonBlock(width: 64, height: 11, cornerRadius: 6)
+                        SkeletonBlock(width: 68, height: 30, cornerRadius: 15)
+                    }
+                    .frame(width: 126)
+                    .padding(.vertical, 14)
+                    .glassRounded(cornerRadius: 18)
+                }
+            }
+            .padding(.horizontal, 2)
+            .padding(.vertical, 2)
+        }
+        .scrollIndicators(.hidden)
     }
 
     private func listStack<Content: View>(spacing: CGFloat = 12, @ViewBuilder content: () -> Content) -> some View {
@@ -300,8 +319,10 @@ private struct FriendRequestsFullScreenView: View {
                         .padding(.top, 10)
 
                     if vm.isLoading && vm.incomingRequests.isEmpty {
-                        loadingRequestsState
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        requestsSkeleton
+                            .padding(.horizontal, 18)
+                            .padding(.top, 18)
+                        Spacer(minLength: 0)
                     } else if vm.incomingRequests.isEmpty {
                         emptyRequestsState
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -355,15 +376,13 @@ private struct FriendRequestsFullScreenView: View {
         .frame(height: 54)
     }
 
-    private var loadingRequestsState: some View {
-        HStack(spacing: 10) {
-            ProgressView()
-                .controlSize(.small)
-            Text("요청을 불러오는 중")
-                .font(.system(size: 14))
-                .foregroundStyle(Color.textSecondary)
+    private var requestsSkeleton: some View {
+        VStack(spacing: 12) {
+            ForEach(0..<4, id: \.self) { _ in
+                SkeletonRow(trailingWidth: 76)
+                    .padding(.vertical, 4)
+            }
         }
-        .padding(.bottom, 54)
     }
 
     private var emptyRequestsState: some View {

@@ -157,7 +157,16 @@ struct MyView: View {
     }
 
     // MARK: - Stats Section
+    @ViewBuilder
     private var statsSection: some View {
+        if vm.isLoading && vm.runHistory.isEmpty {
+            myStatsSkeleton
+        } else {
+            statsContent
+        }
+    }
+
+    private var statsContent: some View {
         VStack(alignment: .leading, spacing: 0) {
 
             // 기간 탭
@@ -231,6 +240,36 @@ struct MyView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
                 .padding(.bottom, 28)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.backgroundPrimary)
+    }
+
+    private var myStatsSkeleton: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SkeletonBlock(height: 42, cornerRadius: 21)
+                .padding(.horizontal, 28)
+                .padding(.top, 22)
+
+            VStack(alignment: .leading, spacing: 10) {
+                SkeletonBlock(width: 160, height: 58, cornerRadius: 12)
+                SkeletonBlock(width: 118, height: 14, cornerRadius: 7)
+            }
+            .padding(.horizontal, 28)
+
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    SkeletonBlock(height: 76, cornerRadius: 14)
+                }
+            }
+            .padding(.horizontal, 28)
+
+            VStack(alignment: .leading, spacing: 12) {
+                SkeletonBlock(width: 72, height: 13, cornerRadius: 7)
+                SkeletonBlock(height: 160, cornerRadius: 16)
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 28)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.backgroundPrimary)
@@ -365,7 +404,18 @@ struct MyView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
 
-            if vm.runHistory.isEmpty {
+            if vm.isLoading && vm.runHistory.isEmpty {
+                VStack(spacing: 12) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        SkeletonRow()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.backgroundSecondary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(.horizontal, 20)
+                    }
+                }
+            } else if vm.runHistory.isEmpty {
                 Text("러닝 기록이 없어요")
                     .font(.system(size: 14))
                     .foregroundStyle(Color.textSecondary)
