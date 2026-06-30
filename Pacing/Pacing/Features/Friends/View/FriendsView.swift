@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FriendsView: View {
     @StateObject private var vm = FriendsViewModel()
+    @State private var showsRequests = false
     @FocusState private var isSearchFocused: Bool
 
     var body: some View {
@@ -13,7 +14,6 @@ struct FriendsView: View {
                     if vm.hasSearchQuery {
                         searchResultsSection
                     } else {
-                        requestsSection
                         friendsSection
                         recommendationsSection
                     }
@@ -26,6 +26,9 @@ struct FriendsView: View {
             .navigationBarHidden(true)
         }
         .task { await vm.load() }
+        .fullScreenCover(isPresented: $showsRequests) {
+            FriendRequestsFullScreenView(vm: vm, isPresented: $showsRequests)
+        }
         .alert("친구 탭 오류", isPresented: errorBinding) {
             Button("확인", role: .cancel) { vm.errorMessage = nil }
         } message: {
@@ -34,13 +37,40 @@ struct FriendsView: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text("친구")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(Color.textPrimary)
-            Text("러닝 메이트와 음악으로 이어져요")
-                .font(.system(size: 14))
-                .foregroundStyle(Color.textSecondary)
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("친구")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                Text("러닝 메이트와 음악으로 이어져요")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+            }
+
+            Spacer()
+
+            Button {
+                showsRequests = true
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "person.badge.plus")
+                        .font(.system(size: 23, weight: .semibold))
+                        .foregroundStyle(Color.textPrimary)
+                        .frame(width: 44, height: 44)
+
+                    if !vm.incomingRequests.isEmpty {
+                        Text("\(min(vm.incomingRequests.count, 9))")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .frame(width: 17, height: 17)
+                            .background(Color.accent500)
+                            .clipShape(Circle())
+                            .offset(x: 1, y: 1)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("받은 친구 요청")
         }
     }
 
@@ -94,26 +124,6 @@ struct FriendsView: View {
                     ForEach(vm.searchResults) { user in
                         FriendCandidateRow(user: user, buttonTitle: vm.buttonTitle(for: user), isEnabled: vm.canSendRequest(to: user)) {
                             Task { await vm.sendRequest(to: user) }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var requestsSection: some View {
-        section("받은 요청") {
-            if vm.isLoading && vm.incomingRequests.isEmpty {
-                loadingCard
-            } else if vm.incomingRequests.isEmpty {
-                emptyCard("새로운 친구 요청이 없어요")
-            } else {
-                cardStack {
-                    ForEach(vm.incomingRequests) { request in
-                        FriendRequestRow(request: request) {
-                            Task { await vm.accept(request) }
-                        } onReject: {
-                            Task { await vm.reject(request) }
                         }
                     }
                 }
@@ -202,6 +212,100 @@ struct FriendsView: View {
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } }
         )
+    }
+}
+
+private struct FriendRequestsFullScreenView: View {
+    @ObservedObject var vm: FriendsViewModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 18) {
+                    header
+                    requestsContent
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .background(Color.backgroundSecondary)
+            .refreshable { await vm.load() }
+            .navigationBarHidden(true)
+        }
+        .task { await vm.load() }
+    }
+
+    private var header: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("친구 요청")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                Text("받은 요청을 확인하고 수락하거나 취소할 수 있어요")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+            }
+
+            Spacer()
+
+            Button {
+                isPresented = false
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("닫기")
+        }
+    }
+
+    @ViewBuilder
+    private var requestsContent: some View {
+        if vm.isLoading && vm.incomingRequests.isEmpty {
+            HStack(spacing: 10) {
+                ProgressView()
+                    .controlSize(.small)
+                Text("요청을 불러오는 중")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 28)
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        } else if vm.incomingRequests.isEmpty {
+            VStack(spacing: 12) {
+                Image(systemName: "person.2")
+                    .font(.system(size: 30, weight: .semibold))
+                    .foregroundStyle(Color.gray500)
+                Text("새로운 친구 요청이 없어요")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(Color.textPrimary)
+                Text("요청이 도착하면 이 화면에서 확인할 수 있어요")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 34)
+            .padding(.horizontal, 20)
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        } else {
+            VStack(spacing: 0) {
+                ForEach(vm.incomingRequests) { request in
+                    FriendRequestRow(request: request) {
+                        Task { await vm.accept(request) }
+                    } onReject: {
+                        Task { await vm.reject(request) }
+                    }
+                }
+            }
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
     }
 }
 
