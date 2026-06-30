@@ -256,32 +256,47 @@ private struct FriendRequestsFullScreenView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                LinearGradient(
-                    colors: [
-                        Color.main200.opacity(0.4),
-                        Color.backgroundSecondary,
-                        Color.backgroundPrimary
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
+                requestBackground
 
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 18) {
-                        header
-                        requestsContent
+                VStack(spacing: 0) {
+                    header
+                        .padding(.horizontal, 18)
+                        .padding(.top, 10)
+
+                    if vm.isLoading && vm.incomingRequests.isEmpty {
+                        loadingRequestsState
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if vm.incomingRequests.isEmpty {
+                        emptyRequestsState
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            requestsContent
+                                .padding(.horizontal, 18)
+                                .padding(.top, 18)
+                                .padding(.bottom, 34)
+                        }
+                        .scrollIndicators(.hidden)
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 10)
-                    .padding(.bottom, 34)
                 }
-                .scrollIndicators(.hidden)
             }
             .refreshable { await vm.load() }
             .navigationBarHidden(true)
         }
         .task { await vm.load() }
+    }
+
+    private var requestBackground: some View {
+        LinearGradient(
+            colors: [
+                Color.main200.opacity(0.4),
+                Color.backgroundSecondary,
+                Color.backgroundPrimary
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        .ignoresSafeArea()
     }
 
     private var header: some View {
@@ -304,43 +319,41 @@ private struct FriendRequestsFullScreenView: View {
         .frame(height: 54)
     }
 
-    @ViewBuilder
+    private var loadingRequestsState: some View {
+        HStack(spacing: 10) {
+            ProgressView()
+                .controlSize(.small)
+            Text("요청을 불러오는 중")
+                .font(.system(size: 14))
+                .foregroundStyle(Color.textSecondary)
+        }
+        .padding(.bottom, 54)
+    }
+
+    private var emptyRequestsState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "person.2")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(Color.gray500)
+            Text("새로운 친구 요청이 없어요")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
+            Text("요청이 도착하면 이 화면에서 확인할 수 있어요")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.textSecondary)
+        }
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 24)
+        .padding(.bottom, 54)
+    }
+
     private var requestsContent: some View {
-        if vm.isLoading && vm.incomingRequests.isEmpty {
-            HStack(spacing: 10) {
-                ProgressView()
-                    .controlSize(.small)
-                Text("요청을 불러오는 중")
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
-            .glassRounded(cornerRadius: 16)
-        } else if vm.incomingRequests.isEmpty {
-            VStack(spacing: 12) {
-                Image(systemName: "person.2")
-                    .font(.system(size: 30, weight: .semibold))
-                    .foregroundStyle(Color.gray500)
-                Text("새로운 친구 요청이 없어요")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
-                Text("요청이 도착하면 이 화면에서 확인할 수 있어요")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.textSecondary)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 26)
-            .padding(.horizontal, 18)
-            .glassRounded(cornerRadius: 16)
-        } else {
-            VStack(spacing: 12) {
-                ForEach(vm.incomingRequests) { request in
-                    FriendRequestRow(request: request) {
-                        Task { await vm.accept(request) }
-                    } onReject: {
-                        Task { await vm.reject(request) }
-                    }
+        VStack(spacing: 12) {
+            ForEach(vm.incomingRequests) { request in
+                FriendRequestRow(request: request) {
+                    Task { await vm.accept(request) }
+                } onReject: {
+                    Task { await vm.reject(request) }
                 }
             }
         }
