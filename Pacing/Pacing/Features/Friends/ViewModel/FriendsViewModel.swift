@@ -97,6 +97,14 @@ final class FriendsViewModel: ObservableObject {
         searchResults = []
     }
 
+    func dismissRecommendation(_ user: FriendUser) {
+        recommendedUsers.removeAll { $0.id == user.id }
+    }
+
+    func dismissSearchResult(_ user: FriendUser) {
+        searchResults.removeAll { $0.id == user.id }
+    }
+
     func sendRequest(to user: FriendUser) async {
         guard let uid = currentUID else { return }
 
