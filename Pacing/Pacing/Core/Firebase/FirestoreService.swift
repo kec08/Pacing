@@ -90,6 +90,88 @@ final class FirestoreService {
         }
     }
 
+    // MARK: - 친구 프로필 통계 조회
+    func fetchFriendProfileStats(uid: String) async throws -> FriendProfileStats {
+        let records = try await fetchRunHistory(uid: uid, limit: 100)
+        guard !records.isEmpty else { return .empty }
+
+        let totalDistance = records.reduce(0) { $0 + $1.distance }
+        let totalDuration = records.reduce(0) { $0 + $1.duration }
+        let averagePace = totalDistance > 0
+            ? Double(totalDuration) / 60.0 / totalDistance
+            : 0
+
+        return FriendProfileStats(
+            averagePace: averagePace,
+            totalDuration: totalDuration,
+            totalDistance: totalDistance,
+            lastRunDate: records.first?.startedAt
+        )
+    }
+
+    // MARK: - 마지막 러닝 날짜 조회
+    private func fetchLastRunDate(uid: String) async throws -> Date? {
+        let snapshot = try await db.collection("users").document(uid)
+            .collection("runHistory")
+            .order(by: "startedAt", descending: true)
+            .limit(to: 1)
+            .getDocuments()
+
+        return (snapshot.documents.first?.data()["startedAt"] as? Timestamp)?.dateValue()
+    }
+
+    // MARK: - 최근 들은 노래 저장
+    func saveRecentSong(
+        uid: String,
+        title: String,
+        artistName: String,
+        songStoreID: String?,
+        artworkURL: String? = nil
+    ) async throws {
+        let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !uid.isEmpty, !trimmedTitle.isEmpty else { return }
+
+        let documentID = songStoreID?.isEmpty == false ? songStoreID! : UUID().uuidString
+        var data: [String: Any] = [
+            "title": trimmedTitle,
+            "artistName": artistName,
+            "songStoreID": songStoreID ?? "",
+            "playedAt": FieldValue.serverTimestamp()
+        ]
+        if let artworkURL, !artworkURL.isEmpty {
+            data["artworkURL"] = artworkURL
+        }
+
+        try await db.collection("users").document(uid)
+            .collection("recentSongs").document(documentID)
+            .setData(data, merge: true)
+    }
+
+    // MARK: - 최근 들은 노래 조회
+    func fetchRecentSongs(uid: String, limit: Int = 10) async throws -> [FriendRecentSong] {
+        let snapshot = try await db.collection("users").document(uid)
+            .collection("recentSongs")
+            .order(by: "playedAt", descending: true)
+            .limit(to: limit)
+            .getDocuments()
+
+        return snapshot.documents.compactMap { doc in
+            let data = doc.data()
+            guard let title = data["title"] as? String,
+                  !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return nil }
+
+            return FriendRecentSong(
+                id: doc.documentID,
+                title: title,
+                artistName: data["artistName"] as? String ?? "",
+                playedAt: (data["playedAt"] as? Timestamp)?.dateValue(),
+                songStoreID: data["songStoreID"] as? String,
+                artworkURL: data["artworkURL"] as? String
+            )
+        }
+    }
+
     // MARK: - 친구 목록 조회
     func fetchFriends(uid: String) async throws -> [FriendUser] {
         let snapshot = try await db.collection("users").document(uid)
@@ -97,16 +179,61 @@ final class FirestoreService {
             .order(by: "createdAt", descending: true)
             .getDocuments()
 
-        return snapshot.documents.map { doc in
+        var friends: [FriendUser] = []
+        for doc in snapshot.documents {
             let data = doc.data()
-            return FriendUser(
+            let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
+            friends.append(FriendUser(
                 id: doc.documentID,
                 nickname: data["nickname"] as? String ?? "러너",
                 profileImageBase64: data["profileImageBase64"] as? String,
-                statusText: data["statusText"] as? String ?? "최근 활동 없음",
+                statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
                 source: .friend
-            )
+            ))
         }
+        return friends
+    }
+
+    // MARK: - 친구 프로필 조회
+    func fetchFriendUserProfile(uid: String, source: FriendRecommendationSource = .friend) async throws -> FriendUser {
+        try await fetchFriendUser(uid: uid, source: source)
+    }
+
+    // MARK: - 보낸 친구 요청 조회
+    func fetchPendingSentFriendRequestUIDs(uid: String) async throws -> Set<String> {
+        let snapshot = try await db.collection("friendRequests")
+            .whereField("fromUID", isEqualTo: uid)
+            .whereField("status", isEqualTo: FriendRequestStatus.pending.rawValue)
+            .getDocuments()
+
+        return Set(snapshot.documents.compactMap { doc in
+            doc.data()["toUID"] as? String
+        })
+    }
+
+    // MARK: - 친구 관계 조회
+    func fetchFriendRelationship(currentUID: String, targetUID: String) async throws -> FriendRelationship {
+        guard !currentUID.isEmpty, !targetUID.isEmpty, currentUID != targetUID else {
+            return .none
+        }
+
+        let friendDoc = try await db.collection("users").document(currentUID)
+            .collection("friends").document(targetUID)
+            .getDocument()
+
+        if friendDoc.exists {
+            return .friend
+        }
+
+        let requestDoc = try await db.collection("friendRequests")
+            .document("\(currentUID)_\(targetUID)")
+            .getDocument()
+
+        if requestDoc.data()?["status"] as? String == FriendRequestStatus.pending.rawValue {
+            return .requestPending
+        }
+
+        return .none
     }
 
     // MARK: - 받은 친구 요청 조회
@@ -194,6 +321,15 @@ final class FirestoreService {
         try await db.collection("friendRequests")
             .document(requestID)
             .setData(data, merge: true)
+    }
+
+    // MARK: - 보낸 친구 요청 취소
+    func cancelSentFriendRequest(from fromUID: String, to toUID: String) async throws {
+        guard !fromUID.isEmpty, !toUID.isEmpty, fromUID != toUID else { return }
+
+        try await db.collection("friendRequests")
+            .document("\(fromUID)_\(toUID)")
+            .updateData(["status": FriendRequestStatus.rejected.rawValue])
     }
 
     // MARK: - 친구 요청 수락

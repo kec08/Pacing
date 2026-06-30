@@ -3,7 +3,6 @@ import Combine
 import CoreLocation
 import FirebaseAuth
 import MusicKit
-import MusicKit
 
 enum RunningState {
     case idle
@@ -143,17 +142,37 @@ final class RunningViewModel: ObservableObject {
         currentPace = paceBuffer.reduce(0, +) / Double(paceBuffer.count)
     }
 
-    func saveRecord() async {
-        guard elapsedSeconds >= 60 else { return }  // 1분 미만은 저장하지 않음
+    func saveRecord(
+        distance: Double? = nil,
+        elapsedSeconds: Int? = nil,
+        avgPace: Double? = nil,
+        routeCoordinates: [CLLocationCoordinate2D]? = nil
+    ) async {
+        let savedDistance = distance ?? self.distance
+        let savedElapsedSeconds = elapsedSeconds ?? self.elapsedSeconds
+        let savedAveragePace = avgPace ?? self.avgPace
+        let savedRouteCoordinates = routeCoordinates ?? locationManager.routeCoordinates
+
+        guard savedElapsedSeconds >= 60 else { return }  // 1분 미만은 저장하지 않음
         guard let uid = Auth.auth().currentUser?.uid else { return }
         let record = RunRecord(
             id: UUID().uuidString,
-            startedAt: Date().addingTimeInterval(-Double(elapsedSeconds)),
-            duration: elapsedSeconds,
-            distance: distance,
-            avgPace: avgPace,
-            routeCoordinates: locationManager.routeCoordinates
+            startedAt: Date().addingTimeInterval(-Double(savedElapsedSeconds)),
+            duration: savedElapsedSeconds,
+            distance: savedDistance,
+            avgPace: savedAveragePace,
+            routeCoordinates: savedRouteCoordinates
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
+
+        if let song = musicViewModel?.currentSongSnapshot() {
+            try? await FirestoreService.shared.saveRecentSong(
+                uid: uid,
+                title: song.title,
+                artistName: song.artistName,
+                songStoreID: song.songStoreID,
+                artworkURL: song.artworkURL
+            )
+        }
     }
 }

@@ -145,10 +145,13 @@ struct FriendsView: View {
                             user: user,
                             buttonTitle: vm.buttonTitle(for: user),
                             isEnabled: vm.canSendRequest(to: user),
-                            onSend: { Task { await vm.sendRequest(to: user) } },
-                            onDismiss: { vm.dismissSearchResult(user) }
-                        )
-                    }
+                            relationship: relationship(for: user),
+                                onSend: { Task { await vm.sendRequest(to: user) } },
+                                onRequestSent: { vm.markRequestSent(to: user) },
+                                onRequestCanceled: { vm.markRequestCanceled(to: user) },
+                                onDismiss: { vm.dismissSearchResult(user) }
+                            )
+                        }
                 }
             }
         }
@@ -159,11 +162,16 @@ struct FriendsView: View {
             if vm.isLoading && vm.friends.isEmpty {
                 loadingCard
             } else if vm.friends.isEmpty {
-                emptyCard("아직 친구가 없어요")
+                emptyFriendsState
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.friends) { friend in
-                        FriendUserRow(user: friend)
+                        NavigationLink {
+                            FriendProfileView(friend: friend, initialRelationship: .friend)
+                        } label: {
+                            FriendUserRow(user: friend)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -191,7 +199,10 @@ struct FriendsView: View {
                                 user: user,
                                 buttonTitle: vm.buttonTitle(for: user),
                                 isEnabled: vm.canSendRequest(to: user),
+                                relationship: relationship(for: user),
                                 onSend: { Task { await vm.sendRequest(to: user) } },
+                                onRequestSent: { vm.markRequestSent(to: user) },
+                                onRequestCanceled: { vm.markRequestCanceled(to: user) },
                                 onDismiss: { vm.dismissRecommendation(user) }
                             )
                         }
@@ -241,11 +252,36 @@ struct FriendsView: View {
         .glassRounded(cornerRadius: 16)
     }
 
+    private var emptyFriendsState: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "person.2")
+                .font(.system(size: 28, weight: .semibold))
+                .foregroundStyle(Color.gray500)
+
+            VStack(spacing: 4) {
+                Text("친구가 없습니다")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+
+                Text("추천 친구를 통해 친구를 추가해보세요")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 22)
+    }
+
     private var errorBinding: Binding<Bool> {
         Binding(
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } }
         )
+    }
+
+    private func relationship(for user: FriendUser) -> FriendRelationship {
+        vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
     }
 }
 
@@ -415,8 +451,8 @@ private struct FriendUserRow: View {
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                 Text(user.statusText)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
+                    .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
             }
 
             Spacer()
@@ -435,21 +471,36 @@ private struct FriendCandidateRow: View {
     let user: FriendUser
     let buttonTitle: String
     let isEnabled: Bool
+    let relationship: FriendRelationship
     let onSend: () -> Void
+    let onRequestSent: () -> Void
+    let onRequestCanceled: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
-            FriendAvatar(user: user)
+            NavigationLink {
+                FriendProfileView(
+                    friend: user,
+                    initialRelationship: relationship,
+                    onRequestSent: { _ in onRequestSent() },
+                    onRequestCanceled: { _ in onRequestCanceled() }
+                )
+            } label: {
+                HStack(spacing: 12) {
+                    FriendAvatar(user: user)
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(user.nickname)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                Text(user.source.rawValue)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSecondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(user.nickname)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                        Text(user.source.rawValue)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.textSecondary)
+                    }
+                }
             }
+            .buttonStyle(.plain)
 
             Spacer(minLength: 8)
 
@@ -480,13 +531,26 @@ private struct FriendRecommendationCard: View {
     let user: FriendUser
     let buttonTitle: String
     let isEnabled: Bool
+    let relationship: FriendRelationship
     let onSend: () -> Void
+    let onRequestSent: () -> Void
+    let onRequestCanceled: () -> Void
     let onDismiss: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top) {
-                FriendAvatar(user: user, size: 44, fontSize: 18)
+                NavigationLink {
+                    FriendProfileView(
+                        friend: user,
+                        initialRelationship: relationship,
+                        onRequestSent: { _ in onRequestSent() },
+                        onRequestCanceled: { _ in onRequestCanceled() }
+                    )
+                } label: {
+                    FriendAvatar(user: user, size: 44, fontSize: 18)
+                }
+                .buttonStyle(.plain)
 
                 Spacer()
 
@@ -499,11 +563,21 @@ private struct FriendRecommendationCard: View {
                 .buttonStyle(.plain)
             }
 
-            Text(user.nickname)
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(Color.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
+            NavigationLink {
+                FriendProfileView(
+                    friend: user,
+                    initialRelationship: relationship,
+                    onRequestSent: { _ in onRequestSent() },
+                    onRequestCanceled: { _ in onRequestCanceled() }
+                )
+            } label: {
+                Text(user.nickname)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .buttonStyle(.plain)
 
             Button(action: onSend) {
                 Text(buttonTitle)
