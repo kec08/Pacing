@@ -104,7 +104,8 @@ final class FirestoreService {
         return FriendProfileStats(
             averagePace: averagePace,
             totalDuration: totalDuration,
-            totalDistance: totalDistance
+            totalDistance: totalDistance,
+            lastRunDate: records.first?.startedAt
         )
     }
 

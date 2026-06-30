@@ -72,7 +72,7 @@ struct FriendProfileView: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
 
-                Text(vm.friend.statusText)
+                Text(vm.isLoading ? "러닝 기록 확인 중" : vm.activityText)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)

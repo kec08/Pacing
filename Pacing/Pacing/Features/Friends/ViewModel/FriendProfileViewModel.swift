@@ -110,6 +110,26 @@ final class FriendProfileViewModel: ObservableObject {
         String(format: "%.1fkm", stats.totalDistance)
     }
 
+    var activityText: String {
+        guard let lastRunDate = stats.lastRunDate else {
+            return "러닝 기록 없음"
+        }
+
+        let calendar = Calendar.current
+        if calendar.isDateInToday(lastRunDate) {
+            return "오늘 러닝 완료"
+        }
+
+        if calendar.isDateInYesterday(lastRunDate) {
+            return "어제 러닝 완료"
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일"
+        return "\(formatter.string(from: lastRunDate)) 러닝 완료"
+    }
+
     var actionTitle: String {
         switch relationship {
         case .friend:

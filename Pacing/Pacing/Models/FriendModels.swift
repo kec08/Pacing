@@ -45,11 +45,13 @@ struct FriendProfileStats: Equatable {
     let averagePace: Double
     let totalDuration: Int
     let totalDistance: Double
+    let lastRunDate: Date?
 
     static let empty = FriendProfileStats(
         averagePace: 0,
         totalDuration: 0,
-        totalDistance: 0
+        totalDistance: 0,
+        lastRunDate: nil
     )
 }
 
