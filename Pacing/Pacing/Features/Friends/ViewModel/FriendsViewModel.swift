@@ -152,7 +152,7 @@ final class FriendsViewModel: ObservableObject {
     }
 
     func buttonTitle(for user: FriendUser) -> String {
-        sentRequestUIDs.contains(user.id) ? "요청됨" : "친구 추가"
+        sentRequestUIDs.contains(user.id) ? "요청됨" : "추가"
     }
 
     func canSendRequest(to user: FriendUser) -> Bool {
