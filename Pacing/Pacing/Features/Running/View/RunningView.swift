@@ -700,18 +700,25 @@ struct RunningView: View {
                         let displaySnapshot = musicVM.currentSongSnapshot()
                         let listenSession = listenVM.activeSession
                         let isListenGuest = listenSession?.status == "active" && !listenVM.isHost
-                        let listenArtwork = isListenGuest ? decodedArtworkData(listenSession?.artworkData ?? "") : nil
+                        let sessionArtwork = decodedArtworkData(listenSession?.artworkData ?? "")
+                        let listenArtwork = isListenGuest ? sessionArtwork : nil
+                        let visibleSongTitle = isListenGuest
+                            ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))
+                            : displaySnapshotTitle(displaySnapshot)
+                        let visibleArtistName = isListenGuest
+                            ? (listenSession?.artistName.isEmpty == false ? listenSession?.artistName : displaySnapshotArtist(displaySnapshot))
+                            : displaySnapshotArtist(displaySnapshot)
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
                         Group {
-                            if let artwork = displaySnapshot?.artwork {
-                                Image(uiImage: artwork)
+                            if let listenArtwork {
+                                Image(uiImage: listenArtwork)
                                     .resizable()
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            } else if let listenArtwork {
-                                Image(uiImage: listenArtwork)
+                            } else if let artwork = displaySnapshot?.artwork {
+                                Image(uiImage: artwork)
                                     .resizable()
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
@@ -756,20 +763,20 @@ struct RunningView: View {
                         let insertEdge: Edge = musicVM.isGoingForward ? .trailing : .leading
                         let removeEdge: Edge = musicVM.isGoingForward ? .leading : .trailing
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(displaySnapshotTitle(displaySnapshot) ?? musicVM.displaySongTitle)
+                            Text(visibleSongTitle ?? musicVM.displaySongTitle)
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                                .id(displaySnapshot?.songStoreID ?? musicVM.currentSong?.id.rawValue)
+                                .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? musicVM.currentSong?.id.rawValue)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertEdge).combined(with: .opacity),
                                     removal: .move(edge: removeEdge).combined(with: .opacity)
                                 ))
-                            Text(displaySnapshotArtist(displaySnapshot) ?? musicVM.displayArtistName)
+                            Text(visibleArtistName ?? musicVM.displayArtistName)
                                 .font(.system(size: 16))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
-                                .id(displaySnapshot?.artistName ?? musicVM.displayArtistName)
+                                .id(visibleArtistName ?? musicVM.displayArtistName)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertEdge).combined(with: .opacity),
                                     removal: .move(edge: removeEdge).combined(with: .opacity)

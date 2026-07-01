@@ -244,6 +244,7 @@ final class ListenTogetherViewModel: ObservableObject {
             || activeSession?.songTitle != session.songTitle
             || activeSession?.artistName != session.artistName
             || activeSession?.artworkURL != session.artworkURL
+            || activeSession?.artworkData != session.artworkData
     }
 
     private func currentSongSnapshot(

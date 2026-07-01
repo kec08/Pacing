@@ -62,6 +62,7 @@ struct FriendRecentSong: Identifiable, Equatable {
     let playedAt: Date?
     let songStoreID: String?
     let artworkURL: String?
+    let artworkData: String?
 }
 
 enum FriendActivityText {
