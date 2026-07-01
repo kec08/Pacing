@@ -19,8 +19,15 @@ struct RunSummaryView: View {
             // 전체 화면 지도 (경로 포함)
             if routeCoordinates.count >= 2 {
                 Map(position: $cameraPosition, interactionModes: []) {
-                    MapPolyline(coordinates: routeCoordinates)
-                        .stroke(Color.main500, lineWidth: 4)
+                    MapPolyline(coordinates: smoothedRouteCoordinates(from: routeCoordinates))
+                        .stroke(
+                            LinearGradient(
+                                colors: [Color.main500, Color.sub500],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                        )
                 }
                 .mapStyle(.standard)
                 .ignoresSafeArea()
@@ -139,5 +146,36 @@ struct RunSummaryView: View {
             longitudeDelta: max((lons.max()! - lons.min()!) * 1.5, 0.003)
         )
         cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+    }
+
+    private func smoothedRouteCoordinates(from coordinates: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {
+        guard coordinates.count >= 2 else { return coordinates }
+
+        var result: [CLLocationCoordinate2D] = [coordinates[0]]
+
+        for index in 1..<coordinates.count {
+            let previous = coordinates[index - 1]
+            let current = coordinates[index]
+            let previousLocation = CLLocation(latitude: previous.latitude, longitude: previous.longitude)
+            let currentLocation = CLLocation(latitude: current.latitude, longitude: current.longitude)
+            let distance = currentLocation.distance(from: previousLocation)
+            let stepCount = min(max(Int(distance / 4.0), 0), 8)
+
+            if stepCount > 0 {
+                for step in 1...stepCount {
+                    let progress = Double(step) / Double(stepCount + 1)
+                    result.append(
+                        CLLocationCoordinate2D(
+                            latitude: previous.latitude + (current.latitude - previous.latitude) * progress,
+                            longitude: previous.longitude + (current.longitude - previous.longitude) * progress
+                        )
+                    )
+                }
+            }
+
+            result.append(current)
+        }
+
+        return result
     }
 }
