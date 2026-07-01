@@ -698,12 +698,20 @@ struct RunningView: View {
                 ScrollView {
                     VStack(spacing: 0) {
                         let displaySnapshot = musicVM.currentSongSnapshot()
-                        let isListenGuest = listenVM.activeSession?.status == "active" && !listenVM.isHost
+                        let listenSession = listenVM.activeSession
+                        let isListenGuest = listenSession?.status == "active" && !listenVM.isHost
+                        let listenArtwork = isListenGuest ? decodedArtworkData(listenSession?.artworkData ?? "") : nil
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
                         Group {
                             if let artwork = displaySnapshot?.artwork {
                                 Image(uiImage: artwork)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                            } else if let listenArtwork {
+                                Image(uiImage: listenArtwork)
                                     .resizable()
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
