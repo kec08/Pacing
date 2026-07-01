@@ -30,28 +30,24 @@ final class ListenTogetherViewModel: ObservableObject {
         RealtimeDBService.shared.stopObservingIncomingRequests(uid: myUID)
     }
 
-    // MARK: - 같이 듣기 요청 보내기 (호스트)
+    // MARK: - 같이 듣기 요청 보내기
     func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) {
-        let player = MPMusicPlayerController.systemMusicPlayer
-        let song = currentSongSnapshot(from: musicVM, player: player)
-        let position = player.currentPlaybackTime
-
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
             guestUID: runner.id, guestNickname: runner.nickname,
-            songStoreID: song.storeID, songTitle: song.title, artistName: song.artist,
-            position: position
+            songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
+            position: 0
         )
 
         activeSession = ListenSession(
             id: sessionID, hostUID: myUID, hostNickname: myNickname,
             guestUID: runner.id, guestNickname: runner.nickname,
-            songStoreID: song.storeID, songTitle: song.title, artistName: song.artist,
-            playbackPosition: position,
+            songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
+            playbackPosition: 0,
             serverTimestamp: Date().timeIntervalSince1970,
-            status: "pending", isPlaying: player.playbackState == .playing
+            status: "pending", isPlaying: true
         )
-        isHost = true
+        isHost = false
         sessionStartDate = Date()
 
         observeSession(sessionID: sessionID, musicVM: musicVM)
@@ -60,14 +56,35 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - 요청 수락 (게스트)
     func acceptRequest(musicVM: RunningMusicViewModel) async {
         guard let session = incomingRequest else { return }
+        let player = MPMusicPlayerController.systemMusicPlayer
+        let song = currentSongSnapshot(from: musicVM, player: player)
+        let position = player.currentPlaybackTime
+
+        RealtimeDBService.shared.updateSessionPlayback(
+            sessionID: session.id,
+            songStoreID: song.storeID,
+            songTitle: song.title,
+            artistName: song.artist,
+            position: position,
+            isPlaying: player.playbackState == .playing
+        )
         RealtimeDBService.shared.acceptSession(sessionID: session.id, guestUID: myUID)
-        activeSession = session
-        isHost = false
+
+        var sourceSession = session
+        sourceSession.songStoreID = song.storeID
+        sourceSession.songTitle = song.title
+        sourceSession.artistName = song.artist
+        sourceSession.playbackPosition = position
+        sourceSession.serverTimestamp = Date().timeIntervalSince1970 * 1000
+        sourceSession.status = "active"
+        sourceSession.isPlaying = player.playbackState == .playing
+
+        activeSession = sourceSession
+        isHost = true
         incomingRequest = nil
         sessionStartDate = Date()
 
         observeSession(sessionID: session.id, musicVM: musicVM)
-        await syncMusic(session: session)
     }
 
     // MARK: - 요청 거절
@@ -84,7 +101,7 @@ final class ListenTogetherViewModel: ObservableObject {
         cleanup()
     }
 
-    // MARK: - 호스트: 재생 상태 브로드캐스트
+    // MARK: - 음악 소스: 재생 상태 브로드캐스트
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
@@ -197,12 +214,17 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     private func shouldSyncMusic(with session: ListenSession) -> Bool {
+        if activeSession?.status != session.status {
+            return true
+        }
         let player = MPMusicPlayerController.systemMusicPlayer
         let currentStoreID = player.nowPlayingItem?.playbackStoreID ?? ""
         if !session.songStoreID.isEmpty, currentStoreID != session.songStoreID {
             return true
         }
         return activeSession?.songStoreID != session.songStoreID
+            || activeSession?.songTitle != session.songTitle
+            || activeSession?.artistName != session.artistName
     }
 
     private func currentSongSnapshot(
