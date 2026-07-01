@@ -102,6 +102,7 @@ final class RealtimeDBService {
         hostUID: String, hostNickname: String,
         guestUID: String, guestNickname: String,
         songStoreID: String, songTitle: String, artistName: String,
+        artworkURL: String = "",
         position: Double
     ) -> String {
         guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
@@ -115,6 +116,7 @@ final class RealtimeDBService {
             "songStoreID": songStoreID,
             "songTitle": songTitle,
             "artistName": artistName,
+            "artworkURL": artworkURL,
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "status": "pending",
@@ -144,6 +146,7 @@ final class RealtimeDBService {
     func updateSessionPlayback(
         sessionID: String,
         songStoreID: String, songTitle: String, artistName: String,
+        artworkURL: String = "",
         position: Double, isPlaying: Bool
     ) {
         guard !sessionID.isEmpty else { return }
@@ -151,6 +154,7 @@ final class RealtimeDBService {
             "songStoreID": songStoreID,
             "songTitle": songTitle,
             "artistName": artistName,
+            "artworkURL": artworkURL,
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "isPlaying": isPlaying
@@ -173,6 +177,7 @@ final class RealtimeDBService {
                 songStoreID: d["songStoreID"] as? String ?? "",
                 songTitle: d["songTitle"] as? String ?? "",
                 artistName: d["artistName"] as? String ?? "",
+                artworkURL: d["artworkURL"] as? String ?? "",
                 playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
                 serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
                 status: d["status"] as? String ?? "ended",
@@ -208,6 +213,7 @@ final class RealtimeDBService {
                     songStoreID: d["songStoreID"] as? String ?? "",
                     songTitle: d["songTitle"] as? String ?? "",
                     artistName: d["artistName"] as? String ?? "",
+                    artworkURL: d["artworkURL"] as? String ?? "",
                     playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
                     serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
                     status: d["status"] as? String ?? "pending",

@@ -1182,27 +1182,9 @@ struct RunningView: View {
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
-                    VStack(spacing: 18) {
-                        // 함께 듣는 중 헤더
-                        VStack(spacing: 8) {
-                            ZStack {
-                                Circle()
-                                    .fill(Color.main500.opacity(0.12))
-                                    .frame(width: 54, height: 54)
-                                Image(systemName: "music.note.list")
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(Color.main500)
-                            }
-                            Text("함께 듣는 중")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(Color.textPrimary)
-                            Text(session.songTitle.isEmpty ? "재생 중인 곡을 동기화하고 있어요" : "\(session.songTitle)\(session.artistName.isEmpty ? "" : " - \(session.artistName)")")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundStyle(Color.textSecondary)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 14)
+                    VStack(spacing: 20) {
+                        listenAlbumHeader(session: session)
+                            .padding(.top, 16)
 
                         // 참여자 카드 목록
                         ScrollView {
@@ -1317,6 +1299,60 @@ struct RunningView: View {
             Spacer()
         }
         .padding(.vertical, 10)
+    }
+
+    private func listenAlbumHeader(session: ListenSession) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            listenArtwork(session: session)
+                .frame(maxWidth: .infinity, alignment: .center)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(2)
+                Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 24)
+        }
+    }
+
+    @ViewBuilder
+    private func listenArtwork(session: ListenSession) -> some View {
+        let size: CGFloat = 220
+        if let url = URL(string: session.artworkURL), !session.artworkURL.isEmpty {
+            AsyncImage(url: url) { phase in
+                switch phase {
+                case .success(let image):
+                    image
+                        .resizable()
+                        .scaledToFill()
+                default:
+                    listenArtworkPlaceholder
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(RoundedRectangle(cornerRadius: 18))
+            .shadow(color: .black.opacity(0.16), radius: 18, y: 10)
+        } else {
+            listenArtworkPlaceholder
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: 18))
+                .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
+        }
+    }
+
+    private var listenArtworkPlaceholder: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 18)
+                .fill(Color.main500.opacity(0.12))
+            Image(systemName: "music.note")
+                .font(.system(size: 54, weight: .semibold))
+                .foregroundStyle(Color.main500)
+        }
     }
 
     // MARK: - 앱 레벨 브로드캐스트

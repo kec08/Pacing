@@ -42,6 +42,7 @@ final class ListenTogetherViewModel: ObservableObject {
             hostUID: myUID, hostNickname: myNickname,
             guestUID: runner.id, guestNickname: runner.nickname,
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
+            artworkURL: "",
             position: 0
         )
 
@@ -49,6 +50,7 @@ final class ListenTogetherViewModel: ObservableObject {
             id: sessionID, hostUID: myUID, hostNickname: myNickname,
             guestUID: runner.id, guestNickname: runner.nickname,
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
+            artworkURL: "",
             playbackPosition: 0,
             serverTimestamp: Date().timeIntervalSince1970,
             status: "pending", isPlaying: true
@@ -71,6 +73,7 @@ final class ListenTogetherViewModel: ObservableObject {
             songStoreID: song.storeID,
             songTitle: song.title,
             artistName: song.artist,
+            artworkURL: song.artworkURL,
             position: position,
             isPlaying: player.playbackState == .playing
         )
@@ -80,6 +83,7 @@ final class ListenTogetherViewModel: ObservableObject {
         sourceSession.songStoreID = song.storeID
         sourceSession.songTitle = song.title
         sourceSession.artistName = song.artist
+        sourceSession.artworkURL = song.artworkURL
         sourceSession.playbackPosition = position
         sourceSession.serverTimestamp = Date().timeIntervalSince1970 * 1000
         sourceSession.status = "active"
@@ -119,6 +123,7 @@ final class ListenTogetherViewModel: ObservableObject {
             songStoreID: song.storeID,
             songTitle: song.title,
             artistName: song.artist,
+            artworkURL: song.artworkURL,
             position: player.currentPlaybackTime,
             isPlaying: player.playbackState == .playing
         )
@@ -233,12 +238,13 @@ final class ListenTogetherViewModel: ObservableObject {
         return activeSession?.songStoreID != session.songStoreID
             || activeSession?.songTitle != session.songTitle
             || activeSession?.artistName != session.artistName
+            || activeSession?.artworkURL != session.artworkURL
     }
 
     private func currentSongSnapshot(
         from musicVM: RunningMusicViewModel,
         player: MPMusicPlayerController
-    ) -> (storeID: String, title: String, artist: String) {
+    ) -> (storeID: String, title: String, artist: String, artworkURL: String) {
         let musicSnapshot = musicVM.currentSongSnapshot()
         let mediaItem = player.nowPlayingItem
         let storeID = mediaItem?.playbackStoreID.nonEmpty
@@ -250,7 +256,7 @@ final class ListenTogetherViewModel: ObservableObject {
         let artist = musicSnapshot?.artistName.nonEmpty
             ?? mediaItem?.artist?.nonEmpty
             ?? ""
-        return (storeID, title, artist)
+        return (storeID, title, artist, musicSnapshot?.artworkURL ?? "")
     }
 
     private func cleanup() {

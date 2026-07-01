@@ -42,6 +42,7 @@ struct ListenSession: Identifiable {
     var songStoreID: String
     var songTitle: String
     var artistName: String
+    var artworkURL: String
     var playbackPosition: Double
     var serverTimestamp: Double
     var status: String          // pending / active / ended / rejected
