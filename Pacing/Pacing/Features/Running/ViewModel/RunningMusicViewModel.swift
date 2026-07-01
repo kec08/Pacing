@@ -2,6 +2,22 @@ import SwiftUI
 import MusicKit
 import MediaPlayer
 import Combine
+import UIKit
+
+struct PlayerSongSnapshot: Equatable {
+    let title: String
+    let artistName: String
+    let songStoreID: String
+    let artworkURL: String?
+    let artwork: UIImage?
+
+    static func == (lhs: PlayerSongSnapshot, rhs: PlayerSongSnapshot) -> Bool {
+        lhs.title == rhs.title
+            && lhs.artistName == rhs.artistName
+            && lhs.songStoreID == rhs.songStoreID
+            && lhs.artworkURL == rhs.artworkURL
+    }
+}
 
 @MainActor
 final class RunningMusicViewModel: ObservableObject {
@@ -13,18 +29,27 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isPlaying: Bool = false
     @Published var isLoading: Bool = false
     @Published var isGoingForward: Bool = true
+    @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
+    @Published private(set) var displayPlaybackTime: TimeInterval = 0
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private var isManualSeeking: Bool = false
+    private var seekSyncTask: Task<Void, Never>?
+    private var playbackClock: AnyCancellable?
+    private var optimisticPlaybackBaseTime: TimeInterval?
+    private var optimisticPlaybackStartedAt: Date?
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
 
     init() {
         observePlaybackState()
+        startPlaybackClock()
     }
 
     deinit {
+        playbackClock?.cancel()
+        seekSyncTask?.cancel()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
     }
@@ -81,41 +106,101 @@ final class RunningMusicViewModel: ObservableObject {
     func play(at index: Int) async {
         guard index >= 0, index < cachedMediaItems.count else { return }
         isManualSeeking = true
-        if index < queueSongs.count {
-            currentSong = queueSongs[index]
-        }
         // UI 애니메이션이 완료된 후 재생 시작
         try? await Task.sleep(nanoseconds: 150_000_000)
         let targetItem = cachedMediaItems[index]
         player.nowPlayingItem = targetItem
         player.play()
+        syncCurrentState()
         isManualSeeking = false
     }
 
     // MARK: - 재생 시간
-    var currentPlaybackTime: TimeInterval { player.currentPlaybackTime }
+    var currentPlaybackTime: TimeInterval { displayPlaybackTime }
     var playbackDuration: TimeInterval { player.nowPlayingItem?.playbackDuration ?? 0 }
 
-    func currentSongSnapshot() -> (title: String, artistName: String, songStoreID: String, artworkURL: String?)? {
-        guard let currentSong else { return nil }
-        return (
-            title: currentSong.title,
-            artistName: currentSong.artistName,
-            songStoreID: "\(currentSong.id)",
-            artworkURL: currentSong.artwork?.url(width: 160, height: 160)?.absoluteString
-        )
+    var displaySongTitle: String {
+        currentSong?.title ?? nowPlayingSnapshot?.title ?? "플레이리스트를 선택하세요"
+    }
+
+    var displayArtistName: String {
+        currentSong?.artistName ?? nowPlayingSnapshot?.artistName ?? "Apple Music"
+    }
+
+    var hasDisplaySong: Bool {
+        currentSong != nil || nowPlayingSnapshot != nil
+    }
+
+    func currentSongSnapshot() -> PlayerSongSnapshot? {
+        if let item = player.nowPlayingItem, !item.playbackStoreID.isEmpty {
+            return PlayerSongSnapshot(
+                title: item.title ?? currentSong?.title ?? "",
+                artistName: item.artist ?? currentSong?.artistName ?? "Apple Music",
+                songStoreID: item.playbackStoreID,
+                artworkURL: currentSong?.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
+            )
+        }
+        if let currentSong {
+            return PlayerSongSnapshot(
+                title: currentSong.title,
+                artistName: currentSong.artistName,
+                songStoreID: "\(currentSong.id)",
+                artworkURL: currentSong.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artwork: nil
+            )
+        }
+        return nowPlayingSnapshot
     }
 
     func seek(to time: TimeInterval) {
-        player.currentPlaybackTime = max(0, min(time, playbackDuration))
+        let boundedTime = max(0, min(time, playbackDuration))
+        let effectiveTime = boundedTime == 0 ? 0.05 : boundedTime
+        let shouldResumePlayback = isPlaying || player.playbackState == .playing
+
+        isManualSeeking = true
+        player.currentPlaybackTime = effectiveTime
+        displayPlaybackTime = boundedTime
+
+        if shouldResumePlayback {
+            startOptimisticPlaybackClock(from: boundedTime)
+            player.play()
+            isPlaying = true
+        } else {
+            stopOptimisticPlaybackClock()
+        }
+
+        syncCurrentState()
+        seekSyncTask?.cancel()
+        seekSyncTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard let self else { return }
+
+            if shouldResumePlayback, self.player.playbackState != .playing {
+                self.startOptimisticPlaybackClock(from: self.displayPlaybackTime)
+                self.player.play()
+                self.isPlaying = true
+            }
+
+            if boundedTime == 0, self.player.currentPlaybackTime == 0 {
+                self.player.currentPlaybackTime = 0.05
+            }
+
+            self.syncCurrentState()
+            self.isManualSeeking = false
+        }
     }
 
     // MARK: - 재생/일시정지
     func togglePlayPause() async {
         if isPlaying {
             player.pause()
+            stopOptimisticPlaybackClock()
+            isPlaying = false
         } else {
+            startOptimisticPlaybackClock(from: displayPlaybackTime)
             player.play()
+            isPlaying = true
         }
     }
 
@@ -137,11 +222,23 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 현재 상태 동기화
     func syncCurrentState() {
-        isPlaying = player.playbackState == .playing
+        let playerIsPlaying = player.playbackState == .playing
+        if !isManualSeeking || playerIsPlaying {
+            isPlaying = playerIsPlaying
+        }
+        updatePlaybackClock()
         guard let item = player.nowPlayingItem else {
             currentSong = nil
+            nowPlayingSnapshot = nil
             return
         }
+        nowPlayingSnapshot = PlayerSongSnapshot(
+            title: item.title ?? "",
+            artistName: item.artist ?? "Apple Music",
+            songStoreID: item.playbackStoreID,
+            artworkURL: nil,
+            artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
+        )
         if let idx = cachedMediaItems.firstIndex(where: { $0.persistentID == item.persistentID }) {
             if !isManualSeeking && idx != currentSongIndex {
                 isGoingForward = idx > currentSongIndex
@@ -163,7 +260,11 @@ final class RunningMusicViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.isPlaying = self?.player.playbackState == .playing
+                guard let self else { return }
+                let playerIsPlaying = self.player.playbackState == .playing
+                if !self.isManualSeeking || playerIsPlaying {
+                    self.isPlaying = playerIsPlaying
+                }
             }
         }
 
@@ -178,5 +279,46 @@ final class RunningMusicViewModel: ObservableObject {
         }
 
         notificationObservers = [stateObserver, itemObserver]
+    }
+
+    private func startPlaybackClock() {
+        playbackClock = Timer.publish(every: 0.25, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.updatePlaybackClock()
+            }
+    }
+
+    private func updatePlaybackClock() {
+        let rawTime = max(0, player.currentPlaybackTime)
+        let duration = playbackDuration
+        let boundedRawTime = duration > 0 ? min(rawTime, duration) : rawTime
+        let isPlayerPlaying = player.playbackState == .playing
+
+        if let baseTime = optimisticPlaybackBaseTime,
+           let startedAt = optimisticPlaybackStartedAt {
+            let syntheticTime = max(0, baseTime + Date().timeIntervalSince(startedAt))
+            let boundedSyntheticTime = duration > 0 ? min(syntheticTime, duration) : syntheticTime
+
+            if rawTime > baseTime + 0.2 {
+                stopOptimisticPlaybackClock()
+                displayPlaybackTime = boundedRawTime
+            } else {
+                displayPlaybackTime = boundedSyntheticTime
+            }
+            return
+        }
+
+        displayPlaybackTime = boundedRawTime
+    }
+
+    private func startOptimisticPlaybackClock(from time: TimeInterval) {
+        optimisticPlaybackBaseTime = max(0, time)
+        optimisticPlaybackStartedAt = Date()
+    }
+
+    private func stopOptimisticPlaybackClock() {
+        optimisticPlaybackBaseTime = nil
+        optimisticPlaybackStartedAt = nil
     }
 }

@@ -126,7 +126,8 @@ final class FirestoreService {
         title: String,
         artistName: String,
         songStoreID: String?,
-        artworkURL: String? = nil
+        artworkURL: String? = nil,
+        artworkData: String? = nil
     ) async throws {
         let trimmedTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !uid.isEmpty, !trimmedTitle.isEmpty else { return }
@@ -140,6 +141,9 @@ final class FirestoreService {
         ]
         if let artworkURL, !artworkURL.isEmpty {
             data["artworkURL"] = artworkURL
+        }
+        if let artworkData, !artworkData.isEmpty {
+            data["artworkData"] = artworkData
         }
 
         try await db.collection("users").document(uid)
@@ -167,7 +171,8 @@ final class FirestoreService {
                 artistName: data["artistName"] as? String ?? "",
                 playedAt: (data["playedAt"] as? Timestamp)?.dateValue(),
                 songStoreID: data["songStoreID"] as? String,
-                artworkURL: data["artworkURL"] as? String
+                artworkURL: data["artworkURL"] as? String,
+                artworkData: data["artworkData"] as? String
             )
         }
     }

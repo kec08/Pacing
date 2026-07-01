@@ -326,7 +326,13 @@ private struct FriendRecentSongRow: View {
 
     private var albumArtwork: some View {
         Group {
-            if let artworkURL = song.artworkURL, let url = URL(string: artworkURL) {
+            if let artworkData = song.artworkData,
+               let data = Data(base64Encoded: artworkData),
+               let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else if let artworkURL = song.artworkURL, let url = URL(string: artworkURL) {
                 AsyncImage(url: url) { phase in
                     switch phase {
                     case .success(let image):

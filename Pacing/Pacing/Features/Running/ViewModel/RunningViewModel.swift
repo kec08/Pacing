@@ -3,6 +3,7 @@ import Combine
 import CoreLocation
 import FirebaseAuth
 import MusicKit
+import UIKit
 
 enum RunningState {
     case idle
@@ -171,8 +172,19 @@ final class RunningViewModel: ObservableObject {
                 title: song.title,
                 artistName: song.artistName,
                 songStoreID: song.songStoreID,
-                artworkURL: song.artworkURL
+                artworkURL: song.artworkURL,
+                artworkData: encodedArtworkData(from: song.artwork)
             )
         }
+    }
+
+    private func encodedArtworkData(from image: UIImage?) -> String? {
+        guard let image else { return nil }
+        let targetSize = CGSize(width: 160, height: 160)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return resized.jpegData(compressionQuality: 0.65)?.base64EncodedString()
     }
 }
