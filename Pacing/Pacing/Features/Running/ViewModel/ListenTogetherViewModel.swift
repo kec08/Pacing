@@ -3,6 +3,7 @@ import Combine
 import MediaPlayer
 import MusicKit
 import FirebaseAuth
+import UIKit
 
 @MainActor
 final class ListenTogetherViewModel: ObservableObject {
@@ -13,6 +14,7 @@ final class ListenTogetherViewModel: ObservableObject {
 
     private var myUID: String { Auth.auth().currentUser?.uid ?? "" }
     private var myNickname: String { UserDefaults.standard.string(forKey: "nickname") ?? "러너" }
+    private var lastIncomingRequestID: String?
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -20,6 +22,10 @@ final class ListenTogetherViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let session = session, session.status == "pending" {
+                    if self.lastIncomingRequestID != session.id {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        self.lastIncomingRequestID = session.id
+                    }
                     self.incomingRequest = session
                 }
             }
@@ -82,6 +88,7 @@ final class ListenTogetherViewModel: ObservableObject {
         activeSession = sourceSession
         isHost = true
         incomingRequest = nil
+        lastIncomingRequestID = nil
         sessionStartDate = Date()
 
         observeSession(sessionID: session.id, musicVM: musicVM)
@@ -92,6 +99,7 @@ final class ListenTogetherViewModel: ObservableObject {
         guard let session = incomingRequest else { return }
         RealtimeDBService.shared.rejectSession(sessionID: session.id, guestUID: myUID)
         incomingRequest = nil
+        lastIncomingRequestID = nil
     }
 
     // MARK: - 세션 종료
@@ -251,6 +259,7 @@ final class ListenTogetherViewModel: ObservableObject {
         incomingRequest = nil
         isHost = false
         sessionStartDate = nil
+        lastIncomingRequestID = nil
     }
 }
 

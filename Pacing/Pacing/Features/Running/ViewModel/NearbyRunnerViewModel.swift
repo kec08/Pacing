@@ -26,11 +26,13 @@ final class NearbyRunnerViewModel: ObservableObject {
     private let radiusMeters: Double = 1000
     private var myUID: String = ""
     private var allRunners: [ActiveRunner] = []
+    private var friendIDs: Set<String> = []
     private var myLocation: CLLocationCoordinate2D?
 
     func startObserving(uid: String) {
         myUID = uid
         isObserving = true
+        Task { await loadFriendIDs(uid: uid) }
         RealtimeDBService.shared.observeActiveRunners { [weak self] runners in
             Task { @MainActor [weak self] in
                 self?.allRunners = runners
@@ -64,21 +66,38 @@ final class NearbyRunnerViewModel: ObservableObject {
 
         nearbyRunners = allRunners
             .compactMap { runner in
-                let isMe = runner.id == myUID
+                guard runner.id != myUID else { return nil }
+                if selectedFilter == .friends, !friendIDs.contains(runner.id) {
+                    return nil
+                }
                 let point = CLLocation(latitude: runner.coordinate.latitude, longitude: runner.coordinate.longitude)
-                let dist = isMe ? 0 : myPoint.distance(from: point)
-                guard isMe || dist <= radiusMeters else { return nil }
+                let dist = myPoint.distance(from: point)
+                if selectedFilter == .nearby, dist > radiusMeters {
+                    return nil
+                }
                 return NearbyRunner(
                     id: runner.id,
-                    nickname: isMe ? "나" : runner.nickname,
+                    nickname: runner.nickname,
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
                     distance: dist,
-                    isMe: isMe
+                    isMe: false
                 )
             }
             .sorted { $0.distance < $1.distance }
+    }
+
+    private func loadFriendIDs(uid: String) async {
+        guard !uid.isEmpty else { return }
+        do {
+            let friends = try await FirestoreService.shared.fetchFriends(uid: uid)
+            friendIDs = Set(friends.map(\.id))
+            filterRunners()
+        } catch {
+            friendIDs = []
+            filterRunners()
+        }
     }
 
     func formattedDistance(_ runner: NearbyRunner) -> String {

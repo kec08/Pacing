@@ -154,10 +154,17 @@ struct RunningView: View {
             if let request = listenVM.incomingRequest {
                 VStack {
                     incomingRequestBanner(session: request)
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .top)
+                                    .combined(with: .opacity)
+                                    .combined(with: .scale(scale: 0.96, anchor: .top)),
+                                removal: .opacity.combined(with: .move(edge: .top))
+                            )
+                        )
                     Spacer()
                 }
-                .animation(.spring(duration: 0.4), value: listenVM.incomingRequest?.id)
+                .animation(.spring(response: 0.42, dampingFraction: 0.86), value: listenVM.incomingRequest?.id)
                 .zIndex(10)
             }
 
@@ -1107,7 +1114,7 @@ struct RunningView: View {
     // MARK: - 같이 듣기 배너
 
     private func incomingRequestBanner(session: ListenSession) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 12) {
             HStack(spacing: 10) {
                 ZStack {
                     Circle().fill(Color.main500).frame(width: 36, height: 36)
@@ -1115,8 +1122,11 @@ struct RunningView: View {
                         .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(session.hostNickname)님이 같이 듣기를 요청했어요")
-                        .font(.system(size: 14, weight: .semibold))
+                    Text("같이 듣기 요청")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.main500)
+                    Text("\(session.hostNickname)님이 함께 듣고 싶어해요")
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
                     if !session.songTitle.isEmpty {
                         HStack(spacing: 4) {
@@ -1134,7 +1144,7 @@ struct RunningView: View {
                 Button {
                     Task { await listenVM.acceptRequest(musicVM: musicVM) }
                 } label: {
-                    Text("수락")
+                    Label("수락", systemImage: "checkmark")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
                         .frame(maxWidth: .infinity).frame(height: 36)
                         .background(Color.main500).clipShape(RoundedRectangle(cornerRadius: 10))
@@ -1142,7 +1152,7 @@ struct RunningView: View {
                 Button {
                     listenVM.declineRequest()
                 } label: {
-                    Text("거절")
+                    Label("거절", systemImage: "xmark")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(Color.textSecondary)
                         .frame(maxWidth: .infinity).frame(height: 36)
                         .background(Color(.systemGray5)).clipShape(RoundedRectangle(cornerRadius: 10))
@@ -1150,9 +1160,13 @@ struct RunningView: View {
             }
         }
         .padding(14)
-        .background(.ultraThinMaterial)
+        .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .shadow(color: .black.opacity(0.12), radius: 8, y: 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.55), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
         .padding(.horizontal, 16)
         .padding(.top, 56)
     }
@@ -1168,31 +1182,31 @@ struct RunningView: View {
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
-                    VStack(spacing: 12) {
+                    VStack(spacing: 18) {
                         // 함께 듣는 중 헤더
-                        HStack(spacing: 8) {
-                            Image(systemName: "music.note.list")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.main500)
-                            Text("함께 듣는 중")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.textPrimary)
-                            Spacer()
-                            if !session.songTitle.isEmpty {
-                                Text("\(session.songTitle)")
-                                    .font(.system(size: 12))
-                                    .foregroundStyle(Color.textSecondary)
-                                    .lineLimit(1)
+                        VStack(spacing: 8) {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.main500.opacity(0.12))
+                                    .frame(width: 54, height: 54)
+                                Image(systemName: "music.note.list")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(Color.main500)
                             }
+                            Text("함께 듣는 중")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundStyle(Color.textPrimary)
+                            Text(session.songTitle.isEmpty ? "재생 중인 곡을 동기화하고 있어요" : "\(session.songTitle)\(session.artistName.isEmpty ? "" : " - \(session.artistName)")")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(Color.textSecondary)
+                                .lineLimit(1)
                         }
                         .padding(.horizontal, 20)
-                        .padding(.top, 8)
-
-                        Divider()
+                        .padding(.top, 14)
 
                         // 참여자 카드 목록
                         ScrollView {
-                            VStack(spacing: 12) {
+                            VStack(spacing: 6) {
                                 listenParticipantCard(
                                     name: myName,
                                     isMe: true,
@@ -1210,8 +1224,8 @@ struct RunningView: View {
                                     duration: listenDuration
                                 )
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.top, 12)
+                            .padding(.horizontal, 24)
+                            .padding(.top, 4)
                         }
 
                         Spacer()
@@ -1265,11 +1279,11 @@ struct RunningView: View {
         HStack(spacing: 14) {
             ZStack {
                 Circle()
-                    .fill(isMe ? Color.main500 : Color(.systemGray3))
-                    .frame(width: 50, height: 50)
+                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
+                    .frame(width: 42, height: 42)
                 Text(String(name.prefix(1)))
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isMe ? .white : Color.main500)
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -1280,9 +1294,6 @@ struct RunningView: View {
                     Text(role)
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(isMe ? Color.main500 : Color.textSecondary)
-                        .padding(.horizontal, 7).padding(.vertical, 2)
-                        .background(isMe ? Color.main500.opacity(0.12) : Color(.systemGray6))
-                        .clipShape(Capsule())
                 }
                 if !song.isEmpty {
                     HStack(spacing: 4) {
@@ -1305,9 +1316,7 @@ struct RunningView: View {
 
             Spacer()
         }
-        .padding(14)
-        .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 10)
     }
 
     // MARK: - 앱 레벨 브로드캐스트
