@@ -1184,7 +1184,7 @@ struct RunningView: View {
 
                     VStack(spacing: 18) {
                         listenAlbumHeader(session: session)
-                            .padding(.top, 20)
+                            .padding(.top, 8)
 
                         // 참여자 카드 목록
                         ScrollView {
@@ -1241,7 +1241,7 @@ struct RunningView: View {
                     Spacer()
                 }
             }
-            .navigationTitle("")
+            .navigationTitle("같이 듣기")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1303,7 +1303,8 @@ struct RunningView: View {
 
     private func listenAlbumHeader(session: ListenSession) -> some View {
         HStack(spacing: 12) {
-            listenArtwork(session: session, size: 66)
+            let localArtwork = musicVM.currentSongSnapshot()?.artwork
+            listenArtwork(session: session, size: 66, localArtwork: localArtwork)
                 .frame(width: 66, height: 66)
                 .accessibilityHidden(true)
             
@@ -1325,7 +1326,7 @@ struct RunningView: View {
     }
 
     @ViewBuilder
-    private func listenArtwork(session: ListenSession, size: CGFloat = 220) -> some View {
+    private func listenArtwork(session: ListenSession, size: CGFloat = 220, localArtwork: UIImage? = nil) -> some View {
         if let url = URL(string: session.artworkURL), !session.artworkURL.isEmpty {
             AsyncImage(url: url) { phase in
                 switch phase {
@@ -1340,6 +1341,13 @@ struct RunningView: View {
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
             .shadow(color: .black.opacity(size >= 160 ? 0.16 : 0.08), radius: size >= 160 ? 18 : 8, y: size >= 160 ? 10 : 4)
+        } else if let localArtwork {
+            Image(uiImage: localArtwork)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         } else {
             listenArtworkPlaceholder
                 .frame(width: size, height: size)
