@@ -142,7 +142,6 @@ final class RunningMusicViewModel: ObservableObject {
                 artwork: nil
             )
         }
-        syncCurrentState()
         return nowPlayingSnapshot
     }
 
