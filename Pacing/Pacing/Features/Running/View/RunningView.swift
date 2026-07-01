@@ -697,20 +697,18 @@ struct RunningView: View {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(spacing: 0) {
+                        let displaySnapshot = musicVM.currentSongSnapshot()
+                        let isListenGuest = listenVM.activeSession?.status == "active" && !listenVM.isHost
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
-                        let fallbackArtwork = musicVM.nowPlayingSnapshot?.artwork
                         Group {
-                            if musicVM.queueSongs.isEmpty, let fallbackArtwork {
-                                Image(uiImage: fallbackArtwork)
+                            if let artwork = displaySnapshot?.artwork {
+                                Image(uiImage: artwork)
                                     .resizable()
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            } else if musicVM.queueSongs.isEmpty {
-                                artworkPlaceholder
-                                    .frame(width: artSize, height: artSize)
-                            } else {
+                            } else if !isListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
@@ -735,6 +733,9 @@ struct RunningView: View {
                                 }
                                 .tabViewStyle(.page(indexDisplayMode: .never))
                                 .frame(width: artSize, height: artSize)
+                            } else {
+                                artworkPlaceholder
+                                    .frame(width: artSize, height: artSize)
                             }
                         }
                         .scaleEffect(musicVM.isPlaying ? 1.0 : 0.88)
@@ -747,20 +748,20 @@ struct RunningView: View {
                         let insertEdge: Edge = musicVM.isGoingForward ? .trailing : .leading
                         let removeEdge: Edge = musicVM.isGoingForward ? .leading : .trailing
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(musicVM.displaySongTitle)
+                            Text(displaySnapshotTitle(displaySnapshot) ?? musicVM.displaySongTitle)
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                                .id(musicVM.currentSong?.id.rawValue ?? musicVM.nowPlayingSnapshot?.songStoreID)
+                                .id(displaySnapshot?.songStoreID ?? musicVM.currentSong?.id.rawValue)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertEdge).combined(with: .opacity),
                                     removal: .move(edge: removeEdge).combined(with: .opacity)
                                 ))
-                            Text(musicVM.displayArtistName)
+                            Text(displaySnapshotArtist(displaySnapshot) ?? musicVM.displayArtistName)
                                 .font(.system(size: 16))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
-                                .id(musicVM.displayArtistName)
+                                .id(displaySnapshot?.artistName ?? musicVM.displayArtistName)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertEdge).combined(with: .opacity),
                                     removal: .move(edge: removeEdge).combined(with: .opacity)
@@ -818,8 +819,9 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(isListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
                             }
+                            .disabled(isListenGuest)
 
                             Button {
                                 Task { await musicVM.togglePlayPause() }
@@ -834,8 +836,9 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(.primary)
+                                    .foregroundStyle(isListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
                             }
+                            .disabled(isListenGuest)
                         }
                         .padding(.top, 20)
 
@@ -998,6 +1001,16 @@ struct RunningView: View {
         guard seconds.isFinite, seconds >= 0 else { return "0:00" }
         let s = Int(seconds)
         return "\(s / 60):\(String(format: "%02d", s % 60))"
+    }
+
+    private func displaySnapshotTitle(_ snapshot: PlayerSongSnapshot?) -> String? {
+        guard let title = snapshot?.title, !title.isEmpty else { return nil }
+        return title
+    }
+
+    private func displaySnapshotArtist(_ snapshot: PlayerSongSnapshot?) -> String? {
+        guard let artist = snapshot?.artistName, !artist.isEmpty else { return nil }
+        return artist
     }
 
     private var artworkPlaceholder: some View {
@@ -1328,7 +1341,14 @@ struct RunningView: View {
 
     @ViewBuilder
     private func listenArtwork(session: ListenSession, size: CGFloat = 220, localArtwork: UIImage? = nil) -> some View {
-        if let url = URL(string: session.artworkURL), !session.artworkURL.isEmpty {
+        if let sessionArtwork = decodedArtworkData(session.artworkData) {
+            Image(uiImage: sessionArtwork)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
+        } else if let url = URL(string: session.artworkURL), !session.artworkURL.isEmpty {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let image):
@@ -1342,13 +1362,6 @@ struct RunningView: View {
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
             .shadow(color: .black.opacity(size >= 160 ? 0.16 : 0.08), radius: size >= 160 ? 18 : 8, y: size >= 160 ? 10 : 4)
-        } else if let sessionArtwork = decodedArtworkData(session.artworkData) {
-            Image(uiImage: sessionArtwork)
-                .resizable()
-                .scaledToFill()
-                .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
-                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         } else if let localArtwork {
             Image(uiImage: localArtwork)
                 .resizable()
