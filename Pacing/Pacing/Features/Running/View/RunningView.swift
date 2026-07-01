@@ -1308,13 +1308,17 @@ struct RunningView: View {
 
             VStack(alignment: .leading, spacing: 8) {
                 Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(2)
                 Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
-                    .font(.system(size: 18, weight: .medium))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
+                Rectangle()
+                    .fill(Color.gray300.opacity(0.55))
+                    .frame(height: 1)
+                    .padding(.top, 10)
             }
             .padding(.horizontal, 24)
         }
