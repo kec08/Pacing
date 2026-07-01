@@ -1182,9 +1182,9 @@ struct RunningView: View {
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
-                    VStack(spacing: 20) {
+                    VStack(spacing: 18) {
                         listenAlbumHeader(session: session)
-                            .padding(.top, 16)
+                            .padding(.top, 20)
 
                         // 참여자 카드 목록
                         ScrollView {
@@ -1241,7 +1241,7 @@ struct RunningView: View {
                     Spacer()
                 }
             }
-            .navigationTitle("같이 듣기")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1302,31 +1302,30 @@ struct RunningView: View {
     }
 
     private func listenAlbumHeader(session: ListenSession) -> some View {
-        VStack(alignment: .leading, spacing: 18) {
-            listenArtwork(session: session)
-                .frame(maxWidth: .infinity, alignment: .center)
-
+        HStack(spacing: 12) {
+            listenArtwork(session: session, size: 66)
+                .frame(width: 66, height: 66)
+                .accessibilityHidden(true)
+            
             VStack(alignment: .leading, spacing: 8) {
                 Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(Color.textPrimary)
-                    .lineLimit(2)
+                    .lineLimit(1)
                 Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 14, weight: .regular))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
-                Rectangle()
-                    .fill(Color.gray300.opacity(0.55))
-                    .frame(height: 1)
-                    .padding(.top, 10)
             }
-            .padding(.horizontal, 24)
+            
+            Spacer(minLength: 0)
         }
+        .padding(.horizontal, 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
-    private func listenArtwork(session: ListenSession) -> some View {
-        let size: CGFloat = 220
+    private func listenArtwork(session: ListenSession, size: CGFloat = 220) -> some View {
         if let url = URL(string: session.artworkURL), !session.artworkURL.isEmpty {
             AsyncImage(url: url) { phase in
                 switch phase {
@@ -1339,13 +1338,13 @@ struct RunningView: View {
                 }
             }
             .frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: 18))
-            .shadow(color: .black.opacity(0.16), radius: 18, y: 10)
+            .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+            .shadow(color: .black.opacity(size >= 160 ? 0.16 : 0.08), radius: size >= 160 ? 18 : 8, y: size >= 160 ? 10 : 4)
         } else {
             listenArtworkPlaceholder
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .shadow(color: .black.opacity(0.12), radius: 14, y: 8)
+                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         }
     }
 
