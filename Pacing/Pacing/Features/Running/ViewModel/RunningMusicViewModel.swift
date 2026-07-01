@@ -98,14 +98,12 @@ final class RunningMusicViewModel: ObservableObject {
     func play(at index: Int) async {
         guard index >= 0, index < cachedMediaItems.count else { return }
         isManualSeeking = true
-        if index < queueSongs.count {
-            currentSong = queueSongs[index]
-        }
         // UI 애니메이션이 완료된 후 재생 시작
         try? await Task.sleep(nanoseconds: 150_000_000)
         let targetItem = cachedMediaItems[index]
         player.nowPlayingItem = targetItem
         player.play()
+        syncCurrentState()
         isManualSeeking = false
     }
 
@@ -126,13 +124,22 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     func currentSongSnapshot() -> PlayerSongSnapshot? {
+        if let item = player.nowPlayingItem, !item.playbackStoreID.isEmpty {
+            return PlayerSongSnapshot(
+                title: item.title ?? currentSong?.title ?? "",
+                artistName: item.artist ?? currentSong?.artistName ?? "Apple Music",
+                songStoreID: item.playbackStoreID,
+                artworkURL: currentSong?.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
+            )
+        }
         if let currentSong {
             return PlayerSongSnapshot(
                 title: currentSong.title,
                 artistName: currentSong.artistName,
-                songStoreID: player.nowPlayingItem?.playbackStoreID ?? "\(currentSong.id)",
+                songStoreID: "\(currentSong.id)",
                 artworkURL: currentSong.artwork?.url(width: 320, height: 320)?.absoluteString,
-                artwork: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 320, height: 320))
+                artwork: nil
             )
         }
         syncCurrentState()
