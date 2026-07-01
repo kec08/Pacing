@@ -691,8 +691,15 @@ struct RunningView: View {
                     VStack(spacing: 0) {
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
+                        let fallbackArtwork = musicVM.nowPlayingSnapshot?.artwork
                         Group {
-                            if musicVM.queueSongs.isEmpty {
+                            if musicVM.queueSongs.isEmpty, let fallbackArtwork {
+                                Image(uiImage: fallbackArtwork)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                            } else if musicVM.queueSongs.isEmpty {
                                 artworkPlaceholder
                                     .frame(width: artSize, height: artSize)
                             } else {
@@ -732,20 +739,20 @@ struct RunningView: View {
                         let insertEdge: Edge = musicVM.isGoingForward ? .trailing : .leading
                         let removeEdge: Edge = musicVM.isGoingForward ? .leading : .trailing
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(musicVM.currentSong?.title ?? "플레이리스트를 선택하세요")
+                            Text(musicVM.displaySongTitle)
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
-                                .id(musicVM.currentSong?.id)
+                                .id(musicVM.currentSong?.id.rawValue ?? musicVM.nowPlayingSnapshot?.songStoreID)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertEdge).combined(with: .opacity),
                                     removal: .move(edge: removeEdge).combined(with: .opacity)
                                 ))
-                            Text(musicVM.currentSong?.artistName ?? "Apple Music")
+                            Text(musicVM.displayArtistName)
                                 .font(.system(size: 16))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
-                                .id(musicVM.currentSong?.artistName)
+                                .id(musicVM.displayArtistName)
                                 .transition(.asymmetric(
                                     insertion: .move(edge: insertEdge).combined(with: .opacity),
                                     removal: .move(edge: removeEdge).combined(with: .opacity)
@@ -958,6 +965,9 @@ struct RunningView: View {
             }
             .navigationTitle("음악")
             .navigationBarTitleDisplayMode(.inline)
+            .onAppear {
+                musicVM.syncCurrentState()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("완료") {

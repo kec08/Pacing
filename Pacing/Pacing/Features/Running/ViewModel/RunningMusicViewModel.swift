@@ -2,6 +2,22 @@ import SwiftUI
 import MusicKit
 import MediaPlayer
 import Combine
+import UIKit
+
+struct PlayerSongSnapshot: Equatable {
+    let title: String
+    let artistName: String
+    let songStoreID: String
+    let artworkURL: String?
+    let artwork: UIImage?
+
+    static func == (lhs: PlayerSongSnapshot, rhs: PlayerSongSnapshot) -> Bool {
+        lhs.title == rhs.title
+            && lhs.artistName == rhs.artistName
+            && lhs.songStoreID == rhs.songStoreID
+            && lhs.artworkURL == rhs.artworkURL
+    }
+}
 
 @MainActor
 final class RunningMusicViewModel: ObservableObject {
@@ -13,6 +29,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isPlaying: Bool = false
     @Published var isLoading: Bool = false
     @Published var isGoingForward: Bool = true
+    @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private var isManualSeeking: Bool = false
@@ -96,14 +113,30 @@ final class RunningMusicViewModel: ObservableObject {
     var currentPlaybackTime: TimeInterval { player.currentPlaybackTime }
     var playbackDuration: TimeInterval { player.nowPlayingItem?.playbackDuration ?? 0 }
 
-    func currentSongSnapshot() -> (title: String, artistName: String, songStoreID: String, artworkURL: String?)? {
-        guard let currentSong else { return nil }
-        return (
-            title: currentSong.title,
-            artistName: currentSong.artistName,
-            songStoreID: "\(currentSong.id)",
-            artworkURL: currentSong.artwork?.url(width: 160, height: 160)?.absoluteString
-        )
+    var displaySongTitle: String {
+        currentSong?.title ?? nowPlayingSnapshot?.title ?? "플레이리스트를 선택하세요"
+    }
+
+    var displayArtistName: String {
+        currentSong?.artistName ?? nowPlayingSnapshot?.artistName ?? "Apple Music"
+    }
+
+    var hasDisplaySong: Bool {
+        currentSong != nil || nowPlayingSnapshot != nil
+    }
+
+    func currentSongSnapshot() -> PlayerSongSnapshot? {
+        if let currentSong {
+            return PlayerSongSnapshot(
+                title: currentSong.title,
+                artistName: currentSong.artistName,
+                songStoreID: player.nowPlayingItem?.playbackStoreID ?? "\(currentSong.id)",
+                artworkURL: currentSong.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artwork: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 320, height: 320))
+            )
+        }
+        syncCurrentState()
+        return nowPlayingSnapshot
     }
 
     func seek(to time: TimeInterval) {
@@ -140,8 +173,16 @@ final class RunningMusicViewModel: ObservableObject {
         isPlaying = player.playbackState == .playing
         guard let item = player.nowPlayingItem else {
             currentSong = nil
+            nowPlayingSnapshot = nil
             return
         }
+        nowPlayingSnapshot = PlayerSongSnapshot(
+            title: item.title ?? "",
+            artistName: item.artist ?? "Apple Music",
+            songStoreID: item.playbackStoreID,
+            artworkURL: nil,
+            artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
+        )
         if let idx = cachedMediaItems.firstIndex(where: { $0.persistentID == item.persistentID }) {
             if !isManualSeeking && idx != currentSongIndex {
                 isGoingForward = idx > currentSongIndex
