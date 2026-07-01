@@ -4,6 +4,7 @@ import Combine
 import MusicKit
 import MediaPlayer
 import FirebaseAuth
+import UIKit
 
 struct RunningView: View {
     @StateObject private var viewModel = RunningViewModel()
@@ -1341,6 +1342,13 @@ struct RunningView: View {
             .frame(width: size, height: size)
             .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
             .shadow(color: .black.opacity(size >= 160 ? 0.16 : 0.08), radius: size >= 160 ? 18 : 8, y: size >= 160 ? 10 : 4)
+        } else if let sessionArtwork = decodedArtworkData(session.artworkData) {
+            Image(uiImage: sessionArtwork)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         } else if let localArtwork {
             Image(uiImage: localArtwork)
                 .resizable()
@@ -1354,6 +1362,11 @@ struct RunningView: View {
                 .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
                 .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         }
+    }
+
+    private func decodedArtworkData(_ value: String) -> UIImage? {
+        guard !value.isEmpty, let data = Data(base64Encoded: value) else { return nil }
+        return UIImage(data: data)
     }
 
     private var listenArtworkPlaceholder: some View {

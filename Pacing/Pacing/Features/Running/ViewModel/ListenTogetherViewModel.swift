@@ -43,6 +43,7 @@ final class ListenTogetherViewModel: ObservableObject {
             guestUID: runner.id, guestNickname: runner.nickname,
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
+            artworkData: "",
             position: 0
         )
 
@@ -51,6 +52,7 @@ final class ListenTogetherViewModel: ObservableObject {
             guestUID: runner.id, guestNickname: runner.nickname,
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
+            artworkData: "",
             playbackPosition: 0,
             serverTimestamp: Date().timeIntervalSince1970,
             status: "pending", isPlaying: true
@@ -74,6 +76,7 @@ final class ListenTogetherViewModel: ObservableObject {
             songTitle: song.title,
             artistName: song.artist,
             artworkURL: song.artworkURL,
+            artworkData: song.artworkData,
             position: position,
             isPlaying: player.playbackState == .playing
         )
@@ -84,6 +87,7 @@ final class ListenTogetherViewModel: ObservableObject {
         sourceSession.songTitle = song.title
         sourceSession.artistName = song.artist
         sourceSession.artworkURL = song.artworkURL
+        sourceSession.artworkData = song.artworkData
         sourceSession.playbackPosition = position
         sourceSession.serverTimestamp = Date().timeIntervalSince1970 * 1000
         sourceSession.status = "active"
@@ -124,6 +128,7 @@ final class ListenTogetherViewModel: ObservableObject {
             songTitle: song.title,
             artistName: song.artist,
             artworkURL: song.artworkURL,
+            artworkData: song.artworkData,
             position: player.currentPlaybackTime,
             isPlaying: player.playbackState == .playing
         )
@@ -244,7 +249,7 @@ final class ListenTogetherViewModel: ObservableObject {
     private func currentSongSnapshot(
         from musicVM: RunningMusicViewModel,
         player: MPMusicPlayerController
-    ) -> (storeID: String, title: String, artist: String, artworkURL: String) {
+    ) -> (storeID: String, title: String, artist: String, artworkURL: String, artworkData: String) {
         let musicSnapshot = musicVM.currentSongSnapshot()
         let mediaItem = player.nowPlayingItem
         let storeID = mediaItem?.playbackStoreID.nonEmpty
@@ -256,7 +261,19 @@ final class ListenTogetherViewModel: ObservableObject {
         let artist = musicSnapshot?.artistName.nonEmpty
             ?? mediaItem?.artist?.nonEmpty
             ?? ""
-        return (storeID, title, artist, musicSnapshot?.artworkURL ?? "")
+        let artworkURL = musicSnapshot?.artworkURL ?? ""
+        let artworkData = encodedArtworkData(from: musicSnapshot?.artwork)
+        return (storeID, title, artist, artworkURL, artworkData)
+    }
+
+    private func encodedArtworkData(from image: UIImage?) -> String {
+        guard let image else { return "" }
+        let targetSize = CGSize(width: 160, height: 160)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        return resized.jpegData(compressionQuality: 0.65)?.base64EncodedString() ?? ""
     }
 
     private func cleanup() {
