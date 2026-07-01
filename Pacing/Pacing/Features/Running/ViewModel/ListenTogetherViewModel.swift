@@ -15,6 +15,8 @@ final class ListenTogetherViewModel: ObservableObject {
     private var myUID: String { Auth.auth().currentUser?.uid ?? "" }
     private var myNickname: String { UserDefaults.standard.string(forKey: "nickname") ?? "러너" }
     private var lastIncomingRequestID: String?
+    private var hostBroadcastTimer: AnyCancellable?
+    private weak var hostMusicViewModel: RunningMusicViewModel?
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -98,6 +100,7 @@ final class ListenTogetherViewModel: ObservableObject {
         incomingRequest = nil
         lastIncomingRequestID = nil
         sessionStartDate = Date()
+        startHostBroadcasting(with: musicVM)
 
         observeSession(sessionID: session.id, musicVM: musicVM)
     }
@@ -144,6 +147,9 @@ final class ListenTogetherViewModel: ObservableObject {
                 case "rejected", "ended":
                     self.cleanup()
                 case "active":
+                    if self.isHost {
+                        self.startHostBroadcasting(with: musicVM)
+                    }
                     if !self.isHost {
                         // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
                         if self.shouldSyncMusic(with: session) {
@@ -172,6 +178,15 @@ final class ListenTogetherViewModel: ObservableObject {
 
         let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
         let targetPosition = max(0, session.playbackPosition + latency)
+
+        if isCurrentTrackMatching(session: session, player: player) {
+            syncCurrentTrackPosition(
+                targetPosition: targetPosition,
+                isPlaying: session.isPlaying,
+                player: player
+            )
+            return
+        }
 
         if await syncByStoreID(session: session, targetPosition: targetPosition, player: player) {
             return
@@ -240,6 +255,15 @@ final class ListenTogetherViewModel: ObservableObject {
         if !session.songStoreID.isEmpty, currentStoreID != session.songStoreID {
             return true
         }
+        let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
+        let expectedPosition = max(0, session.playbackPosition + latency)
+        let positionGap = abs(player.currentPlaybackTime - expectedPosition)
+        if positionGap > 1.5 {
+            return true
+        }
+        if session.isPlaying != (player.playbackState == .playing) {
+            return true
+        }
         return activeSession?.songStoreID != session.songStoreID
             || activeSession?.songTitle != session.songTitle
             || activeSession?.artistName != session.artistName
@@ -277,7 +301,58 @@ final class ListenTogetherViewModel: ObservableObject {
         return resized.jpegData(compressionQuality: 0.65)?.base64EncodedString() ?? ""
     }
 
+    private func isCurrentTrackMatching(
+        session: ListenSession,
+        player: MPMusicPlayerController
+    ) -> Bool {
+        let currentStoreID = player.nowPlayingItem?.playbackStoreID ?? ""
+        if !session.songStoreID.isEmpty && currentStoreID == session.songStoreID {
+            return true
+        }
+
+        let currentTitle = player.nowPlayingItem?.title ?? ""
+        let currentArtist = player.nowPlayingItem?.artist ?? ""
+        return !session.songTitle.isEmpty
+            && currentTitle == session.songTitle
+            && currentArtist == session.artistName
+    }
+
+    private func syncCurrentTrackPosition(
+        targetPosition: TimeInterval,
+        isPlaying: Bool,
+        player: MPMusicPlayerController
+    ) {
+        if abs(player.currentPlaybackTime - targetPosition) > 1.5 {
+            player.currentPlaybackTime = targetPosition
+        }
+
+        if isPlaying && player.playbackState != .playing {
+            player.play()
+        } else if !isPlaying && player.playbackState == .playing {
+            player.pause()
+        }
+    }
+
+    private func startHostBroadcasting(with musicVM: RunningMusicViewModel) {
+        hostMusicViewModel = musicVM
+        guard hostBroadcastTimer == nil else { return }
+
+        hostBroadcastTimer = Timer.publish(every: 1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard let self, let musicVM = self.hostMusicViewModel else { return }
+                self.broadcastIfHost(musicVM: musicVM)
+            }
+    }
+
+    private func stopHostBroadcasting() {
+        hostBroadcastTimer?.cancel()
+        hostBroadcastTimer = nil
+        hostMusicViewModel = nil
+    }
+
     private func cleanup() {
+        stopHostBroadcasting()
         RealtimeDBService.shared.stopObservingSession()
         activeSession = nil
         incomingRequest = nil

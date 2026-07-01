@@ -27,6 +27,14 @@ struct RunningView: View {
     @State private var showPlaylistInSheet = false   // 음악 시트 내 플레이리스트 토글
     @State private var isSeeking = false             // 스크러버 드래그 중
     @State private var seekValue: Double = 0         // 드래그 중 임시 시간값
+    @State private var isFinishingSeek = false       // 손을 뗀 직후 Slider 재호출 방지
+    @State private var localPlaybackBaseTime: Double? = nil
+    @State private var localPlaybackStartedAt: Date? = nil
+    @State private var shouldRunLocalPlaybackClock = false
+
+    private var isActiveListenGuest: Bool {
+        listenVM.activeSession?.status == "active" && !listenVM.isHost
+    }
 
     var body: some View {
         ZStack {
@@ -699,13 +707,12 @@ struct RunningView: View {
                     VStack(spacing: 0) {
                         let displaySnapshot = musicVM.currentSongSnapshot()
                         let listenSession = listenVM.activeSession
-                        let isListenGuest = listenSession?.status == "active" && !listenVM.isHost
                         let sessionArtwork = decodedArtworkData(listenSession?.artworkData ?? "")
-                        let listenArtwork = isListenGuest ? sessionArtwork : nil
-                        let visibleSongTitle = isListenGuest
+                        let listenArtwork = isActiveListenGuest ? sessionArtwork : nil
+                        let visibleSongTitle = isActiveListenGuest
                             ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))
                             : displaySnapshotTitle(displaySnapshot)
-                        let visibleArtistName = isListenGuest
+                        let visibleArtistName = isActiveListenGuest
                             ? (listenSession?.artistName.isEmpty == false ? listenSession?.artistName : displaySnapshotArtist(displaySnapshot))
                             : displaySnapshotArtist(displaySnapshot)
                         // MARK: 앨범 커버
@@ -717,7 +724,7 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            } else if !isListenGuest, !musicVM.queueSongs.isEmpty {
+                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
@@ -787,11 +794,12 @@ struct RunningView: View {
                         .padding(.horizontal, 28)
 
                         // MARK: 스크러버
-                        TimelineView(.periodic(from: .now, by: 0.5)) { _ in
+                        TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
                             let duration = musicVM.playbackDuration
+                            let localCurrent = localPlaybackCurrentTime(at: timeline.date, duration: duration)
                             let current: Double = isSeeking
                                 ? seekValue
-                                : (duration > 0 ? min(musicVM.currentPlaybackTime, duration) : 0)
+                                : (localCurrent ?? (duration > 0 ? min(musicVM.currentPlaybackTime, duration) : 0))
                             let progress: Double = duration > 0 ? current / duration : 0
 
                             VStack(spacing: 4) {
@@ -799,15 +807,31 @@ struct RunningView: View {
                                     value: Binding(
                                         get: { progress },
                                         set: { val in
+                                            guard !isFinishingSeek else { return }
                                             isSeeking = true
                                             seekValue = val * duration
                                         }
                                     ),
                                     in: 0...1,
                                     onEditingChanged: { editing in
+                                        if editing {
+                                            isFinishingSeek = false
+                                            return
+                                        }
+
                                         if !editing {
-                                            musicVM.seek(to: seekValue)
-                                            isSeeking = false
+                                            let targetTime = seekValue
+                                            isFinishingSeek = true
+                                            musicVM.seek(to: targetTime)
+                                            startLocalPlaybackClock(from: targetTime)
+
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                isSeeking = false
+                                                seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
+                                            }
+                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                                isFinishingSeek = false
+                                            }
                                         }
                                     }
                                 )
@@ -834,11 +858,16 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
                             }
-                            .disabled(isListenGuest)
+                            .disabled(isActiveListenGuest)
 
                             Button {
+                                if shouldRunLocalPlaybackClock {
+                                    stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                } else {
+                                    startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                }
                                 Task { await musicVM.togglePlayPause() }
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
@@ -851,9 +880,9 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
                             }
-                            .disabled(isListenGuest)
+                            .disabled(isActiveListenGuest)
                         }
                         .padding(.top, 20)
 
@@ -883,7 +912,7 @@ struct RunningView: View {
                 // MARK: 플레이리스트 토글 버튼 (하단 고정)
                 VStack(spacing: 0) {
                     // 플레이리스트 섹션 (토글 시 슬라이드업)
-                    if showPlaylistInSheet {
+                    if showPlaylistInSheet && !isActiveListenGuest {
                         VStack(alignment: .leading, spacing: 12) {
                             HStack {
                                 Text("내 플레이리스트")
@@ -963,6 +992,7 @@ struct RunningView: View {
 
                     // 글래스 버튼
                     Button {
+                        guard !isActiveListenGuest else { return }
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             showPlaylistInSheet.toggle()
                         }
@@ -973,16 +1003,27 @@ struct RunningView: View {
                             Text("플레이리스트")
                                 .font(.system(size: 15, weight: .semibold))
                         }
-                        .foregroundStyle(showPlaylistInSheet ? Color.main500 : .primary)
+                        .foregroundStyle(
+                            isActiveListenGuest
+                                ? Color.textSecondary.opacity(0.45)
+                                : (showPlaylistInSheet ? Color.main500 : .primary)
+                        )
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
                         .overlay(
                             RoundedRectangle(cornerRadius: 16)
-                                .stroke(showPlaylistInSheet ? Color.main500.opacity(0.4) : Color.clear, lineWidth: 1.5)
+                                .stroke(
+                                    isActiveListenGuest
+                                        ? Color.clear
+                                        : (showPlaylistInSheet ? Color.main500.opacity(0.4) : Color.clear),
+                                    lineWidth: 1.5
+                                )
                         )
                     }
+                    .disabled(isActiveListenGuest)
+                    .opacity(isActiveListenGuest ? 0.72 : 1)
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                     .shadow(color: .black.opacity(0.08), radius: 8, y: -2)
@@ -1007,9 +1048,40 @@ struct RunningView: View {
             .onChange(of: musicVM.currentSong?.id) { _, _ in
                 isSeeking = false
                 seekValue = 0
+                clearLocalPlaybackClock()
             }
         }
         .presentationBackground(.ultraThinMaterial)
+    }
+
+    private func localPlaybackCurrentTime(at date: Date, duration: Double) -> Double? {
+        guard
+            shouldRunLocalPlaybackClock,
+            let baseTime = localPlaybackBaseTime,
+            let startedAt = localPlaybackStartedAt
+        else { return nil }
+
+        let elapsed = date.timeIntervalSince(startedAt)
+        let current = max(0, baseTime + elapsed)
+        return duration > 0 ? min(current, duration) : current
+    }
+
+    private func startLocalPlaybackClock(from time: Double) {
+        localPlaybackBaseTime = max(0, time)
+        localPlaybackStartedAt = Date()
+        shouldRunLocalPlaybackClock = true
+    }
+
+    private func stopLocalPlaybackClock(at fallbackTime: Double) {
+        localPlaybackBaseTime = max(0, fallbackTime)
+        localPlaybackStartedAt = nil
+        shouldRunLocalPlaybackClock = false
+    }
+
+    private func clearLocalPlaybackClock() {
+        localPlaybackBaseTime = nil
+        localPlaybackStartedAt = nil
+        shouldRunLocalPlaybackClock = false
     }
 
     private func formatPlaybackTime(_ seconds: Double) -> String {
