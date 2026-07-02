@@ -31,36 +31,54 @@ struct RunningView: View {
     @State private var localPlaybackBaseTime: Double? = nil
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
+    @State private var hasCenteredOnInitialLocation = false
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
+    }
+
+    private var shouldDisplayRoute: Bool {
+        viewModel.state != .idle && viewModel.locationManager.routeCoordinates.count >= 2
+    }
+
+    private var displayRouteCoordinates: [CLLocationCoordinate2D] {
+        smoothedRouteCoordinates(from: viewModel.locationManager.routeCoordinates)
+    }
+
+    private var myRunner: NearbyRunner? {
+        guard let coordinate = viewModel.locationManager.currentLocation?.coordinate else { return nil }
+        let snapshot = musicVM.currentSongSnapshot()
+        let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "나"
+
+        return NearbyRunner(
+            id: "me",
+            nickname: nickname,
+            coordinate: coordinate,
+            songTitle: snapshot?.title ?? "",
+            artist: snapshot?.artistName ?? "",
+            distance: 0,
+            isMe: true
+        )
     }
 
     var body: some View {
         ZStack {
             // 풀스크린 지도
             Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
-                if viewModel.locationManager.routeCoordinates.count >= 2 {
-                    MapPolyline(coordinates: viewModel.locationManager.routeCoordinates)
+                if shouldDisplayRoute {
+                    MapPolyline(coordinates: displayRouteCoordinates)
                         .stroke(
                             LinearGradient(
-                                colors: [Color.main500, Color(red: 0.18, green: 0.46, blue: 1.0)],
+                                colors: [Color.main500, Color.sub500],
                                 startPoint: .leading,
                                 endPoint: .trailing
                             ),
-                            lineWidth: 5
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
                         )
                 }
-                if let loc = viewModel.locationManager.currentLocation {
-                    Annotation("", coordinate: loc.coordinate) {
-                        ZStack {
-                            Circle()
-                                .fill(Color.main500)
-                                .frame(width: 16, height: 16)
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 8, height: 8)
-                        }
+                if let myRunner {
+                    Annotation("", coordinate: myRunner.coordinate) {
+                        runnerMapPin(runner: myRunner)
                     }
                 }
                 // 주변 러너 핀
@@ -228,9 +246,13 @@ struct RunningView: View {
             }
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
-            if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+            if !hasCenteredOnInitialLocation {
+                hasCenteredOnInitialLocation = true
+                recenterCamera(distance: mapZoomDistance)
+            } else if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             }
+            nearbyVM.updateMyLocation(loc.coordinate)
         }
         .onMapCameraChange(frequency: .continuous) { context in
             guard !isProgrammaticMove else { return }
@@ -260,33 +282,38 @@ struct RunningView: View {
         .task { await musicVM.requestAuthorization() }
         .onAppear {
             viewModel.musicViewModel = musicVM
-            startAppBroadcast()
+            viewModel.locationManager.requestPermission()
+            viewModel.locationManager.startMonitoringCurrentLocation()
+            startNearbyObservationIfNeeded()
             listenVM.startObservingRequests()
+            if let coord = viewModel.locationManager.currentLocation?.coordinate {
+                if !hasCenteredOnInitialLocation {
+                    hasCenteredOnInitialLocation = true
+                    recenterCamera(distance: mapZoomDistance)
+                }
+                nearbyVM.updateMyLocation(coord)
+            }
         }
         .onDisappear {
-            if let uid = Auth.auth().currentUser?.uid {
-                RealtimeDBService.shared.stopBroadcast(uid: uid)
-            }
             nearbyVM.stopObserving()
             listenVM.stopObservingRequests()
-        }
-        .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
-            nearbyVM.updateMyLocation(loc.coordinate)
         }
         .onChange(of: viewModel.state) { _, newState in
             if newState == .finished {
                 nearbyVM.stopObserving()
+            } else {
+                startNearbyObservationIfNeeded()
             }
         }
         .onChange(of: musicVM.currentSong) { _, _ in
-            // 곡 바뀌면 즉시 브로드캐스트
             if let uid = Auth.auth().currentUser?.uid {
                 let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-                RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) {
-                    self.viewModel.locationManager.currentLocation?.coordinate
-                } songProvider: {
-                    (self.musicVM.currentSong?.title ?? "", self.musicVM.currentSong?.artistName ?? "")
-                }
+                RealtimeDBService.shared.refreshBroadcast(
+                    uid: uid,
+                    nickname: nickname,
+                    coord: viewModel.locationManager.currentLocation?.coordinate,
+                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? "")
+                )
             }
             // 호스트면 세션에도 브로드캐스트
             listenVM.broadcastIfHost(musicVM: musicVM)
@@ -1479,17 +1506,44 @@ struct RunningView: View {
         }
     }
 
-    // MARK: - 앱 레벨 브로드캐스트
+    // MARK: - 주변 러너 구독
 
-    private func startAppBroadcast() {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) { [self] in
-            self.viewModel.locationManager.currentLocation?.coordinate
-        } songProvider: { [self] in
-            (self.musicVM.currentSong?.title ?? "", self.musicVM.currentSong?.artistName ?? "")
-        }
+    private func startNearbyObservationIfNeeded() {
+        guard let uid = Auth.auth().currentUser?.uid, !nearbyVM.isObserving else { return }
         nearbyVM.startObserving(uid: uid)
+    }
+
+    // MARK: - 경로 렌더링
+
+    private func smoothedRouteCoordinates(from coordinates: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {
+        guard coordinates.count >= 2 else { return coordinates }
+
+        var result: [CLLocationCoordinate2D] = [coordinates[0]]
+
+        for index in 1..<coordinates.count {
+            let previous = coordinates[index - 1]
+            let current = coordinates[index]
+            let previousLocation = CLLocation(latitude: previous.latitude, longitude: previous.longitude)
+            let currentLocation = CLLocation(latitude: current.latitude, longitude: current.longitude)
+            let distance = currentLocation.distance(from: previousLocation)
+            let stepCount = min(max(Int(distance / 4.0), 0), 8)
+
+            if stepCount > 0 {
+                for step in 1...stepCount {
+                    let progress = Double(step) / Double(stepCount + 1)
+                    result.append(
+                        CLLocationCoordinate2D(
+                            latitude: previous.latitude + (current.latitude - previous.latitude) * progress,
+                            longitude: previous.longitude + (current.longitude - previous.longitude) * progress
+                        )
+                    )
+                }
+            }
+
+            result.append(current)
+        }
+
+        return result
     }
 
     // MARK: - 주변 러너 시트
@@ -1646,6 +1700,7 @@ struct RunningView: View {
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
                 viewModel.start()
+                startNearbyObservationIfNeeded()
             }
         }
     }

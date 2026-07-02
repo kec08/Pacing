@@ -18,7 +18,7 @@ final class RunningViewModel: ObservableObject {
     @Published var distance: Double = 0       // km
     @Published var currentPace: Double = 0    // 분/km
 
-    let locationManager = LocationManager()
+    let locationManager: LocationManager
 
     // 주변 러너 브로드캐스트용
     var musicViewModel: RunningMusicViewModel?
@@ -28,7 +28,10 @@ final class RunningViewModel: ObservableObject {
     private var paceBuffer: [Double] = []
     private var cancellables = Set<AnyCancellable>()
 
-    init() {
+    init(locationManager: LocationManager = .shared) {
+        self.locationManager = locationManager
+        locationManager.startMonitoringCurrentLocation()
+
         locationManager.$currentLocation
             .compactMap { $0 }
             .sink { [weak self] loc in
@@ -41,6 +44,9 @@ final class RunningViewModel: ObservableObject {
 
     func start() {
         locationManager.requestPermission()
+        locationManager.resetRoute()
+        lastLocation = nil
+        paceBuffer = []
         locationManager.startTracking()
         state = .running
         startTimer()

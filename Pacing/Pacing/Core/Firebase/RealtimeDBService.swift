@@ -38,6 +38,15 @@ final class RealtimeDBService {
         broadcastTimer?.fire()
     }
 
+    func refreshBroadcast(
+        uid: String,
+        nickname: String,
+        coord: CLLocationCoordinate2D?,
+        song: (title: String, artist: String)
+    ) {
+        upload(uid: uid, nickname: nickname, coord: coord, song: song)
+    }
+
     private func upload(uid: String, nickname: String, coord: CLLocationCoordinate2D?, song: (title: String, artist: String)) {
         guard !uid.isEmpty else { return }
         var data: [String: Any] = [
