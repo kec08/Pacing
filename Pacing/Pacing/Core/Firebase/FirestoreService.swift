@@ -286,10 +286,14 @@ final class FirestoreService {
             .limit(to: limit)
             .getDocuments()
 
-        return snapshot.documents.compactMap { doc in
-            guard doc.documentID != currentUID, !excludedUIDs.contains(doc.documentID) else { return nil }
-            return makeFriendUser(from: doc, source: .search)
+        var users: [FriendUser] = []
+        for doc in snapshot.documents {
+            guard doc.documentID != currentUID, !excludedUIDs.contains(doc.documentID) else { continue }
+            if let user = try await makeFriendUserWithActivity(from: doc, source: .search) {
+                users.append(user)
+            }
         }
+        return users
     }
 
     // MARK: - 추천 친구 조회
@@ -303,12 +307,15 @@ final class FirestoreService {
             .limit(to: limit + excludedUIDs.count + 1)
             .getDocuments()
 
-        return snapshot.documents.compactMap { doc in
-            guard doc.documentID != currentUID, !excludedUIDs.contains(doc.documentID) else { return nil }
-            return makeFriendUser(from: doc, source: .recent)
+        var users: [FriendUser] = []
+        for doc in snapshot.documents {
+            guard doc.documentID != currentUID, !excludedUIDs.contains(doc.documentID) else { continue }
+            if let user = try await makeFriendUserWithActivity(from: doc, source: .recent) {
+                users.append(user)
+            }
+            if users.count >= limit { break }
         }
-        .prefix(limit)
-        .map { $0 }
+        return users
     }
 
     // MARK: - 친구 요청 생성
@@ -377,7 +384,7 @@ final class FirestoreService {
 
     private func fetchFriendUser(uid: String, source: FriendRecommendationSource) async throws -> FriendUser {
         let doc = try await db.collection("users").document(uid).getDocument()
-        return makeFriendUser(from: doc, source: source) ?? FriendUser(
+        return try await makeFriendUserWithActivity(from: doc, source: source) ?? FriendUser(
             id: uid,
             nickname: "러너",
             profileImageBase64: nil,
@@ -397,6 +404,22 @@ final class FirestoreService {
             nickname: nickname,
             profileImageBase64: data["profileImageBase64"] as? String,
             statusText: data["statusText"] as? String ?? "최근 활동 없음",
+            source: source
+        )
+    }
+
+    private func makeFriendUserWithActivity(from doc: DocumentSnapshot, source: FriendRecommendationSource) async throws -> FriendUser? {
+        guard let baseUser = makeFriendUser(from: doc, source: source) else { return nil }
+        if baseUser.statusText != "최근 활동 없음" {
+            return baseUser
+        }
+
+        let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
+        return FriendUser(
+            id: baseUser.id,
+            nickname: baseUser.nickname,
+            profileImageBase64: baseUser.profileImageBase64,
+            statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
             source: source
         )
     }

@@ -181,38 +181,25 @@ struct FriendsView: View {
     }
 
     private var recommendationsSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("추천 친구")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                Spacer()
-            }
-
+        section("추천 친구") {
             if vm.isLoading && vm.recommendedUsers.isEmpty {
-                recommendationSkeleton
+                friendRowsSkeleton(count: 3)
             } else if vm.recommendedUsers.isEmpty {
                 emptyCard("추천할 러너를 찾는 중이에요")
             } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 12) {
-                        ForEach(vm.recommendedUsers) { user in
-                            FriendRecommendationCard(
-                                user: user,
-                                buttonTitle: vm.buttonTitle(for: user),
-                                isEnabled: vm.canSendRequest(to: user),
-                                relationship: relationship(for: user),
-                                onSend: { Task { await vm.sendRequest(to: user) } },
-                                onRequestSent: { vm.markRequestSent(to: user) },
-                                onRequestCanceled: { vm.markRequestCanceled(to: user) },
-                                onDismiss: { vm.dismissRecommendation(user) }
-                            )
-                        }
+                listStack(spacing: 12) {
+                    ForEach(vm.recommendedUsers) { user in
+                        FriendRecommendationRow(
+                            user: user,
+                            buttonTitle: vm.buttonTitle(for: user),
+                            isEnabled: vm.canSendRequest(to: user),
+                            relationship: relationship(for: user),
+                            onSend: { Task { await vm.sendRequest(to: user) } },
+                            onRequestSent: { vm.markRequestSent(to: user) },
+                            onRequestCanceled: { vm.markRequestCanceled(to: user) }
+                        )
                     }
-                    .padding(.horizontal, 2)
-                    .padding(.vertical, 2)
                 }
-                .scrollIndicators(.hidden)
             }
         }
     }
@@ -233,27 +220,6 @@ struct FriendsView: View {
                     .padding(.vertical, 2)
             }
         }
-    }
-
-    private var recommendationSkeleton: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: 12) {
-                ForEach(0..<3, id: \.self) { _ in
-                    VStack(spacing: 10) {
-                        SkeletonCircle(size: 54)
-                        SkeletonBlock(width: 82, height: 14, cornerRadius: 7)
-                        SkeletonBlock(width: 64, height: 11, cornerRadius: 6)
-                        SkeletonBlock(width: 68, height: 30, cornerRadius: 15)
-                    }
-                    .frame(width: 126)
-                    .padding(.vertical, 14)
-                    .glassRounded(cornerRadius: 18)
-                }
-            }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 2)
-        }
-        .scrollIndicators(.hidden)
     }
 
     private func listStack<Content: View>(spacing: CGFloat = 12, @ViewBuilder content: () -> Content) -> some View {
@@ -546,7 +512,7 @@ private struct FriendCandidateRow: View {
     }
 }
 
-private struct FriendRecommendationCard: View {
+private struct FriendRecommendationRow: View {
     let user: FriendUser
     let buttonTitle: String
     let isEnabled: Bool
@@ -554,33 +520,20 @@ private struct FriendRecommendationCard: View {
     let onSend: () -> Void
     let onRequestSent: () -> Void
     let onRequestCanceled: () -> Void
-    let onDismiss: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .top) {
-                NavigationLink {
-                    FriendProfileView(
-                        friend: user,
-                        initialRelationship: relationship,
-                        onRequestSent: { _ in onRequestSent() },
-                        onRequestCanceled: { _ in onRequestCanceled() }
-                    )
-                } label: {
-                    FriendAvatar(user: user, size: 44, fontSize: 18)
-                }
-                .buttonStyle(.plain)
-
-                Spacer()
-
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.textPrimary.opacity(0.42))
-                        .frame(width: 24, height: 24)
-                }
-                .buttonStyle(.plain)
+        HStack(spacing: 12) {
+            NavigationLink {
+                FriendProfileView(
+                    friend: user,
+                    initialRelationship: relationship,
+                    onRequestSent: { _ in onRequestSent() },
+                    onRequestCanceled: { _ in onRequestCanceled() }
+                )
+            } label: {
+                FriendAvatar(user: user)
             }
+            .buttonStyle(.plain)
 
             NavigationLink {
                 FriendProfileView(
@@ -590,28 +543,32 @@ private struct FriendRecommendationCard: View {
                     onRequestCanceled: { _ in onRequestCanceled() }
                 )
             } label: {
-                Text(user.nickname)
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(user.nickname)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(Color.textPrimary)
+                    Text(user.statusText)
+                        .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
+                        .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .buttonStyle(.plain)
 
+            Spacer(minLength: 8)
+
             Button(action: onSend) {
                 Text(buttonTitle)
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(isEnabled ? Color.main500 : Color.gray500)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 30)
+                    .padding(.horizontal, 16)
+                    .frame(height: 34)
                     .glassCapsule(tint: isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8))
             }
             .buttonStyle(.plain)
             .disabled(!isEnabled)
         }
-        .frame(width: 122)
-        .padding(12)
-        .glassRounded(cornerRadius: 16)
+        .padding(.vertical, 2)
     }
 }
 

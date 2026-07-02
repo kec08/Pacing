@@ -7,6 +7,7 @@ struct MyView: View {
     @State private var showPicker = false
     @State private var showAllHistory = false
     @State private var showLogoutAlert = false
+    @State private var showProfileEdit = false
 
     var body: some View {
         ScrollView {
@@ -23,6 +24,9 @@ struct MyView: View {
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
             periodPickerSheet
+        }
+        .sheet(isPresented: $showProfileEdit) {
+            ProfileEditView(vm: vm)
         }
     }
 
@@ -139,15 +143,9 @@ struct MyView: View {
                 Text(vm.nickname)
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(Color.textPrimary)
-                if vm.height > 0 || vm.weight > 0 || vm.age > 0 {
-                    HStack(spacing: 6) {
-                        if vm.height > 0 { Text("\(vm.height)cm") }
-                        if vm.weight > 0 { Text("\(vm.weight)kg") }
-                        if vm.age > 0    { Text("\(vm.age)세") }
-                    }
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.textSecondary)
-                }
+                Text(vm.activityStatusText)
+                    .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(vm.activityStatusText) ? .bold : .medium))
+                    .foregroundStyle(FriendActivityText.isTodayStatus(vm.activityStatusText) ? Color.green : Color.textSecondary)
             }
             Spacer()
         }
@@ -455,7 +453,9 @@ struct MyView: View {
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "person.fill", label: "프로필 수정") {}
+            settingsRow(icon: "person.fill", label: "프로필 수정") {
+                showProfileEdit = true
+            }
             Divider().padding(.leading, 54)
             settingsRow(icon: "rectangle.portrait.and.arrow.right", label: "로그아웃", tint: .accent500) {
                 showLogoutAlert = true

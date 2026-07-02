@@ -30,6 +30,7 @@ final class MyViewModel: ObservableObject {
     @Published var weight: Int = 0
     @Published var age: Int = 0
     @Published var profileImage: UIImage? = nil
+    @Published var activityStatusText: String = "러닝 기록 없음"
     @Published var selectedPeriod: StatsPeriod = .week
 
     // 주: 0=이번주, -1=저번주, ...
@@ -122,6 +123,7 @@ final class MyViewModel: ObservableObject {
 
         chartEntries = buildChartEntries(from: filtered)
         runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
+        activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
     }
 
     private func filter(records: [RunRecord]) -> [RunRecord] {
@@ -264,5 +266,61 @@ final class MyViewModel: ObservableObject {
         let s = seconds % 60
         if h > 0 { return String(format: "%d:%02d:%02d", h, m, s) }
         return String(format: "%d:%02d", m, s)
+    }
+
+    func saveProfile(
+        nickname: String,
+        age: Int,
+        height: Int,
+        weight: Int,
+        profileImage: UIImage?
+    ) async throws {
+        let trimmedNickname = nickname.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedNickname.isEmpty else { return }
+
+        let imageBase64 = profileImage
+            .flatMap { resizedJPEG($0, max: 200) }
+            .map { $0.base64EncodedString() }
+
+        let defaults = UserDefaults.standard
+        defaults.set(trimmedNickname, forKey: "nickname")
+        defaults.set(height, forKey: "height")
+        defaults.set(weight, forKey: "weight")
+        defaults.set(age, forKey: "age")
+        if let imageBase64 {
+            defaults.set(imageBase64, forKey: "profileImageBase64")
+        }
+
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        try await FirestoreService.shared.saveUserProfile(
+            uid: uid,
+            nickname: trimmedNickname,
+            height: height,
+            weight: weight,
+            age: age,
+            profileImageBase64: imageBase64
+        )
+
+        await MainActor.run {
+            self.nickname = trimmedNickname
+            self.age = age
+            self.height = height
+            self.weight = weight
+            self.profileImage = profileImage
+        }
+    }
+
+    private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {
+        let size = CGSize(width: side, height: side)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let resized = renderer.image { _ in
+            let scale = Swift.max(side / image.size.width, side / image.size.height)
+            let width = image.size.width * scale
+            let height = image.size.height * scale
+            let x = (side - width) / 2
+            let y = (side - height) / 2
+            image.draw(in: CGRect(x: x, y: y, width: width, height: height))
+        }
+        return resized.jpegData(compressionQuality: 0.7)
     }
 }
