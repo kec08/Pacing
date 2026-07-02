@@ -25,7 +25,8 @@ final class LocationManager: NSObject, ObservableObject {
     func requestPermission() {
         guard authorizationStatus == .notDetermined else {
             startUpdatingLocationIfAuthorized()
-                                                                 }
+            return
+        }
         manager.requestAlwaysAuthorization()
     }
 
