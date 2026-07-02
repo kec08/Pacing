@@ -70,6 +70,8 @@ struct MainTabView: View {
         } songProvider: {
             let item = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
             return (item?.title ?? "", item?.artist ?? "")
+        } profileImageProvider: {
+            UserDefaults.standard.string(forKey: "profileImageBase64")
         }
     }
 

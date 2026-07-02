@@ -56,6 +56,7 @@ struct RunningView: View {
             coordinate: coordinate,
             songTitle: snapshot?.title ?? "",
             artist: snapshot?.artistName ?? "",
+            profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64"),
             distance: 0,
             isMe: true
         )
@@ -312,7 +313,8 @@ struct RunningView: View {
                     uid: uid,
                     nickname: nickname,
                     coord: viewModel.locationManager.currentLocation?.coordinate,
-                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? "")
+                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? ""),
+                    profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64")
                 )
             }
             // 호스트면 세션에도 브로드캐스트
@@ -1156,12 +1158,7 @@ struct RunningView: View {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
                         ZStack {
-                            Circle()
-                                .fill(avatarColor)
-                                .frame(width: 26, height: 26)
-                            Text(String(runner.nickname.prefix(1)))
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(.white)
+                            runnerAvatar(runner: runner, size: 26, fontSize: 11, fallbackColor: avatarColor)
                         }
                         HStack(alignment: .top, spacing: 4) {
                             if !runner.songTitle.isEmpty {
@@ -1209,13 +1206,8 @@ struct RunningView: View {
 
                 // ── 아바타 + 말풍선 뱃지 (항상 표시) ──
                 ZStack(alignment: .topTrailing) {
-                    Circle()
-                        .fill(avatarColor)
-                        .frame(width: 34, height: 34)
+                    runnerAvatar(runner: runner, size: 34, fontSize: 13, fallbackColor: avatarColor)
                         .shadow(color: .black.opacity(0.2), radius: 3, y: 1)
-                    Text(String(runner.nickname.prefix(1)))
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
 
                     // 음표 뱃지 (접힌 상태 + 노래 있을 때만)
@@ -1609,15 +1601,7 @@ struct RunningView: View {
 
     private func nearbyRunnerCard(runner: NearbyRunner) -> some View {
         HStack(spacing: 14) {
-            // 아바타
-            ZStack {
-                Circle()
-                    .fill(Color.main500)
-                    .frame(width: 44, height: 44)
-                Text(String(runner.nickname.prefix(1)))
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-            }
+            runnerAvatar(runner: runner, size: 44, fontSize: 18, fallbackColor: .main500)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(runner.nickname)
@@ -1670,6 +1654,28 @@ struct RunningView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
+    }
+
+    @ViewBuilder
+    private func runnerAvatar(runner: NearbyRunner, size: CGFloat, fontSize: CGFloat, fallbackColor: Color) -> some View {
+        if let profileImageBase64 = runner.profileImageBase64,
+           let data = Data(base64Encoded: profileImageBase64),
+           let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            ZStack {
+                Circle()
+                    .fill(fallbackColor)
+                    .frame(width: size, height: size)
+                Text(String(runner.nickname.prefix(1)))
+                    .font(.system(size: fontSize, weight: .bold))
+                    .foregroundStyle(.white)
+            }
+        }
     }
 
     // MARK: - 카메라
