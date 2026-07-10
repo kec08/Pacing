@@ -16,7 +16,7 @@ final class RunningViewModel: ObservableObject {
     @Published var state: RunningState = .idle
     @Published var elapsedSeconds: Int = 0
     @Published var distance: Double = 0       // km
-    @Published var currentPace: Double = 0    // 분/km
+    @Published var currentPace: Double = 0    // 분/km, 1km 랩 기준 표시
 
     let locationManager: LocationManager
 
@@ -25,8 +25,11 @@ final class RunningViewModel: ObservableObject {
 
     private var timer: AnyCancellable?
     private var lastLocation: CLLocation?
-    private var paceBuffer: [Double] = []
     private var cancellables = Set<AnyCancellable>()
+    private var nextLapDistanceMark: Double = 1.0
+    private var lapStartDistance: Double = 0
+    private var lapStartElapsedSeconds: Int = 0
+    private var lastCompletedLapPace: Double = 0
 
     init(locationManager: LocationManager = .shared) {
         self.locationManager = locationManager
@@ -46,7 +49,7 @@ final class RunningViewModel: ObservableObject {
         locationManager.requestPermission()
         locationManager.resetRoute()
         lastLocation = nil
-        paceBuffer = []
+        resetLapState()
         locationManager.startTracking()
         state = .running
         startTimer()
@@ -79,7 +82,7 @@ final class RunningViewModel: ObservableObject {
         distance = 0
         currentPace = 0
         lastLocation = nil
-        paceBuffer = []
+        resetLapState()
         state = .idle
     }
 
@@ -116,6 +119,12 @@ final class RunningViewModel: ObservableObject {
         return String(format: "%d'%02d\"", min, sec)
     }
 
+    var estimatedCalories: Int {
+        let storedWeight = UserDefaults.standard.integer(forKey: "weight")
+        let weight = storedWeight > 0 ? Double(storedWeight) : 60.0
+        return Int((weight * distance * 1.036).rounded())
+    }
+
     // MARK: - Private
 
     private func startTimer() {
@@ -123,6 +132,7 @@ final class RunningViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 self?.elapsedSeconds += 1
+                self?.updateDisplayedPace()
             }
     }
 
@@ -141,12 +151,7 @@ final class RunningViewModel: ObservableObject {
 
         let deltaKm = deltaMeters / 1000.0
         distance += deltaKm
-
-        // 페이스 스무딩: 최근 5개 샘플 평균
-        let rawPace = (timeDelta / 60.0) / deltaKm
-        paceBuffer.append(rawPace)
-        if paceBuffer.count > 5 { paceBuffer.removeFirst() }
-        currentPace = paceBuffer.reduce(0, +) / Double(paceBuffer.count)
+        updateDisplayedPace()
     }
 
     func saveRecord(
@@ -192,5 +197,37 @@ final class RunningViewModel: ObservableObject {
             image.draw(in: CGRect(origin: .zero, size: targetSize))
         }
         return resized.jpegData(compressionQuality: 0.65)?.base64EncodedString()
+    }
+
+    private func resetLapState() {
+        nextLapDistanceMark = 1.0
+        lapStartDistance = 0
+        lapStartElapsedSeconds = 0
+        lastCompletedLapPace = 0
+    }
+
+    private func updateDisplayedPace() {
+        completePendingLapsIfNeeded()
+
+        if lastCompletedLapPace > 0 {
+            currentPace = lastCompletedLapPace
+        } else {
+            currentPace = avgPace
+        }
+    }
+
+    private func completePendingLapsIfNeeded() {
+        while distance >= nextLapDistanceMark {
+            let lapDistance = nextLapDistanceMark - lapStartDistance
+            let lapElapsedSeconds = elapsedSeconds - lapStartElapsedSeconds
+
+            if lapDistance > 0, lapElapsedSeconds > 0 {
+                lastCompletedLapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
+            }
+
+            lapStartDistance = nextLapDistanceMark
+            lapStartElapsedSeconds = elapsedSeconds
+            nextLapDistanceMark += 1.0
+        }
     }
 }

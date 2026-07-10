@@ -6,6 +6,7 @@ struct RunSummaryView: View {
     let distance: Double
     let elapsedSeconds: Int
     let avgPace: Double
+    let calories: Int
     let routeCoordinates: [CLLocationCoordinate2D]
     let onSave: () -> Void
     let onDiscard: () -> Void
@@ -87,12 +88,13 @@ struct RunSummaryView: View {
 
             Divider().opacity(0.3).padding(.vertical, 10)
 
-            // 시간 / 페이스
+            // 시간 / 1km당 페이스 / 칼로리
             HStack(spacing: 0) {
                 subStatItem(value: formattedTime, label: "시간")
                 Divider().frame(height: 36).opacity(0.3)
-                subStatItem(value: formattedAvgPace, label: "평균 페이스")
-                Spacer()
+                subStatItem(value: formattedAvgPaceWithUnit, label: "1km당 페이스")
+                Divider().frame(height: 36).opacity(0.3)
+                subStatItem(value: formattedCalories, label: "칼로리")
             }
         }
         .padding(18)
@@ -129,6 +131,15 @@ struct RunSummaryView: View {
         let min = Int(avgPace)
         let sec = Int((avgPace - Double(min)) * 60)
         return String(format: "%d'%02d\"", min, sec)
+    }
+
+    private var formattedAvgPaceWithUnit: String {
+        let pace = formattedAvgPace
+        return pace == "--'--\"" ? pace : "\(pace)/km"
+    }
+
+    private var formattedCalories: String {
+        "\(calories) kcal"
     }
 
     // MARK: - 경로에 맞게 카메라 맞추기
