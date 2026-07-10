@@ -329,6 +329,7 @@ struct RunningView: View {
                 distance: viewModel.distance,
                 elapsedSeconds: viewModel.elapsedSeconds,
                 avgPace: viewModel.avgPace,
+                calories: viewModel.estimatedCalories,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
                 onSave: {
                     let savedDistance = viewModel.distance
@@ -512,7 +513,7 @@ struct RunningView: View {
                     Text(viewModel.formattedPace)
                         .font(.system(size: 28, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.textPrimary)
-                    Text("페이스")
+                    Text("랩 페이스")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.textSecondary)
                 }
