@@ -495,7 +495,7 @@ struct RunningView: View {
 
             Divider().opacity(0.3).padding(.horizontal, 24)
 
-            // km / 페이스
+            // km / 페이스 / 칼로리
             HStack(spacing: 0) {
                 VStack(spacing: 2) {
                     Text(viewModel.formattedDistance)
@@ -513,7 +513,21 @@ struct RunningView: View {
                     Text(viewModel.formattedPace)
                         .font(.system(size: 28, weight: .semibold, design: .rounded))
                         .foregroundStyle(Color.textPrimary)
-                    Text("랩 페이스")
+                    Text("페이스")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+
+                Divider().frame(height: 40).opacity(0.3)
+
+                VStack(spacing: 2) {
+                    Text(viewModel.formattedCalories)
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Text("칼로리")
                         .font(.system(size: 12))
                         .foregroundStyle(Color.textSecondary)
                 }
