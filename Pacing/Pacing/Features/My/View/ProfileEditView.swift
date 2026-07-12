@@ -161,7 +161,7 @@ struct ProfileEditView: View {
                 title: "이름",
                 value: $nickname,
                 keyboardType: .default,
-                trailingText: "\(nickname.trimmingCharacters(in: .whitespacesAndNewlines).count)/12"
+                trailingText: ""
             )
             divider
             fieldRow(
@@ -226,6 +226,7 @@ struct ProfileEditView: View {
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.textSecondary)
                 .frame(minWidth: 36, alignment: .trailing)
+                .opacity(trailingText.isEmpty ? 0 : 1)
         }
         .padding(.horizontal, 20)
         .frame(height: 58)
