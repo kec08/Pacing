@@ -37,7 +37,7 @@ struct MainTabView: View {
                     Label("러닝", systemImage: "figure.run")
                 }
 
-            SharePlaceholderView()
+            ShareView()
                 .tag(MainTab.share)
                 .tabItem {
                     Label("공유", systemImage: "music.note.list")

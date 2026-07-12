@@ -382,6 +382,100 @@ final class FirestoreService {
             .updateData(["status": FriendRequestStatus.rejected.rawValue])
     }
 
+    // MARK: - 공유 플레이리스트 저장
+    func saveSharedPlaylist(_ summary: SharedPlaylistSummary) async throws {
+        guard !summary.id.isEmpty, !summary.ownerUID.isEmpty else { return }
+
+        var data: [String: Any] = [
+            "ownerUID": summary.ownerUID,
+            "ownerNickname": summary.ownerNickname,
+            "title": summary.title,
+            "subtitle": summary.subtitle,
+            "trackCount": summary.trackCount,
+            "updatedAt": FieldValue.serverTimestamp(),
+            "tracks": summary.tracks.map(sharedTrackData(from:))
+        ]
+
+        if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
+            data["artworkURL"] = artworkURL
+        }
+        if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
+            data["sourcePlaylistID"] = sourcePlaylistID
+        }
+        if let sourcePlaylistURL = summary.sourcePlaylistURL, !sourcePlaylistURL.isEmpty {
+            data["sourcePlaylistURL"] = sourcePlaylistURL
+        }
+
+        try await db.collection("sharedPlaylists")
+            .document(summary.id)
+            .setData(data, merge: true)
+    }
+
+    // MARK: - 친구 공유 플레이리스트 조회
+    func fetchFriendSharedPlaylists(currentUID: String, limit: Int = 12) async throws -> [SharedPlaylistSummary] {
+        let friends = try await fetchFriends(uid: currentUID)
+        guard !friends.isEmpty else { return [] }
+
+        var summaries: [SharedPlaylistSummary] = []
+        for friend in friends.prefix(8) {
+            let snapshot = try await db.collection("sharedPlaylists")
+                .whereField("ownerUID", isEqualTo: friend.id)
+                .order(by: "updatedAt", descending: true)
+                .limit(to: 3)
+                .getDocuments()
+
+            summaries.append(contentsOf: snapshot.documents.compactMap(makeSharedPlaylistSummary(from:)))
+        }
+
+        return Array(
+            summaries
+                .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+                .prefix(limit)
+        )
+    }
+
+    // MARK: - 플레이리스트 저장 여부 조회
+    func isSavedSharedPlaylist(uid: String, playlistID: String) async throws -> Bool {
+        guard !uid.isEmpty, !playlistID.isEmpty else { return false }
+        let doc = try await db.collection("users")
+            .document(uid)
+            .collection("savedSharedPlaylists")
+            .document(playlistID)
+            .getDocument()
+        return doc.exists
+    }
+
+    // MARK: - 공유 플레이리스트 저장
+    func saveSharedPlaylistToLibrary(uid: String, summary: SharedPlaylistSummary) async throws {
+        guard !uid.isEmpty else { return }
+
+        var data: [String: Any] = [
+            "ownerUID": summary.ownerUID,
+            "ownerNickname": summary.ownerNickname,
+            "title": summary.title,
+            "subtitle": summary.subtitle,
+            "trackCount": summary.trackCount,
+            "savedAt": FieldValue.serverTimestamp(),
+            "tracks": summary.tracks.map(sharedTrackData(from:))
+        ]
+
+        if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
+            data["artworkURL"] = artworkURL
+        }
+        if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
+            data["sourcePlaylistID"] = sourcePlaylistID
+        }
+        if let sourcePlaylistURL = summary.sourcePlaylistURL, !sourcePlaylistURL.isEmpty {
+            data["sourcePlaylistURL"] = sourcePlaylistURL
+        }
+
+        try await db.collection("users")
+            .document(uid)
+            .collection("savedSharedPlaylists")
+            .document(summary.id)
+            .setData(data, merge: true)
+    }
+
     private func fetchFriendUser(uid: String, source: FriendRecommendationSource) async throws -> FriendUser {
         let doc = try await db.collection("users").document(uid).getDocument()
         return try await makeFriendUserWithActivity(from: doc, source: source) ?? FriendUser(
@@ -434,6 +528,65 @@ final class FirestoreService {
         if let profileImageBase64 = user.profileImageBase64 {
             data["profileImageBase64"] = profileImageBase64
         }
+        return data
+    }
+
+    private func makeSharedPlaylistSummary(from doc: DocumentSnapshot) -> SharedPlaylistSummary? {
+        guard let data = doc.data(),
+              let ownerUID = data["ownerUID"] as? String,
+              let ownerNickname = data["ownerNickname"] as? String,
+              let title = data["title"] as? String
+        else { return nil }
+
+        let tracks = (data["tracks"] as? [[String: Any]] ?? []).compactMap(makeSharedTrack(from:))
+
+        return SharedPlaylistSummary(
+            id: doc.documentID,
+            ownerUID: ownerUID,
+            ownerNickname: ownerNickname,
+            title: title,
+            subtitle: data["subtitle"] as? String ?? "",
+            artworkURL: data["artworkURL"] as? String,
+            sourcePlaylistID: data["sourcePlaylistID"] as? String,
+            sourcePlaylistURL: data["sourcePlaylistURL"] as? String,
+            trackCount: (data["trackCount"] as? NSNumber)?.intValue ?? tracks.count,
+            updatedAt: (data["updatedAt"] as? Timestamp)?.dateValue(),
+            tracks: tracks
+        )
+    }
+
+    private func makeSharedTrack(from data: [String: Any]) -> SharedPlaylistTrack? {
+        guard let title = data["title"] as? String,
+              let artistName = data["artistName"] as? String
+        else { return nil }
+
+        return SharedPlaylistTrack(
+            id: data["id"] as? String ?? UUID().uuidString,
+            title: title,
+            artistName: artistName,
+            albumTitle: data["albumTitle"] as? String ?? "",
+            songStoreID: data["songStoreID"] as? String,
+            artworkURL: data["artworkURL"] as? String,
+            durationText: data["durationText"] as? String ?? ""
+        )
+    }
+
+    private func sharedTrackData(from track: SharedPlaylistTrack) -> [String: Any] {
+        var data: [String: Any] = [
+            "id": track.id,
+            "title": track.title,
+            "artistName": track.artistName,
+            "albumTitle": track.albumTitle,
+            "durationText": track.durationText
+        ]
+
+        if let songStoreID = track.songStoreID, !songStoreID.isEmpty {
+            data["songStoreID"] = songStoreID
+        }
+        if let artworkURL = track.artworkURL, !artworkURL.isEmpty {
+            data["artworkURL"] = artworkURL
+        }
+
         return data
     }
 }
