@@ -18,12 +18,20 @@ final class LocationManager: NSObject, ObservableObject {
         manager.distanceFilter = 5
         manager.activityType = .fitness
         manager.pausesLocationUpdatesAutomatically = false
+        manager.allowsBackgroundLocationUpdates = true
+        manager.showsBackgroundLocationIndicator = true
         authorizationStatus = manager.authorizationStatus
         startUpdatingLocationIfAuthorized()
     }
 
     
     func requestPermission() {
+        if authorizationStatus == .authorizedWhenInUse {
+            manager.requestAlwaysAuthorization()
+            startUpdatingLocationIfAuthorized()
+            return
+        }
+
         guard authorizationStatus == .notDetermined else {
             startUpdatingLocationIfAuthorized()
             return

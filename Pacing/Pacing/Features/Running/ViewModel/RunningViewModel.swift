@@ -125,6 +125,10 @@ final class RunningViewModel: ObservableObject {
         return Int((weight * distance * 1.036).rounded())
     }
 
+    var formattedCalories: String {
+        "\(estimatedCalories)"
+    }
+
     // MARK: - Private
 
     private func startTimer() {
