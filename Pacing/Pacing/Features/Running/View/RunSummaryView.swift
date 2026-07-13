@@ -7,6 +7,7 @@ struct RunSummaryView: View {
     let elapsedSeconds: Int
     let avgPace: Double
     let calories: Int
+    let lapPaces: [RunLapPace]
     let routeCoordinates: [CLLocationCoordinate2D]
     let onSave: () -> Void
     let onDiscard: () -> Void
@@ -94,7 +95,32 @@ struct RunSummaryView: View {
                 Divider().frame(height: 36).opacity(0.3)
                 subStatItem(value: formattedAvgPace, label: "평균 페이스")
                 Divider().frame(height: 36).opacity(0.3)
-                subStatItem(value: formattedCalories, label: "칼로리")
+                subStatItem(value: formattedCalories, label: "칼로리", minimumScaleFactor: 0.55)
+            }
+
+            if !lapPaces.isEmpty {
+                Divider().opacity(0.3).padding(.vertical, 14)
+
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("평균 페이스")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.textSecondary)
+
+                    ForEach(lapPaces) { lap in
+                        HStack(spacing: 12) {
+                            Text("\(lap.kilometer)km")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Color.textPrimary)
+
+                            Spacer()
+
+                            Text(formattedPace(lap.pace))
+                                .font(.system(size: 15, weight: .bold, design: .rounded))
+                                .foregroundStyle(Color.textPrimary)
+                        }
+                    }
+                }
+                .padding(.top, 2)
             }
         }
         .padding(18)
@@ -102,15 +128,22 @@ struct RunSummaryView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 
-    private func subStatItem(value: String, label: String) -> some View {
+    private func subStatItem(
+        value: String,
+        label: String,
+        minimumScaleFactor: CGFloat = 0.8
+    ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
                 .font(.system(size: 24, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(minimumScaleFactor)
             Text(label)
                 .font(.system(size: 12))
                 .foregroundStyle(Color.textSecondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 16)
     }
 
@@ -135,6 +168,13 @@ struct RunSummaryView: View {
 
     private var formattedCalories: String {
         "\(calories) kcal"
+    }
+
+    private func formattedPace(_ pace: Double) -> String {
+        guard pace > 0 else { return "--'--\"" }
+        let min = Int(pace)
+        let sec = Int((pace - Double(min)) * 60)
+        return String(format: "%d'%02d\"", min, sec)
     }
 
     // MARK: - 경로에 맞게 카메라 맞추기
