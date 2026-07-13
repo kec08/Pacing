@@ -141,7 +141,6 @@ struct MyView: View {
                             .foregroundStyle(.white)
                     }
                 }
-
                 VStack(alignment: .leading, spacing: 4) {
                     Text(vm.nickname)
                         .font(.system(size: 17, weight: .bold))
@@ -150,9 +149,7 @@ struct MyView: View {
                         .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(vm.activityStatusText) ? .bold : .medium))
                         .foregroundStyle(FriendActivityText.isTodayStatus(vm.activityStatusText) ? Color.green : Color.textSecondary)
                 }
-
                 Spacer()
-
                 Image(systemName: "chevron.right")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(Color.gray500)
