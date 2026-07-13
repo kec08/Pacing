@@ -9,17 +9,20 @@ struct MyView: View {
     @State private var showLogoutAlert = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                profileHeader
-                statsSection
-                Divider().padding(.top, 8)
-                historySection
-                Divider().padding(.top, 8)
-                settingsSection
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    profileHeader
+                    statsSection
+                    Divider().padding(.top, 8)
+                    historySection
+                    Divider().padding(.top, 8)
+                    settingsSection
+                }
             }
+            .background(Color.backgroundPrimary)
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .background(Color.backgroundPrimary)
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
             periodPickerSheet
@@ -118,41 +121,44 @@ struct MyView: View {
 
     // MARK: - Profile Header
     private var profileHeader: some View {
-        HStack(spacing: 14) {
-            ZStack {
-                if let img = vm.profileImage {
-                    Image(uiImage: img)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 44, height: 44)
-                        .clipShape(Circle())
-                } else {
-                    Circle()
-                        .fill(Color.main500)
-                        .frame(width: 44, height: 44)
-                    Text(String(vm.nickname.prefix(1)))
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(.white)
-                }
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                Text(vm.nickname)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(Color.textPrimary)
-                if vm.height > 0 || vm.weight > 0 || vm.age > 0 {
-                    HStack(spacing: 6) {
-                        if vm.height > 0 { Text("\(vm.height)cm") }
-                        if vm.weight > 0 { Text("\(vm.weight)kg") }
-                        if vm.age > 0    { Text("\(vm.age)세") }
+        NavigationLink {
+            MyProfileDetailView(myViewModel: vm)
+        } label: {
+            HStack(spacing: 14) {
+                ZStack {
+                    if let img = vm.profileImage {
+                        Image(uiImage: img)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 48, height: 48)
+                            .clipShape(Circle())
+                    } else {
+                        Circle()
+                            .fill(Color.main500)
+                            .frame(width: 48, height: 48)
+                        Text(String(vm.nickname.prefix(1)))
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
                     }
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.textSecondary)
                 }
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(vm.nickname)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Color.textPrimary)
+                    Text(vm.activityStatusText)
+                        .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(vm.activityStatusText) ? .bold : .medium))
+                        .foregroundStyle(FriendActivityText.isTodayStatus(vm.activityStatusText) ? Color.green : Color.textSecondary)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.gray500)
             }
-            Spacer()
+            .padding(.horizontal, 28)
+            .padding(.vertical, 18)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 28)
-        .padding(.vertical, 18)
+        .buttonStyle(.plain)
         .background(Color.backgroundPrimary)
     }
 
@@ -455,8 +461,6 @@ struct MyView: View {
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "person.fill", label: "프로필 수정") {}
-            Divider().padding(.leading, 54)
             settingsRow(icon: "rectangle.portrait.and.arrow.right", label: "로그아웃", tint: .accent500) {
                 showLogoutAlert = true
             }

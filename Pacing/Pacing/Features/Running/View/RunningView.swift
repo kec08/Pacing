@@ -1717,7 +1717,6 @@ struct RunningView: View {
 private struct VolumeSliderView: UIViewRepresentable {
     func makeUIView(context: Context) -> MPVolumeView {
         let v = MPVolumeView(frame: .zero)
-        v.showsRouteButton = false
         v.showsVolumeSlider = true
         v.setVolumeThumbImage(UIImage(), for: .normal) // 기본 thumb 제거 후 재설정
         // 트랙 컬러
@@ -1733,9 +1732,21 @@ private struct VolumeSliderView: UIViewRepresentable {
         }
         v.setVolumeThumbImage(thumb, for: .normal)
         v.setVolumeThumbImage(thumb, for: .highlighted)
+        hideRouteButtonIfNeeded(in: v)
         return v
     }
-    func updateUIView(_ uiView: MPVolumeView, context: Context) {}
+    func updateUIView(_ uiView: MPVolumeView, context: Context) {
+        hideRouteButtonIfNeeded(in: uiView)
+    }
+
+    private func hideRouteButtonIfNeeded(in volumeView: MPVolumeView) {
+        volumeView.subviews
+            .compactMap { $0 as? UIButton }
+            .forEach {
+                $0.isHidden = true
+                $0.isUserInteractionEnabled = false
+            }
+    }
 }
 
 private struct Triangle: Shape {

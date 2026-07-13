@@ -13,6 +13,7 @@ struct NearbyRunner: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let songTitle: String
     let artist: String
+    let profileImageBase64: String?
     let distance: Double    // 미터
     var isMe: Bool = false
 }
@@ -81,6 +82,7 @@ final class NearbyRunnerViewModel: ObservableObject {
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
+                    profileImageBase64: runner.profileImageBase64,
                     distance: dist,
                     isMe: false
                 )

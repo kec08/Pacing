@@ -9,6 +9,10 @@ final class HomeViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var nickname: String = "러너"
 
+    var currentUID: String {
+        Auth.auth().currentUser?.uid ?? ""
+    }
+
     private let cal = Calendar.current
 
     func loadHomeData() async {
@@ -22,12 +26,16 @@ final class HomeViewModel: ObservableObject {
             return
         }
 
-        let records = (try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)) ?? []
+        async let recordsTask = FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
+        async let sessionsTask = RealtimeDBService.shared.fetchRecentListenSessions(uid: uid, limit: 10)
+
+        let records = (try? await recordsTask) ?? []
+        let sessions = (try? await sessionsTask) ?? []
 
         await MainActor.run {
             recentRuns = Array(records.prefix(3))
             weeklyStats = calcWeeklyStats(from: records)
-            recentListenSessions = []
+            recentListenSessions = sessions
             isLoading = false
         }
     }
@@ -68,5 +76,16 @@ final class HomeViewModel: ObservableObject {
         f.dateFormat = "M월 d일"
         f.locale = Locale(identifier: "ko_KR")
         return f.string(from: date)
+    }
+
+    func listenPartnerNickname(_ session: ListenSession) -> String {
+        session.partnerNickname(for: currentUID)
+    }
+
+    func formatListenTime(_ date: Date) -> String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.unitsStyle = .full
+        return formatter.localizedString(for: date, relativeTo: Date())
     }
 }

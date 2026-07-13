@@ -49,7 +49,13 @@ struct ListenSession: Identifiable {
     var status: String          // pending / active / ended / rejected
     var isPlaying: Bool
 
-    // 홈탭 최근 활동 표시용 편의 프로퍼티
-    var partnerNickname: String { guestNickname }
     var date: Date { Date(timeIntervalSince1970: serverTimestamp / 1000.0) }
+
+    func partnerNickname(for currentUID: String) -> String {
+        currentUID == hostUID ? guestNickname : hostNickname
+    }
+
+    func partnerUID(for currentUID: String) -> String {
+        currentUID == hostUID ? guestUID : hostUID
+    }
 }
