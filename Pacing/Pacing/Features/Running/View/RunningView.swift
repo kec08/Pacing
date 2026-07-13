@@ -330,6 +330,7 @@ struct RunningView: View {
                 elapsedSeconds: viewModel.elapsedSeconds,
                 avgPace: viewModel.avgPace,
                 calories: viewModel.estimatedCalories,
+                lapPaces: viewModel.completedLapPaces,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
                 onSave: {
                     let savedDistance = viewModel.distance
