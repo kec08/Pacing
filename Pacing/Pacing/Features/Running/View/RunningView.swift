@@ -1732,9 +1732,12 @@ struct RunningView: View {
 private struct VolumeSliderView: UIViewRepresentable {
     func makeUIView(context: Context) -> MPVolumeView {
         let v = MPVolumeView(frame: .zero)
-        v.showsRouteButton = false
         v.showsVolumeSlider = true
         v.setVolumeThumbImage(UIImage(), for: .normal) // 기본 thumb 제거 후 재설정
+        v.subviews.compactMap { $0 as? UIButton }.forEach {
+            $0.isHidden = true
+            $0.isUserInteractionEnabled = false
+        }
         // 트랙 컬러
         v.tintColor = UIColor(Color.main500)
         // 커스텀 thumb (작은 흰 원, 그림자)

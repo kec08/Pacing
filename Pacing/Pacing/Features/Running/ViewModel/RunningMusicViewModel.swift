@@ -293,7 +293,6 @@ final class RunningMusicViewModel: ObservableObject {
         let rawTime = max(0, player.currentPlaybackTime)
         let duration = playbackDuration
         let boundedRawTime = duration > 0 ? min(rawTime, duration) : rawTime
-        let isPlayerPlaying = player.playbackState == .playing
 
         if let baseTime = optimisticPlaybackBaseTime,
            let startedAt = optimisticPlaybackStartedAt {
