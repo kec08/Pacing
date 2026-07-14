@@ -1,5 +1,6 @@
 import CoreLocation
 import Combine
+import UIKit
 
 final class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
@@ -47,6 +48,7 @@ final class LocationManager: NSObject, ObservableObject {
     func requestCurrentLocation() {
         guard authorizationStatus == .authorizedAlways ||
                 authorizationStatus == .authorizedWhenInUse else { return }
+        guard UIApplication.shared.applicationState != .background else { return }
         manager.requestLocation()
     }
 
