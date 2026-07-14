@@ -55,10 +55,13 @@ final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
 
     private let player = ApplicationMusicPlayer.shared
-    private var resolvedCatalogSongsByStoreID: [String: Song] = [:]
-    private var resolvedCatalogSongsByQuery: [String: Song] = [:]
+    private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
+    private let resolvedCatalogSongsByQuery = NSCache<NSString, CachedCatalogSong>()
 
-    private init() {}
+    private init() {
+        resolvedCatalogSongsByStoreID.countLimit = 180
+        resolvedCatalogSongsByQuery.countLimit = 220
+    }
 
     func requestAuthorizationIfNeeded() async -> MusicAuthorization.Status {
         let current = MusicAuthorization.currentStatus
@@ -507,7 +510,7 @@ final class AppleMusicRecommendationService {
                 continue
             }
 
-            if let cachedSong = resolvedCatalogSongsByStoreID[songStoreID] {
+            if let cachedSong = resolvedCatalogSongsByStoreID.object(forKey: songStoreID as NSString)?.song {
                 resolvedSongsByTrackID[track.id] = cachedSong
             } else {
                 unresolvedTracks.append(track)
@@ -531,7 +534,9 @@ final class AppleMusicRecommendationService {
                 let fetchedSongsByID: [String: Song] = Dictionary(
                     uniqueKeysWithValues: response.items.map { ("\($0.id)", $0) }
                 )
-                resolvedCatalogSongsByStoreID.merge(fetchedSongsByID) { current, _ in current }
+                for (songID, song) in fetchedSongsByID {
+                    resolvedCatalogSongsByStoreID.setObject(CachedCatalogSong(song), forKey: songID as NSString)
+                }
 
                 for track in unresolvedTracks {
                     guard let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -544,7 +549,10 @@ final class AppleMusicRecommendationService {
 
         for track in tracks where resolvedSongsByTrackID[track.id] == nil {
             if let fallbackSong = try await searchCatalogSong(title: track.title, artist: track.artistName) {
-                resolvedCatalogSongsByStoreID["\(fallbackSong.id)"] = fallbackSong
+                resolvedCatalogSongsByStoreID.setObject(
+                    CachedCatalogSong(fallbackSong),
+                    forKey: "\(fallbackSong.id)" as NSString
+                )
                 resolvedSongsByTrackID[track.id] = fallbackSong
             }
         }
@@ -561,7 +569,7 @@ final class AppleMusicRecommendationService {
         guard !query.isEmpty else { return nil }
 
         let cacheKey = normalizeSongText(title) + "|" + normalizeSongText(artist)
-        if let cachedSong = resolvedCatalogSongsByQuery[cacheKey] {
+        if let cachedSong = resolvedCatalogSongsByQuery.object(forKey: cacheKey as NSString)?.song {
             return cachedSong
         }
 
@@ -576,19 +584,19 @@ final class AppleMusicRecommendationService {
             normalizeSongText(song.title) == normalizedTitle &&
             normalizeSongText(song.artistName) == normalizedArtist
         }) {
-            resolvedCatalogSongsByQuery[cacheKey] = exactMatch
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(exactMatch), forKey: cacheKey as NSString)
             return exactMatch
         }
 
         if let titleMatch = response.songs.first(where: { song in
             normalizeSongText(song.title) == normalizedTitle
         }) {
-            resolvedCatalogSongsByQuery[cacheKey] = titleMatch
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(titleMatch), forKey: cacheKey as NSString)
             return titleMatch
         }
 
         if let firstSong = response.songs.first {
-            resolvedCatalogSongsByQuery[cacheKey] = firstSong
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(firstSong), forKey: cacheKey as NSString)
             return firstSong
         }
 
@@ -651,6 +659,14 @@ final class AppleMusicRecommendationService {
         }
 
         return nil
+    }
+}
+
+private final class CachedCatalogSong: NSObject {
+    let song: Song
+
+    init(_ song: Song) {
+        self.song = song
     }
 }
 
