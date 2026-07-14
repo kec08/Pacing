@@ -118,6 +118,22 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
+                let preparedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
+                tracks = preparedTracks
+                summary = SharedPlaylistSummary(
+                    id: summary.id,
+                    ownerUID: summary.ownerUID,
+                    ownerNickname: summary.ownerNickname,
+                    title: summary.title,
+                    subtitle: summary.subtitle,
+                    artworkURL: summary.artworkURL ?? preparedTracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL,
+                    sourcePlaylistID: summary.sourcePlaylistID,
+                    sourcePlaylistURL: summary.sourcePlaylistURL,
+                    trackCount: preparedTracks.count,
+                    updatedAt: summary.updatedAt,
+                    tracks: preparedTracks
+                )
+
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
                     appSaveState = isSaved ? .saved : .idle
@@ -187,7 +203,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                try await musicService.playTracks(with: tracks.compactMap(\.songStoreID))
+                try await musicService.play(sharedTracks: tracks)
             case .recommendation(let playlist):
                 try await musicService.play(playlist: playlist)
             case .album(let album):
@@ -204,15 +220,20 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func play(track: SharedPlaylistTrack) async {
-        guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
-            errorMessage = "이 곡은 바로 재생할 수 없어요."
-            return
-        }
-
         playingTrackID = track.id
 
         do {
-            try await musicService.playTracks(with: [songStoreID])
+            switch source {
+            case .shared:
+                try await musicService.play(sharedTrack: track)
+            default:
+                guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
+                    errorMessage = "이 곡은 바로 재생할 수 없어요."
+                    playingTrackID = nil
+                    return
+                }
+                try await musicService.playTracks(with: [songStoreID])
+            }
         } catch {
             playingTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."

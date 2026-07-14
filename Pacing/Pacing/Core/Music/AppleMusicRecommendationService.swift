@@ -55,8 +55,13 @@ final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
 
     private let player = ApplicationMusicPlayer.shared
+    private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
+    private let resolvedCatalogSongsByQuery = NSCache<NSString, CachedCatalogSong>()
 
-    private init() {}
+    private init() {
+        resolvedCatalogSongsByStoreID.countLimit = 180
+        resolvedCatalogSongsByQuery.countLimit = 220
+    }
 
     func requestAuthorizationIfNeeded() async -> MusicAuthorization.Status {
         let current = MusicAuthorization.currentStatus
@@ -80,18 +85,22 @@ final class AppleMusicRecommendationService {
 
         for playlist in playlists {
             let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .library)
+            let sharedTracks = try await enrichedSharedTracks(from: loadedPlaylist)
             let summary = SharedPlaylistSummary(
                 id: Self.makeSharedPlaylistDocumentID(ownerUID: uid, sourcePlaylistID: "\(playlist.id)"),
                 ownerUID: uid,
                 ownerNickname: nickname,
                 title: loadedPlaylist.name,
                 subtitle: loadedPlaylist.curatorName ?? loadedPlaylist.shortDescription ?? "내 플레이리스트",
-                artworkURL: loadedPlaylist.artwork?.url(width: 800, height: 800)?.absoluteString,
+                artworkURL: try await resolvedPlaylistArtworkURL(
+                    playlistArtworkURL: loadedPlaylist.artwork?.url(width: 800, height: 800)?.absoluteString,
+                    tracks: sharedTracks
+                ),
                 sourcePlaylistID: "\(loadedPlaylist.id)",
                 sourcePlaylistURL: loadedPlaylist.url?.absoluteString,
                 trackCount: loadedPlaylist.tracks?.count ?? 0,
                 updatedAt: Date(),
-                tracks: Self.makeSharedTracks(from: loadedPlaylist)
+                tracks: sharedTracks
             )
             try await FirestoreService.shared.saveSharedPlaylist(summary)
         }
@@ -273,6 +282,159 @@ final class AppleMusicRecommendationService {
         try await player.play()
     }
 
+    func play(sharedTracks: [SharedPlaylistTrack]) async throws {
+        let songs = try await resolveCatalogSongs(for: sharedTracks)
+        guard !songs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        player.queue = .init(for: songs)
+        try await player.prepareToPlay()
+        try await player.play()
+    }
+
+    func play(sharedTrack: SharedPlaylistTrack) async throws {
+        let songs = try await resolveCatalogSongs(for: [sharedTrack])
+        guard let song = songs.first else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        player.queue = .init(for: [song])
+        try await player.prepareToPlay()
+        try await player.play()
+    }
+
+    func prepareSharedTracksForPlayback(_ tracks: [SharedPlaylistTrack]) async -> [SharedPlaylistTrack] {
+        guard !tracks.isEmpty else { return [] }
+
+        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: tracks) else {
+            return tracks
+        }
+
+        return tracks.map { track in
+            guard let song = resolvedSongsByTrackID[track.id] else { return track }
+
+            return SharedPlaylistTrack(
+                id: track.id,
+                title: track.title,
+                artistName: track.artistName,
+                albumTitle: track.albumTitle,
+                songStoreID: "\(song.id)",
+                artworkURL: track.artworkURL ?? song.artwork?.url(width: 320, height: 320)?.absoluteString,
+                durationText: track.durationText
+            )
+        }
+    }
+
+    func enrichedSharedPlaylistSummary(_ summary: SharedPlaylistSummary) async -> SharedPlaylistSummary {
+        guard summary.effectiveArtworkURL == nil else { return summary }
+
+        var updatedTracks = summary.tracks
+
+        for index in updatedTracks.indices {
+            if updatedTracks[index].artworkURL != nil {
+                continue
+            }
+
+            guard let song = try? await searchCatalogSong(
+                title: updatedTracks[index].title,
+                artist: updatedTracks[index].artistName
+            ) else {
+                continue
+            }
+
+            let artworkURL = song.artwork?.url(width: 320, height: 320)?.absoluteString
+            updatedTracks[index] = SharedPlaylistTrack(
+                id: updatedTracks[index].id,
+                title: updatedTracks[index].title,
+                artistName: updatedTracks[index].artistName,
+                albumTitle: updatedTracks[index].albumTitle,
+                songStoreID: "\(song.id)",
+                artworkURL: artworkURL,
+                durationText: updatedTracks[index].durationText
+            )
+
+            if artworkURL != nil {
+                break
+            }
+        }
+
+        return SharedPlaylistSummary(
+            id: summary.id,
+            ownerUID: summary.ownerUID,
+            ownerNickname: summary.ownerNickname,
+            title: summary.title,
+            subtitle: summary.subtitle,
+            artworkURL: updatedTracks.first(where: { $0.artworkURL != nil })?.artworkURL,
+            sourcePlaylistID: summary.sourcePlaylistID,
+            sourcePlaylistURL: summary.sourcePlaylistURL,
+            trackCount: summary.trackCount,
+            updatedAt: summary.updatedAt,
+            tracks: updatedTracks
+        )
+    }
+
+    func resolvedArtworkURLs(for songs: [Song]) async -> [String: String] {
+        guard !songs.isEmpty else { return [:] }
+
+        var artworkURLsBySongID: [String: String] = [:]
+
+        for song in songs {
+            let songID = "\(song.id)"
+
+            if let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString,
+               !artworkURL.isEmpty {
+                artworkURLsBySongID[songID] = artworkURL
+                continue
+            }
+
+            guard let matchedSong = try? await searchCatalogSong(
+                title: song.title,
+                artist: song.artistName
+            ),
+            let artworkURL = matchedSong.artwork?.url(width: 900, height: 900)?.absoluteString,
+            !artworkURL.isEmpty
+            else {
+                continue
+            }
+
+            artworkURLsBySongID[songID] = artworkURL
+        }
+
+        return artworkURLsBySongID
+    }
+
+    func resolvedLibraryPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
+        guard !playlists.isEmpty else { return [:] }
+
+        var artworkURLsByPlaylistID: [String: String] = [:]
+
+        for playlist in playlists {
+            let playlistID = "\(playlist.id)"
+
+            if let artworkURL = playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
+               !artworkURL.isEmpty {
+                artworkURLsByPlaylistID[playlistID] = artworkURL
+                continue
+            }
+
+            guard let loadedPlaylist = try? await playlist.with([.tracks], preferredSource: .library) else {
+                continue
+            }
+
+            guard let sharedTracks = try? await enrichedSharedTracks(from: loadedPlaylist),
+                  let artworkURL = sharedTracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL,
+                  !artworkURL.isEmpty
+            else {
+                continue
+            }
+
+            artworkURLsByPlaylistID[playlistID] = artworkURL
+        }
+
+        return artworkURLsByPlaylistID
+    }
+
     func addToLibrary(playlist: Playlist) async throws {
         try await MusicLibrary.shared.add(playlist)
     }
@@ -328,6 +490,183 @@ final class AppleMusicRecommendationService {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func resolveCatalogSongs(for tracks: [SharedPlaylistTrack]) async throws -> [Song] {
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: tracks)
+        return tracks.compactMap { resolvedSongsByTrackID[$0.id] }
+    }
+
+    private func resolveCatalogSongMatches(for tracks: [SharedPlaylistTrack]) async throws -> [String: Song] {
+        guard !tracks.isEmpty else { return [:] }
+
+        var resolvedSongsByTrackID: [String: Song] = [:]
+        var unresolvedTracks: [SharedPlaylistTrack] = []
+
+        for track in tracks {
+            guard let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !songStoreID.isEmpty else {
+                unresolvedTracks.append(track)
+                continue
+            }
+
+            if let cachedSong = resolvedCatalogSongsByStoreID.object(forKey: songStoreID as NSString)?.song {
+                resolvedSongsByTrackID[track.id] = cachedSong
+            } else {
+                unresolvedTracks.append(track)
+            }
+        }
+
+        let unresolvedStoreIDs = Array(Set(unresolvedTracks.compactMap { track -> String? in
+            guard let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !songStoreID.isEmpty else { return nil }
+            return songStoreID
+        }))
+
+        if !unresolvedStoreIDs.isEmpty {
+            var request = MusicCatalogResourceRequest<Song>(
+                matching: \.id,
+                memberOf: unresolvedStoreIDs.map { MusicItemID($0) }
+            )
+            request.limit = min(unresolvedStoreIDs.count, 25)
+
+            if let response = try? await request.response() {
+                let fetchedSongsByID: [String: Song] = Dictionary(
+                    uniqueKeysWithValues: response.items.map { ("\($0.id)", $0) }
+                )
+                for (songID, song) in fetchedSongsByID {
+                    resolvedCatalogSongsByStoreID.setObject(CachedCatalogSong(song), forKey: songID as NSString)
+                }
+
+                for track in unresolvedTracks {
+                    guard let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !songStoreID.isEmpty,
+                          let song = fetchedSongsByID[songStoreID] else { continue }
+                    resolvedSongsByTrackID[track.id] = song
+                }
+            }
+        }
+
+        for track in tracks where resolvedSongsByTrackID[track.id] == nil {
+            if let fallbackSong = try await searchCatalogSong(title: track.title, artist: track.artistName) {
+                resolvedCatalogSongsByStoreID.setObject(
+                    CachedCatalogSong(fallbackSong),
+                    forKey: "\(fallbackSong.id)" as NSString
+                )
+                resolvedSongsByTrackID[track.id] = fallbackSong
+            }
+        }
+
+        return resolvedSongsByTrackID
+    }
+
+    private func searchCatalogSong(title: String, artist: String) async throws -> Song? {
+        let query = [title, artist]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        guard !query.isEmpty else { return nil }
+
+        let cacheKey = normalizeSongText(title) + "|" + normalizeSongText(artist)
+        if let cachedSong = resolvedCatalogSongsByQuery.object(forKey: cacheKey as NSString)?.song {
+            return cachedSong
+        }
+
+        var request = MusicCatalogSearchRequest(term: query, types: [Song.self])
+        request.limit = 10
+        let response = try await request.response()
+
+        let normalizedTitle = normalizeSongText(title)
+        let normalizedArtist = normalizeSongText(artist)
+
+        if let exactMatch = response.songs.first(where: { song in
+            normalizeSongText(song.title) == normalizedTitle &&
+            normalizeSongText(song.artistName) == normalizedArtist
+        }) {
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(exactMatch), forKey: cacheKey as NSString)
+            return exactMatch
+        }
+
+        if let titleMatch = response.songs.first(where: { song in
+            normalizeSongText(song.title) == normalizedTitle
+        }) {
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(titleMatch), forKey: cacheKey as NSString)
+            return titleMatch
+        }
+
+        if let firstSong = response.songs.first {
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(firstSong), forKey: cacheKey as NSString)
+            return firstSong
+        }
+
+        return nil
+    }
+
+    private func normalizeSongText(_ text: String) -> String {
+        text
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func enrichedSharedTracks(from playlist: Playlist) async throws -> [SharedPlaylistTrack] {
+        let baseTracks = Self.makeSharedTracks(from: playlist)
+        guard !baseTracks.isEmpty else { return [] }
+
+        var enrichedTracks = baseTracks
+
+        for index in enrichedTracks.indices {
+            if enrichedTracks[index].artworkURL != nil {
+                continue
+            }
+
+            guard let song = try await searchCatalogSong(
+                title: enrichedTracks[index].title,
+                artist: enrichedTracks[index].artistName
+            ) else {
+                continue
+            }
+
+            enrichedTracks[index] = SharedPlaylistTrack(
+                id: enrichedTracks[index].id,
+                title: enrichedTracks[index].title,
+                artistName: enrichedTracks[index].artistName,
+                albumTitle: enrichedTracks[index].albumTitle,
+                songStoreID: "\(song.id)",
+                artworkURL: song.artwork?.url(width: 320, height: 320)?.absoluteString,
+                durationText: enrichedTracks[index].durationText
+            )
+
+            if index >= 4 && enrichedTracks.contains(where: { $0.artworkURL != nil }) {
+                break
+            }
+        }
+
+        return enrichedTracks
+    }
+
+    private func resolvedPlaylistArtworkURL(
+        playlistArtworkURL: String?,
+        tracks: [SharedPlaylistTrack]
+    ) async throws -> String? {
+        if let playlistArtworkURL, !playlistArtworkURL.isEmpty {
+            return playlistArtworkURL
+        }
+
+        if let trackArtworkURL = tracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL {
+            return trackArtworkURL
+        }
+
+        return nil
+    }
+}
+
+private final class CachedCatalogSong: NSObject {
+    let song: Song
+
+    init(_ song: Song) {
+        self.song = song
     }
 }
 

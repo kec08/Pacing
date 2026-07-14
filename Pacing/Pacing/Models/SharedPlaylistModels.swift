@@ -12,6 +12,10 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let trackCount: Int
     let updatedAt: Date?
     let tracks: [SharedPlaylistTrack]
+
+    var effectiveArtworkURL: String? {
+        artworkURL ?? tracks.first?.effectiveArtworkURL
+    }
 }
 
 struct SharedPlaylistTrack: Identifiable, Equatable {
@@ -22,6 +26,10 @@ struct SharedPlaylistTrack: Identifiable, Equatable {
     let songStoreID: String?
     let artworkURL: String?
     let durationText: String
+
+    var effectiveArtworkURL: String? {
+        artworkURL
+    }
 }
 
 struct RecommendedStationItem: Identifiable, Equatable {
@@ -36,4 +44,3 @@ enum SharedPlaylistSaveState: Equatable {
     case saving
     case saved
 }
-

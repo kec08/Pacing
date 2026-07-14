@@ -31,8 +31,12 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isGoingForward: Bool = true
     @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
     @Published private(set) var displayPlaybackTime: TimeInterval = 0
+    @Published private(set) var currentPlaylistName: String? = nil
+    @Published private(set) var queueArtworkURLsBySongID: [String: String] = [:]
+    @Published private(set) var playlistArtworkURLsByPlaylistID: [String: String] = [:]
 
     private let player = MPMusicPlayerController.systemMusicPlayer
+    private let musicService = AppleMusicRecommendationService.shared
     private var isManualSeeking: Bool = false
     private var seekSyncTask: Task<Void, Never>?
     private var playbackClock: AnyCancellable?
@@ -71,21 +75,29 @@ final class RunningMusicViewModel: ObservableObject {
             let request = MusicLibraryRequest<Playlist>()
             let response = try await request.response()
             playlists = Array(response.items)
+            playlistArtworkURLsByPlaylistID = await musicService.resolvedLibraryPlaylistArtworkURLs(for: playlists)
         } catch {
             playlists = []
+            playlistArtworkURLsByPlaylistID = [:]
         }
         isLoading = false
     }
 
     // MARK: - 플레이리스트 재생
     func play(playlist: Playlist) async {
+        currentPlaylistName = playlist.name
+
         // MusicKit에서 트랙 정보 로드
         if let loaded = try? await playlist.with([.tracks]) {
             queueSongs = loaded.tracks?.compactMap { track -> Song? in
                 if case .song(let song) = track { return song }
                 return nil
             } ?? []
+        } else {
+            queueSongs = []
         }
+
+        queueArtworkURLsBySongID = await musicService.resolvedArtworkURLs(for: queueSongs)
 
         // MPMediaQuery로 플레이리스트 찾아서 재생
         let query = MPMediaQuery.playlists()
@@ -99,6 +111,8 @@ final class RunningMusicViewModel: ObservableObject {
             player.play()
             currentSongIndex = 0
             syncCurrentState()
+        } else {
+            cachedMediaItems = []
         }
     }
 
@@ -137,7 +151,7 @@ final class RunningMusicViewModel: ObservableObject {
                 title: item.title ?? currentSong?.title ?? "",
                 artistName: item.artist ?? currentSong?.artistName ?? "Apple Music",
                 songStoreID: item.playbackStoreID,
-                artworkURL: currentSong?.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artworkURL: artworkURL(for: currentSong),
                 artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
             )
         }
@@ -146,11 +160,31 @@ final class RunningMusicViewModel: ObservableObject {
                 title: currentSong.title,
                 artistName: currentSong.artistName,
                 songStoreID: "\(currentSong.id)",
-                artworkURL: currentSong.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artworkURL: artworkURL(for: currentSong),
                 artwork: nil
             )
         }
         return nowPlayingSnapshot
+    }
+
+    func artworkURL(for song: Song?) -> String? {
+        guard let song else { return nil }
+
+        if let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString,
+           !artworkURL.isEmpty {
+            return artworkURL
+        }
+
+        return queueArtworkURLsBySongID["\(song.id)"]
+    }
+
+    func artworkURL(for playlist: Playlist) -> String? {
+        if let artworkURL = playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
+           !artworkURL.isEmpty {
+            return artworkURL
+        }
+
+        return playlistArtworkURLsByPlaylistID["\(playlist.id)"]
     }
 
     func seek(to time: TimeInterval) {
@@ -246,6 +280,13 @@ final class RunningMusicViewModel: ObservableObject {
             }
             if idx < queueSongs.count {
                 currentSong = queueSongs[idx]
+                nowPlayingSnapshot = PlayerSongSnapshot(
+                    title: item.title ?? currentSong?.title ?? "",
+                    artistName: item.artist ?? currentSong?.artistName ?? "Apple Music",
+                    songStoreID: item.playbackStoreID,
+                    artworkURL: artworkURL(for: currentSong),
+                    artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
+                )
             }
         }
     }
