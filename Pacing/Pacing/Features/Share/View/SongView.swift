@@ -53,7 +53,7 @@ struct SongView: View {
                     }
                     .refreshable { await vm.load() }
                     .alert("노래 탭 오류", isPresented: errorBinding) {
-                        Button("확인", role: .cancel) { vm.errorMessage = nil }
+                        Button("확인", role: .cancel) { dismissErrorMessage() }
                     } message: {
                         Text(vm.errorMessage ?? "")
                     }
@@ -389,8 +389,14 @@ struct SongView: View {
     private var errorBinding: Binding<Bool> {
         Binding(
             get: { vm.errorMessage != nil },
-            set: { if !$0 { vm.errorMessage = nil } }
+            set: { if !$0 { dismissErrorMessage() } }
         )
+    }
+
+    private func dismissErrorMessage() {
+        DispatchQueue.main.async {
+            vm.errorMessage = nil
+        }
     }
 
     private var mainOffsetReader: some View {
