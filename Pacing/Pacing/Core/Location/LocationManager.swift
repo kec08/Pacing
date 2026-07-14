@@ -1,5 +1,6 @@
 import CoreLocation
 import Combine
+import UIKit
 
 final class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
@@ -7,6 +8,7 @@ final class LocationManager: NSObject, ObservableObject {
     @Published var currentLocation: CLLocation?
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var routeCoordinates: [CLLocationCoordinate2D] = []
+    @Published private(set) var recentRecordedLocations: [CLLocation] = []
 
     private let manager = CLLocationManager()
     private var isRecordingRoute = false
@@ -18,9 +20,8 @@ final class LocationManager: NSObject, ObservableObject {
         manager.distanceFilter = 5
         manager.activityType = .fitness
         manager.pausesLocationUpdatesAutomatically = false
-        manager.allowsBackgroundLocationUpdates = true
-        manager.showsBackgroundLocationIndicator = true
         authorizationStatus = manager.authorizationStatus
+        configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
@@ -41,34 +42,50 @@ final class LocationManager: NSObject, ObservableObject {
 
     func startMonitoringCurrentLocation() {
         startUpdatingLocationIfAuthorized()
-        requestCurrentLocation()
     }
 
     func requestCurrentLocation() {
         guard authorizationStatus == .authorizedAlways ||
                 authorizationStatus == .authorizedWhenInUse else { return }
+        guard UIApplication.shared.applicationState == .active else { return }
         manager.requestLocation()
     }
 
     func startTracking() {
         isRecordingRoute = true
+        configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
     func stopTracking() {
         isRecordingRoute = false
+        recentRecordedLocations = []
+        configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
     func resetRoute() {
         isRecordingRoute = false
         routeCoordinates = []
+        recentRecordedLocations = []
     }
 
     private func startUpdatingLocationIfAuthorized() {
+        configureBackgroundLocationSupport()
         guard authorizationStatus == .authorizedAlways ||
                 authorizationStatus == .authorizedWhenInUse else { return }
         manager.startUpdatingLocation()
+    }
+
+    private func configureBackgroundLocationSupport() {
+        let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        let supportsBackgroundLocation = backgroundModes.contains("location")
+        let canStayUpInBackground = supportsBackgroundLocation &&
+            authorizationStatus == .authorizedAlways &&
+            isRecordingRoute
+
+        manager.allowsBackgroundLocationUpdates = canStayUpInBackground
+        manager.showsBackgroundLocationIndicator = canStayUpInBackground && isRecordingRoute
     }
 }
 
@@ -76,17 +93,27 @@ extension LocationManager: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
         startUpdatingLocationIfAuthorized()
-        requestCurrentLocation()
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let loc = locations.last, loc.horizontalAccuracy >= 0 else { return }
-        currentLocation = loc
+        let validLocations = locations.filter { $0.horizontalAccuracy >= 0 }
+        guard !validLocations.isEmpty else { return }
 
-        // 현재 위치 표시는 더 빠르게 반영하되, 경로 기록은 정확한 좌표만 사용한다.
-        guard loc.horizontalAccuracy < 20 else { return }
-        guard isRecordingRoute else { return }
-        routeCoordinates.append(loc.coordinate)
+        currentLocation = validLocations.last
+
+        guard isRecordingRoute else {
+            recentRecordedLocations = []
+            return
+        }
+
+        let preciseLocations = validLocations.filter { $0.horizontalAccuracy < 20 }
+        guard !preciseLocations.isEmpty else {
+            recentRecordedLocations = []
+            return
+        }
+
+        recentRecordedLocations = preciseLocations
+        appendRouteCoordinates(from: preciseLocations)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -95,6 +122,25 @@ extension LocationManager: CLLocationManagerDelegate {
         // 일시적인 위치 미확정 오류는 다음 업데이트를 기다린다.
         if clError.code == .locationUnknown {
             return
+        }
+    }
+
+    private func appendRouteCoordinates(from locations: [CLLocation]) {
+        for location in locations {
+            let coordinate = location.coordinate
+
+            if let lastCoordinate = routeCoordinates.last {
+                let lastLocation = CLLocation(
+                    latitude: lastCoordinate.latitude,
+                    longitude: lastCoordinate.longitude
+                )
+                let distance = location.distance(from: lastLocation)
+
+                // 동일 좌표 또는 노이즈 수준 좌표는 중복 기록하지 않는다.
+                guard distance >= 1 else { continue }
+            }
+
+            routeCoordinates.append(coordinate)
         }
     }
 }

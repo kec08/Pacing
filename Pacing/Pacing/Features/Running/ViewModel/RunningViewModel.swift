@@ -12,11 +12,19 @@ enum RunningState {
     case finished
 }
 
+struct RunLapPace: Identifiable, Equatable {
+    let kilometer: Int
+    let pace: Double
+
+    var id: Int { kilometer }
+}
+
 final class RunningViewModel: ObservableObject {
     @Published var state: RunningState = .idle
     @Published var elapsedSeconds: Int = 0
     @Published var distance: Double = 0       // km
     @Published var currentPace: Double = 0    // 분/km, 1km 랩 기준 표시
+    @Published private(set) var completedLapPaces: [RunLapPace] = []
 
     let locationManager: LocationManager
 
@@ -30,15 +38,16 @@ final class RunningViewModel: ObservableObject {
     private var lapStartDistance: Double = 0
     private var lapStartElapsedSeconds: Int = 0
     private var lastCompletedLapPace: Double = 0
+    private var runningStartedAt: Date?
+    private var accumulatedElapsedSecondsBeforeResume: Int = 0
 
     init(locationManager: LocationManager = .shared) {
         self.locationManager = locationManager
         locationManager.startMonitoringCurrentLocation()
 
-        locationManager.$currentLocation
-            .compactMap { $0 }
-            .sink { [weak self] loc in
-                self?.updateDistance(with: loc)
+        locationManager.$recentRecordedLocations
+            .sink { [weak self] locations in
+                self?.updateDistance(with: locations)
             }
             .store(in: &cancellables)
     }
@@ -48,14 +57,22 @@ final class RunningViewModel: ObservableObject {
     func start() {
         locationManager.requestPermission()
         locationManager.resetRoute()
+        elapsedSeconds = 0
+        distance = 0
+        currentPace = 0
         lastLocation = nil
         resetLapState()
+        accumulatedElapsedSecondsBeforeResume = 0
+        runningStartedAt = Date()
         locationManager.startTracking()
         state = .running
         startTimer()
     }
 
     func pause() {
+        syncElapsedSeconds()
+        accumulatedElapsedSecondsBeforeResume = elapsedSeconds
+        runningStartedAt = nil
         state = .paused
         timer?.cancel()
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
@@ -63,6 +80,7 @@ final class RunningViewModel: ObservableObject {
     }
 
     func resume() {
+        runningStartedAt = Date()
         state = .running
         lastLocation = nil
         locationManager.startTracking()
@@ -70,6 +88,9 @@ final class RunningViewModel: ObservableObject {
     }
 
     func stop() {
+        syncElapsedSeconds()
+        accumulatedElapsedSecondsBeforeResume = elapsedSeconds
+        runningStartedAt = nil
         timer?.cancel()
         locationManager.stopTracking()
         state = .finished
@@ -83,6 +104,8 @@ final class RunningViewModel: ObservableObject {
         currentPace = 0
         lastLocation = nil
         resetLapState()
+        accumulatedElapsedSecondsBeforeResume = 0
+        runningStartedAt = nil
         state = .idle
     }
 
@@ -135,27 +158,43 @@ final class RunningViewModel: ObservableObject {
         timer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in
-                self?.elapsedSeconds += 1
+                self?.syncElapsedSeconds()
                 self?.updateDisplayedPace()
             }
     }
 
-    private func updateDistance(with newLocation: CLLocation) {
+    private func updateDistance(with locations: [CLLocation]) {
         guard state == .running else { return }
-        defer { lastLocation = newLocation }
-        guard let last = lastLocation else { return }
+        guard !locations.isEmpty else { return }
 
-        let deltaMeters = newLocation.distance(from: last)
-        let timeDelta = newLocation.timestamp.timeIntervalSince(last.timestamp)
-        guard deltaMeters > 0, timeDelta > 0 else { return }
+        var hasDistanceChanged = false
 
-        // GPS 스파이크 필터: 36 km/h(10 m/s) 초과는 GPS 오류로 간주하고 무시
-        let speedMs = deltaMeters / timeDelta
-        guard speedMs < 10.0 else { return }
+        for location in locations {
+            syncElapsedSeconds(referenceDate: location.timestamp)
 
-        let deltaKm = deltaMeters / 1000.0
-        distance += deltaKm
-        updateDisplayedPace()
+            guard let last = lastLocation else {
+                lastLocation = location
+                continue
+            }
+
+            defer { lastLocation = location }
+
+            let deltaMeters = location.distance(from: last)
+            let timeDelta = location.timestamp.timeIntervalSince(last.timestamp)
+            guard deltaMeters > 0, timeDelta > 0 else { continue }
+
+            // GPS 스파이크 필터: 36 km/h(10 m/s) 초과는 GPS 오류로 간주하고 무시
+            let speedMs = deltaMeters / timeDelta
+            guard speedMs < 10.0 else { continue }
+
+            let deltaKm = deltaMeters / 1000.0
+            distance += deltaKm
+            hasDistanceChanged = true
+        }
+
+        if hasDistanceChanged {
+            updateDisplayedPace()
+        }
     }
 
     func saveRecord(
@@ -208,6 +247,7 @@ final class RunningViewModel: ObservableObject {
         lapStartDistance = 0
         lapStartElapsedSeconds = 0
         lastCompletedLapPace = 0
+        completedLapPaces = []
     }
 
     private func updateDisplayedPace() {
@@ -220,13 +260,30 @@ final class RunningViewModel: ObservableObject {
         }
     }
 
+    private func syncElapsedSeconds(referenceDate: Date = Date()) {
+        guard let runningStartedAt else {
+            elapsedSeconds = max(accumulatedElapsedSecondsBeforeResume, 0)
+            return
+        }
+
+        let runningSeconds = max(Int(referenceDate.timeIntervalSince(runningStartedAt)), 0)
+        elapsedSeconds = accumulatedElapsedSecondsBeforeResume + runningSeconds
+    }
+
     private func completePendingLapsIfNeeded() {
         while distance >= nextLapDistanceMark {
             let lapDistance = nextLapDistanceMark - lapStartDistance
             let lapElapsedSeconds = elapsedSeconds - lapStartElapsedSeconds
 
             if lapDistance > 0, lapElapsedSeconds > 0 {
-                lastCompletedLapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
+                let lapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
+                lastCompletedLapPace = lapPace
+                completedLapPaces.append(
+                    RunLapPace(
+                        kilometer: Int(nextLapDistanceMark.rounded(.down)),
+                        pace: lapPace
+                    )
+                )
             }
 
             lapStartDistance = nextLapDistanceMark
