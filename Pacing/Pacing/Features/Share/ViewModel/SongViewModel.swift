@@ -78,7 +78,21 @@ final class SongViewModel: ObservableObject {
         defer { isLoadingFriends = false }
 
         do {
-            friendSharedPlaylists = try await firestoreService.fetchFriendSharedPlaylists(currentUID: uid)
+            let fetchedPlaylists = try await firestoreService.fetchFriendSharedPlaylists(currentUID: uid)
+            var enrichedPlaylists: [SharedPlaylistSummary] = []
+            enrichedPlaylists.reserveCapacity(fetchedPlaylists.count)
+
+            for playlist in fetchedPlaylists {
+                let enrichedPlaylist = await musicService.enrichedSharedPlaylistSummary(playlist)
+                enrichedPlaylists.append(enrichedPlaylist)
+            }
+
+            friendSharedPlaylists = enrichedPlaylists
+
+            let artworkURLs = enrichedPlaylists.compactMap(\.effectiveArtworkURL)
+            Task {
+                await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
+            }
         } catch {
             friendSharedPlaylists = []
             if showError {
@@ -113,6 +127,18 @@ final class SongViewModel: ObservableObject {
             recommendedPlaylists = bundle.playlists
             genreAlbumRows = bundle.genreAlbumRows
             moodPlaylists = bundle.moodPlaylists
+
+            let artworkURLs =
+                bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                bundle.playlists.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                bundle.genreAlbumRows
+                    .flatMap(\.albums)
+                    .compactMap { $0.album.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                bundle.moodPlaylists.compactMap { $0.playlist.artwork?.url(width: 900, height: 900)?.absoluteString }
+
+            Task {
+                await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
+            }
         } catch {
             recentlyPlayedAlbums = []
             recommendedPlaylists = []

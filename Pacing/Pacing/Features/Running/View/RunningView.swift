@@ -789,6 +789,10 @@ struct RunningView: View {
                                             if let artwork = song.artwork {
                                                 ArtworkImage(artwork, width: artSize, height: artSize)
                                                     .clipShape(RoundedRectangle(cornerRadius: 24))
+                                            } else if let artworkURL = musicVM.artworkURL(for: song) {
+                                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                                    .frame(width: artSize, height: artSize)
+                                                    .clipShape(RoundedRectangle(cornerRadius: 24))
                                             } else {
                                                 artworkPlaceholder
                                             }
@@ -805,6 +809,10 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
+                            } else if let artworkURL = displaySnapshot?.artworkURL {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
                             } else {
                                 artworkPlaceholder
                                     .frame(width: artSize, height: artSize)
@@ -997,15 +1005,6 @@ struct RunningView: View {
                         .frame(height: 50)
                         .background(.ultraThinMaterial)
                         .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(
-                                    isActiveListenGuest
-                                        ? Color.clear
-                                        : (musicSheetPanel == .trackList ? Color.main500.opacity(0.4) : Color.clear),
-                                    lineWidth: 1.5
-                                )
-                        )
                     }
                     .disabled(isActiveListenGuest)
                     .opacity(isActiveListenGuest ? 0.72 : 1)
@@ -1036,17 +1035,7 @@ struct RunningView: View {
                                     : (musicSheetPanel == .playlistPicker ? Color.main500 : .primary)
                             )
                             .frame(width: 42, height: 42)
-                            .background(.ultraThinMaterial)
-                            .clipShape(Circle())
-                            .overlay(
-                                Circle()
-                                    .stroke(
-                                        musicSheetPanel == .playlistPicker
-                                            ? Color.main500.opacity(0.35)
-                                            : Color.clear,
-                                        lineWidth: 1.4
-                                    )
-                            )
+                            .contentShape(Rectangle())
                     }
                     .disabled(isActiveListenGuest)
                 }
@@ -1076,19 +1065,6 @@ struct RunningView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                 Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        musicSheetPanel = nil
-                    }
-                } label: {
-                    Text("닫기")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color.main500)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(Color.white.opacity(0.72))
-                        .clipShape(Capsule())
-                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
@@ -1117,6 +1093,10 @@ struct RunningView: View {
                                     Group {
                                         if let artwork = playlist.artwork {
                                             ArtworkImage(artwork, width: 88, height: 88)
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        } else if let artworkURL = musicVM.artworkURL(for: playlist) {
+                                            RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                                .frame(width: 88, height: 88)
                                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                         } else {
                                             ZStack {
@@ -1232,6 +1212,10 @@ struct RunningView: View {
             Group {
                 if let artwork = song.artwork {
                     ArtworkImage(artwork, width: 56, height: 56)
+                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                } else if let artworkURL = musicVM.artworkURL(for: song) {
+                    RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                        .frame(width: 56, height: 56)
                         .clipShape(RoundedRectangle(cornerRadius: 14))
                 } else {
                     RoundedRectangle(cornerRadius: 14)

@@ -118,6 +118,22 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
+                let preparedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
+                tracks = preparedTracks
+                summary = SharedPlaylistSummary(
+                    id: summary.id,
+                    ownerUID: summary.ownerUID,
+                    ownerNickname: summary.ownerNickname,
+                    title: summary.title,
+                    subtitle: summary.subtitle,
+                    artworkURL: summary.artworkURL ?? preparedTracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL,
+                    sourcePlaylistID: summary.sourcePlaylistID,
+                    sourcePlaylistURL: summary.sourcePlaylistURL,
+                    trackCount: preparedTracks.count,
+                    updatedAt: summary.updatedAt,
+                    tracks: preparedTracks
+                )
+
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
                     appSaveState = isSaved ? .saved : .idle
