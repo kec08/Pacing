@@ -45,10 +45,9 @@ final class RunningViewModel: ObservableObject {
         self.locationManager = locationManager
         locationManager.startMonitoringCurrentLocation()
 
-        locationManager.$currentLocation
-            .compactMap { $0 }
-            .sink { [weak self] loc in
-                self?.updateDistance(with: loc)
+        locationManager.$recentRecordedLocations
+            .sink { [weak self] locations in
+                self?.updateDistance(with: locations)
             }
             .store(in: &cancellables)
     }
@@ -164,23 +163,38 @@ final class RunningViewModel: ObservableObject {
             }
     }
 
-    private func updateDistance(with newLocation: CLLocation) {
+    private func updateDistance(with locations: [CLLocation]) {
         guard state == .running else { return }
-        defer { lastLocation = newLocation }
-        syncElapsedSeconds(referenceDate: newLocation.timestamp)
-        guard let last = lastLocation else { return }
+        guard !locations.isEmpty else { return }
 
-        let deltaMeters = newLocation.distance(from: last)
-        let timeDelta = newLocation.timestamp.timeIntervalSince(last.timestamp)
-        guard deltaMeters > 0, timeDelta > 0 else { return }
+        var hasDistanceChanged = false
 
-        // GPS 스파이크 필터: 36 km/h(10 m/s) 초과는 GPS 오류로 간주하고 무시
-        let speedMs = deltaMeters / timeDelta
-        guard speedMs < 10.0 else { return }
+        for location in locations {
+            syncElapsedSeconds(referenceDate: location.timestamp)
 
-        let deltaKm = deltaMeters / 1000.0
-        distance += deltaKm
-        updateDisplayedPace()
+            guard let last = lastLocation else {
+                lastLocation = location
+                continue
+            }
+
+            defer { lastLocation = location }
+
+            let deltaMeters = location.distance(from: last)
+            let timeDelta = location.timestamp.timeIntervalSince(last.timestamp)
+            guard deltaMeters > 0, timeDelta > 0 else { continue }
+
+            // GPS 스파이크 필터: 36 km/h(10 m/s) 초과는 GPS 오류로 간주하고 무시
+            let speedMs = deltaMeters / timeDelta
+            guard speedMs < 10.0 else { continue }
+
+            let deltaKm = deltaMeters / 1000.0
+            distance += deltaKm
+            hasDistanceChanged = true
+        }
+
+        if hasDistanceChanged {
+            updateDisplayedPace()
+        }
     }
 
     func saveRecord(
