@@ -20,9 +20,8 @@ final class LocationManager: NSObject, ObservableObject {
         manager.distanceFilter = 5
         manager.activityType = .fitness
         manager.pausesLocationUpdatesAutomatically = false
-        manager.allowsBackgroundLocationUpdates = true
-        manager.showsBackgroundLocationIndicator = true
         authorizationStatus = manager.authorizationStatus
+        configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
@@ -53,12 +52,14 @@ final class LocationManager: NSObject, ObservableObject {
 
     func startTracking() {
         isRecordingRoute = true
+        configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
     func stopTracking() {
         isRecordingRoute = false
         recentRecordedLocations = []
+        configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
@@ -69,9 +70,21 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     private func startUpdatingLocationIfAuthorized() {
+        configureBackgroundLocationSupport()
         guard authorizationStatus == .authorizedAlways ||
                 authorizationStatus == .authorizedWhenInUse else { return }
         manager.startUpdatingLocation()
+    }
+
+    private func configureBackgroundLocationSupport() {
+        let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
+        let supportsBackgroundLocation = backgroundModes.contains("location")
+        let canStayUpInBackground = supportsBackgroundLocation &&
+            authorizationStatus == .authorizedAlways &&
+            isRecordingRoute
+
+        manager.allowsBackgroundLocationUpdates = canStayUpInBackground
+        manager.showsBackgroundLocationIndicator = canStayUpInBackground && isRecordingRoute
     }
 }
 
