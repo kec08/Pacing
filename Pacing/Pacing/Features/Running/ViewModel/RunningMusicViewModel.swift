@@ -31,6 +31,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isGoingForward: Bool = true
     @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
     @Published private(set) var displayPlaybackTime: TimeInterval = 0
+    @Published private(set) var currentPlaylistName: String? = nil
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private var isManualSeeking: Bool = false
@@ -79,12 +80,16 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 플레이리스트 재생
     func play(playlist: Playlist) async {
+        currentPlaylistName = playlist.name
+
         // MusicKit에서 트랙 정보 로드
         if let loaded = try? await playlist.with([.tracks]) {
             queueSongs = loaded.tracks?.compactMap { track -> Song? in
                 if case .song(let song) = track { return song }
                 return nil
             } ?? []
+        } else {
+            queueSongs = []
         }
 
         // MPMediaQuery로 플레이리스트 찾아서 재생
@@ -99,6 +104,8 @@ final class RunningMusicViewModel: ObservableObject {
             player.play()
             currentSongIndex = 0
             syncCurrentState()
+        } else {
+            cachedMediaItems = []
         }
     }
 

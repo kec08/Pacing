@@ -67,7 +67,7 @@ struct SharedPlaylistDetailView: View {
     }
 
     private var artworkSection: some View {
-        RemoteArtworkView(urlString: viewModel.summary.artworkURL, contentMode: .fill)
+        RemoteArtworkView(urlString: viewModel.summary.effectiveArtworkURL, contentMode: .fill)
             .frame(width: 264, height: 264)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(
@@ -134,13 +134,13 @@ struct SharedPlaylistDetailView: View {
                             nowPlayingController.prime(
                                 title: firstTrack.title,
                                 artist: firstTrack.artistName,
-                                artworkURL: firstTrack.artworkURL ?? viewModel.summary.artworkURL
+                                artworkURL: firstTrack.effectiveArtworkURL ?? viewModel.summary.effectiveArtworkURL
                             )
                         } else {
                             nowPlayingController.prime(
                                 title: viewModel.summary.title,
                                 artist: viewModel.ownerDescription,
-                                artworkURL: viewModel.summary.artworkURL
+                                artworkURL: viewModel.summary.effectiveArtworkURL
                             )
                         }
                         Task { await viewModel.playAll() }
@@ -250,7 +250,7 @@ struct SharedPlaylistDetailView: View {
                             nowPlayingController.prime(
                                 title: track.title,
                                 artist: track.artistName,
-                                artworkURL: track.artworkURL ?? viewModel.summary.artworkURL
+                                artworkURL: track.effectiveArtworkURL ?? viewModel.summary.effectiveArtworkURL
                             )
                             Task { await viewModel.play(track: track) }
                         } label: {

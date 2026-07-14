@@ -273,6 +273,28 @@ final class AppleMusicRecommendationService {
         try await player.play()
     }
 
+    func play(sharedTracks: [SharedPlaylistTrack]) async throws {
+        let songs = try await resolveCatalogSongs(for: sharedTracks)
+        guard !songs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        player.queue = .init(for: songs)
+        try await player.prepareToPlay()
+        try await player.play()
+    }
+
+    func play(sharedTrack: SharedPlaylistTrack) async throws {
+        let songs = try await resolveCatalogSongs(for: [sharedTrack])
+        guard let song = songs.first else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        player.queue = .init(for: [song])
+        try await player.prepareToPlay()
+        try await player.play()
+    }
+
     func addToLibrary(playlist: Playlist) async throws {
         try await MusicLibrary.shared.add(playlist)
     }
@@ -328,6 +350,84 @@ final class AppleMusicRecommendationService {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private func resolveCatalogSongs(for tracks: [SharedPlaylistTrack]) async throws -> [Song] {
+        guard !tracks.isEmpty else { return [] }
+
+        let requestedIDs = tracks.compactMap { track -> MusicItemID? in
+            guard let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !songStoreID.isEmpty else { return nil }
+            return MusicItemID(songStoreID)
+        }
+
+        var resolvedSongsByID: [MusicItemID: Song] = [:]
+        if !requestedIDs.isEmpty {
+            var request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: requestedIDs)
+            request.limit = min(requestedIDs.count, 25)
+
+            if let response = try? await request.response() {
+                for song in response.items {
+                    resolvedSongsByID[song.id] = song
+                }
+            }
+        }
+
+        var resolvedSongs: [Song] = []
+        resolvedSongs.reserveCapacity(tracks.count)
+
+        for track in tracks {
+            if let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !songStoreID.isEmpty,
+               let song = resolvedSongsByID[MusicItemID(songStoreID)] {
+                resolvedSongs.append(song)
+                continue
+            }
+
+            if let fallbackSong = try await searchCatalogSong(title: track.title, artist: track.artistName) {
+                resolvedSongs.append(fallbackSong)
+            }
+        }
+
+        return resolvedSongs
+    }
+
+    private func searchCatalogSong(title: String, artist: String) async throws -> Song? {
+        let query = [title, artist]
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+
+        guard !query.isEmpty else { return nil }
+
+        var request = MusicCatalogSearchRequest(term: query, types: [Song.self])
+        request.limit = 10
+        let response = try await request.response()
+
+        let normalizedTitle = normalizeSongText(title)
+        let normalizedArtist = normalizeSongText(artist)
+
+        if let exactMatch = response.songs.first(where: { song in
+            normalizeSongText(song.title) == normalizedTitle &&
+            normalizeSongText(song.artistName) == normalizedArtist
+        }) {
+            return exactMatch
+        }
+
+        if let titleMatch = response.songs.first(where: { song in
+            normalizeSongText(song.title) == normalizedTitle
+        }) {
+            return titleMatch
+        }
+
+        return response.songs.first
+    }
+
+    private func normalizeSongText(_ text: String) -> String {
+        text
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

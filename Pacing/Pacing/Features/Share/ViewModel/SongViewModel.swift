@@ -24,13 +24,20 @@ final class SongViewModel: ObservableObject {
 
     func load() async {
         errorMessage = nil
-        hasCompletedInitialLoad = false
+        let isFirstLoad = !hasCompletedInitialLoad
+        if isFirstLoad {
+            hasCompletedInitialLoad = false
+        }
         musicAuthorizationStatus = await musicService.requestAuthorizationIfNeeded()
-        await syncMyPlaylistsIfPossible(showError: false)
 
-        async let friendsTask: Void = loadFriendPlaylists(showError: false)
         async let recommendationsTask: Void = loadRecommendations()
-        _ = await (friendsTask, recommendationsTask)
+
+        if musicAuthorizationStatus == .authorized {
+            await syncMyPlaylistsIfPossible(showError: false)
+        }
+
+        await loadFriendPlaylists(showError: false)
+        await recommendationsTask
         hasCompletedInitialLoad = true
     }
 

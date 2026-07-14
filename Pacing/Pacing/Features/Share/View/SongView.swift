@@ -552,6 +552,14 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     private func refresh() {
+        if player.playbackState == .stopped {
+            title = ""
+            artist = ""
+            artwork = nil
+            isPlaying = false
+            return
+        }
+
         guard let item = player.nowPlayingItem else {
             title = ""
             artist = ""
@@ -743,7 +751,7 @@ private struct FriendSharedPlaylistCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RemoteArtworkView(urlString: playlist.artworkURL)
+            RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
                 .frame(width: 212, height: 212)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 

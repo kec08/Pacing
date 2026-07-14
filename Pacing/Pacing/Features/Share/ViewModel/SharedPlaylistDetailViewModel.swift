@@ -187,7 +187,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                try await musicService.playTracks(with: tracks.compactMap(\.songStoreID))
+                try await musicService.play(sharedTracks: tracks)
             case .recommendation(let playlist):
                 try await musicService.play(playlist: playlist)
             case .album(let album):
@@ -204,15 +204,20 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func play(track: SharedPlaylistTrack) async {
-        guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
-            errorMessage = "이 곡은 바로 재생할 수 없어요."
-            return
-        }
-
         playingTrackID = track.id
 
         do {
-            try await musicService.playTracks(with: [songStoreID])
+            switch source {
+            case .shared:
+                try await musicService.play(sharedTrack: track)
+            default:
+                guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
+                    errorMessage = "이 곡은 바로 재생할 수 없어요."
+                    playingTrackID = nil
+                    return
+                }
+                try await musicService.playTracks(with: [songStoreID])
+            }
         } catch {
             playingTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
