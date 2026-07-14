@@ -43,13 +43,12 @@ final class LocationManager: NSObject, ObservableObject {
 
     func startMonitoringCurrentLocation() {
         startUpdatingLocationIfAuthorized()
-        requestCurrentLocation()
     }
 
     func requestCurrentLocation() {
         guard authorizationStatus == .authorizedAlways ||
                 authorizationStatus == .authorizedWhenInUse else { return }
-        guard UIApplication.shared.applicationState != .background else { return }
+        guard UIApplication.shared.applicationState == .active else { return }
         manager.requestLocation()
     }
 
@@ -81,7 +80,6 @@ extension LocationManager: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         authorizationStatus = manager.authorizationStatus
         startUpdatingLocationIfAuthorized()
-        requestCurrentLocation()
     }
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
