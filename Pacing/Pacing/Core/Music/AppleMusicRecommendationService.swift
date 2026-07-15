@@ -1,5 +1,6 @@
 import Foundation
 import MusicKit
+import MediaPlayer
 
 struct ShareRecommendationBundle {
     let recentlyPlayedAlbums: [Album]
@@ -54,9 +55,11 @@ enum AppleMusicRecommendationError: LocalizedError {
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
 
-    private let player = ApplicationMusicPlayer.shared
+    private let player = MPMusicPlayerController.systemMusicPlayer
     private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
     private let resolvedCatalogSongsByQuery = NSCache<NSString, CachedCatalogSong>()
+    private let maxSharedPlaybackQueueSize = 25
+    private let maxSharedPreparationTracks = 12
 
     private init() {
         resolvedCatalogSongsByStoreID.countLimit = 180
@@ -241,73 +244,71 @@ final class AppleMusicRecommendationService {
     }
 
     func play(playlist: Playlist) async throws {
-        player.queue = .init(for: [playlist])
-        try await player.prepareToPlay()
-        try await player.play()
+        let tracks = try await loadTracks(for: playlist)
+        try await play(trackIDs: tracks.compactMap(\.songStoreID))
     }
 
     func play(album: Album) async throws {
-        player.queue = .init(for: [album])
-        try await player.prepareToPlay()
-        try await player.play()
+        let tracks = try await loadTracks(for: album)
+        try await play(trackIDs: tracks.compactMap(\.songStoreID))
     }
 
     func play(station: Station) async throws {
-        player.queue = .init(for: [station])
-        try await player.prepareToPlay()
-        try await player.play()
+        let applicationPlayer = ApplicationMusicPlayer.shared
+        applicationPlayer.queue = .init(for: [station])
+        try await applicationPlayer.prepareToPlay()
+        try await applicationPlayer.play()
     }
 
     func playTracks(with ids: [String]) async throws {
-        let musicIDs = ids
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .map { MusicItemID($0) }
-
-        guard !musicIDs.isEmpty else {
-            throw AppleMusicRecommendationError.noPlayableTracks
-        }
-
-        var request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: musicIDs)
-        request.limit = min(musicIDs.count, 25)
-        let response = try await request.response()
-        let songs = Array(response.items)
-
-        guard !songs.isEmpty else {
-            throw AppleMusicRecommendationError.noPlayableTracks
-        }
-
-        player.queue = .init(for: songs)
-        try await player.prepareToPlay()
-        try await player.play()
+        try await play(trackIDs: ids)
     }
 
-    func play(sharedTracks: [SharedPlaylistTrack]) async throws {
-        let songs = try await resolveCatalogSongs(for: sharedTracks)
-        guard !songs.isEmpty else {
+    private func play(trackIDs ids: [String]) async throws {
+        let playableIDs = ids
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        guard !playableIDs.isEmpty else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: songs)
+        player.setQueue(with: playableIDs)
         try await player.prepareToPlay()
-        try await player.play()
+        player.play()
+    }
+
+    func play(sharedTracks: [SharedPlaylistTrack], requiresFirstTrack: Bool = false) async throws {
+        let songIDs = try await resolvePlaybackSongIDs(
+            for: sharedTracks,
+            requiresFirstTrack: requiresFirstTrack,
+            maximumQueueSize: maxSharedPlaybackQueueSize
+        )
+        guard !songIDs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        try await play(trackIDs: songIDs)
     }
 
     func play(sharedTrack: SharedPlaylistTrack) async throws {
-        let songs = try await resolveCatalogSongs(for: [sharedTrack])
-        guard let song = songs.first else {
+        let songIDs = try await resolvePlaybackSongIDs(
+            for: [sharedTrack],
+            requiresFirstTrack: true,
+            maximumQueueSize: 1
+        )
+        guard let songID = songIDs.first else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: [song])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await play(trackIDs: [songID])
     }
 
     func prepareSharedTracksForPlayback(_ tracks: [SharedPlaylistTrack]) async -> [SharedPlaylistTrack] {
         guard !tracks.isEmpty else { return [] }
 
-        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: tracks) else {
+        let preparationTracks = Array(tracks.prefix(maxSharedPreparationTracks))
+        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: preparationTracks, allowsSearchFallback: true) else {
             return tracks
         }
 
@@ -338,7 +339,8 @@ final class AppleMusicRecommendationService {
 
             guard let song = try? await searchCatalogSong(
                 title: updatedTracks[index].title,
-                artist: updatedTracks[index].artistName
+                artist: updatedTracks[index].artistName,
+                allowsLooseFallback: false
             ) else {
                 continue
             }
@@ -365,7 +367,7 @@ final class AppleMusicRecommendationService {
             ownerNickname: summary.ownerNickname,
             title: summary.title,
             subtitle: summary.subtitle,
-            artworkURL: updatedTracks.first(where: { $0.artworkURL != nil })?.artworkURL,
+            artworkURL: summary.artworkURL ?? updatedTracks.first(where: { $0.artworkURL != nil })?.artworkURL,
             sourcePlaylistID: summary.sourcePlaylistID,
             sourcePlaylistURL: summary.sourcePlaylistURL,
             trackCount: summary.trackCount,
@@ -390,7 +392,8 @@ final class AppleMusicRecommendationService {
 
             guard let matchedSong = try? await searchCatalogSong(
                 title: song.title,
-                artist: song.artistName
+                artist: song.artistName,
+                allowsLooseFallback: false
             ),
             let artworkURL = matchedSong.artwork?.url(width: 900, height: 900)?.absoluteString,
             !artworkURL.isEmpty
@@ -443,6 +446,42 @@ final class AppleMusicRecommendationService {
         try await MusicLibrary.shared.add(album)
     }
 
+    func addSharedPlaylistToLibrary(_ summary: SharedPlaylistSummary) async throws {
+        let songIDs = try await resolveCatalogSongIDs(
+            for: summary.tracks,
+            allowsSearchFallback: true,
+            requiresFirstTrack: false
+        )
+
+        guard !songIDs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let metadata = MPMediaPlaylistCreationMetadata(name: summary.title)
+        let playlist: MPMediaPlaylist = try await withCheckedThrowingContinuation { continuation in
+            MPMediaLibrary.default().getPlaylist(
+                with: UUID(),
+                creationMetadata: metadata
+            ) { playlist, error in
+                if let error {
+                    continuation.resume(throwing: error)
+                    return
+                }
+
+                guard let playlist else {
+                    continuation.resume(throwing: AppleMusicRecommendationError.noPlayableTracks)
+                    return
+                }
+
+                continuation.resume(returning: playlist)
+            }
+        }
+
+        for songID in songIDs {
+            try await addProductID(songID, to: playlist)
+        }
+    }
+
     static func makeSharedPlaylistDocumentID(ownerUID: String, sourcePlaylistID: String) -> String {
         "\(ownerUID)_\(sourcePlaylistID.replacingOccurrences(of: "/", with: "_"))"
     }
@@ -493,11 +532,81 @@ final class AppleMusicRecommendationService {
     }
 
     private func resolveCatalogSongs(for tracks: [SharedPlaylistTrack]) async throws -> [Song] {
-        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: tracks)
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: tracks, allowsSearchFallback: false)
         return tracks.compactMap { resolvedSongsByTrackID[$0.id] }
     }
 
-    private func resolveCatalogSongMatches(for tracks: [SharedPlaylistTrack]) async throws -> [String: Song] {
+    private func addProductID(_ productID: String, to playlist: MPMediaPlaylist) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            playlist.addItem(withProductID: productID) { error in
+                if let error {
+                    continuation.resume(throwing: error)
+                } else {
+                    continuation.resume()
+                }
+            }
+        }
+    }
+
+    private func resolveCatalogSongIDs(
+        for tracks: [SharedPlaylistTrack],
+        allowsSearchFallback: Bool,
+        requiresFirstTrack: Bool
+    ) async throws -> [String] {
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(
+            for: tracks,
+            allowsSearchFallback: allowsSearchFallback
+        )
+
+        if requiresFirstTrack,
+           let firstTrack = tracks.first,
+           resolvedSongsByTrackID[firstTrack.id] == nil {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        return tracks.compactMap { resolvedSongsByTrackID[$0.id].map { "\($0.id)" } }
+    }
+
+    private func resolvePlaybackSongIDs(
+        for tracks: [SharedPlaylistTrack],
+        requiresFirstTrack: Bool,
+        maximumQueueSize: Int
+    ) async throws -> [String] {
+        guard let firstTrack = tracks.first, maximumQueueSize > 0 else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let firstTrackMatches = try await resolveCatalogSongMatches(
+            for: [firstTrack],
+            allowsSearchFallback: true
+        )
+        let firstTrackMatch = firstTrackMatches[firstTrack.id]
+
+        guard let firstSong = firstTrackMatch else {
+            if requiresFirstTrack {
+                throw AppleMusicRecommendationError.noPlayableTracks
+            }
+            let fallbackTracks = Array(tracks.dropFirst().prefix(maximumQueueSize))
+            let fallbackMatches = try await resolveCatalogSongMatches(
+                for: fallbackTracks,
+                allowsSearchFallback: false
+            )
+            return fallbackTracks.compactMap { fallbackMatches[$0.id].map { "\($0.id)" } }
+        }
+
+        let remainingTracks = Array(tracks.dropFirst().prefix(max(0, maximumQueueSize - 1)))
+        let remainingMatches = try await resolveCatalogSongMatches(
+            for: remainingTracks,
+            allowsSearchFallback: false
+        )
+
+        return ["\(firstSong.id)"] + remainingTracks.compactMap { remainingMatches[$0.id].map { "\($0.id)" } }
+    }
+
+    private func resolveCatalogSongMatches(
+        for tracks: [SharedPlaylistTrack],
+        allowsSearchFallback: Bool
+    ) async throws -> [String: Song] {
         guard !tracks.isEmpty else { return [:] }
 
         var resolvedSongsByTrackID: [String: Song] = [:]
@@ -510,7 +619,8 @@ final class AppleMusicRecommendationService {
                 continue
             }
 
-            if let cachedSong = resolvedCatalogSongsByStoreID.object(forKey: songStoreID as NSString)?.song {
+            if let cachedSong = resolvedCatalogSongsByStoreID.object(forKey: songStoreID as NSString)?.song,
+               isReliableSongMatch(cachedSong, for: track) {
                 resolvedSongsByTrackID[track.id] = cachedSong
             } else {
                 unresolvedTracks.append(track)
@@ -542,13 +652,21 @@ final class AppleMusicRecommendationService {
                     guard let songStoreID = track.songStoreID?.trimmingCharacters(in: .whitespacesAndNewlines),
                           !songStoreID.isEmpty,
                           let song = fetchedSongsByID[songStoreID] else { continue }
+                    guard isReliableSongMatch(song, for: track) else { continue }
                     resolvedSongsByTrackID[track.id] = song
                 }
             }
         }
 
+        guard allowsSearchFallback else { return resolvedSongsByTrackID }
+
         for track in tracks where resolvedSongsByTrackID[track.id] == nil {
-            if let fallbackSong = try await searchCatalogSong(title: track.title, artist: track.artistName) {
+            if let fallbackSong = try await searchCatalogSong(
+                title: track.title,
+                artist: track.artistName,
+                albumTitle: track.albumTitle,
+                allowsLooseFallback: false
+            ) {
                 resolvedCatalogSongsByStoreID.setObject(
                     CachedCatalogSong(fallbackSong),
                     forKey: "\(fallbackSong.id)" as NSString
@@ -560,7 +678,12 @@ final class AppleMusicRecommendationService {
         return resolvedSongsByTrackID
     }
 
-    private func searchCatalogSong(title: String, artist: String) async throws -> Song? {
+    private func searchCatalogSong(
+        title: String,
+        artist: String,
+        albumTitle: String? = nil,
+        allowsLooseFallback: Bool
+    ) async throws -> Song? {
         let query = [title, artist]
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -588,14 +711,32 @@ final class AppleMusicRecommendationService {
             return exactMatch
         }
 
-        if let titleMatch = response.songs.first(where: { song in
+        let normalizedAlbumTitle = normalizeSongText(albumTitle ?? "")
+        let titleMatches = response.songs.filter { song in
             normalizeSongText(song.title) == normalizedTitle
+        }
+
+        if let albumMatch = titleMatches.first(where: { song in
+            !normalizedAlbumTitle.isEmpty &&
+            normalizeSongText(song.albumTitle ?? "") == normalizedAlbumTitle
         }) {
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(albumMatch), forKey: cacheKey as NSString)
+            return albumMatch
+        }
+
+        if titleMatches.count == 1, let onlyTitleMatch = titleMatches.first {
+            resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(onlyTitleMatch), forKey: cacheKey as NSString)
+            return onlyTitleMatch
+        }
+
+        if allowsLooseFallback,
+           let titleMatch = titleMatches.first {
             resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(titleMatch), forKey: cacheKey as NSString)
             return titleMatch
         }
 
-        if let firstSong = response.songs.first {
+        if allowsLooseFallback,
+           let firstSong = response.songs.first {
             resolvedCatalogSongsByQuery.setObject(CachedCatalogSong(firstSong), forKey: cacheKey as NSString)
             return firstSong
         }
@@ -603,11 +744,37 @@ final class AppleMusicRecommendationService {
         return nil
     }
 
+    private func isReliableSongMatch(_ song: Song, for track: SharedPlaylistTrack) -> Bool {
+        guard normalizeSongText(song.title) == normalizeSongText(track.title) else {
+            return false
+        }
+
+        let normalizedTrackArtist = normalizeSongText(track.artistName)
+        let normalizedSongArtist = normalizeSongText(song.artistName)
+        if !normalizedTrackArtist.isEmpty,
+           (normalizedSongArtist == normalizedTrackArtist ||
+            normalizedSongArtist.contains(normalizedTrackArtist) ||
+            normalizedTrackArtist.contains(normalizedSongArtist)) {
+            return true
+        }
+
+        let normalizedTrackAlbum = normalizeSongText(track.albumTitle)
+        let normalizedSongAlbum = normalizeSongText(song.albumTitle ?? "")
+        if !normalizedTrackAlbum.isEmpty, normalizedTrackAlbum == normalizedSongAlbum {
+            return true
+        }
+
+        return true
+    }
+
     private func normalizeSongText(_ text: String) -> String {
-        text
+        let foldedText = text
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .replacingOccurrences(of: " ", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return String(
+            foldedText.unicodeScalars.filter { CharacterSet.alphanumerics.contains($0) }
+        )
     }
 
     private func enrichedSharedTracks(from playlist: Playlist) async throws -> [SharedPlaylistTrack] {
@@ -623,7 +790,8 @@ final class AppleMusicRecommendationService {
 
             guard let song = try await searchCatalogSong(
                 title: enrichedTracks[index].title,
-                artist: enrichedTracks[index].artistName
+                artist: enrichedTracks[index].artistName,
+                allowsLooseFallback: false
             ) else {
                 continue
             }

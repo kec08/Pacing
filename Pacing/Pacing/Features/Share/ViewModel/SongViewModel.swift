@@ -22,27 +22,60 @@ final class SongViewModel: ObservableObject {
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
 
-    func load() async {
+    func loadInitialContent() async {
+        guard !hasCompletedInitialLoad else { return }
+
         errorMessage = nil
-        let isFirstLoad = !hasCompletedInitialLoad
-        if isFirstLoad {
-            hasCompletedInitialLoad = false
+        hasCompletedInitialLoad = false
+        let authorizationStatus = await refreshAuthorizationStatus()
+
+        async let friendsTask: Void = loadFriendPlaylists(showError: false)
+
+        if authorizationStatus == .authorized {
+            async let recentlyPlayedTask: Void = refreshRecentlyPlayedAlbums(showError: false)
+            async let staticContentTask: Void = loadStaticMusicContent(showError: false)
+
+            await friendsTask
+            await recentlyPlayedTask
+            await staticContentTask
+        } else {
+            clearMusicContent()
+            await friendsTask
         }
-        musicAuthorizationStatus = await musicService.requestAuthorizationIfNeeded()
 
-        async let recommendationsTask: Void = loadRecommendations()
-
-        if musicAuthorizationStatus == .authorized {
-            await syncMyPlaylistsIfPossible(showError: false)
-        }
-
-        await loadFriendPlaylists(showError: false)
-        await recommendationsTask
         hasCompletedInitialLoad = true
     }
 
-    func reloadFriendsOnly() async {
-        await loadFriendPlaylists()
+    func handleTabAppear() async {
+        guard hasCompletedInitialLoad else { return }
+        let authorizationStatus = await refreshAuthorizationStatus()
+        guard authorizationStatus == .authorized else {
+            recentlyPlayedAlbums = []
+            return
+        }
+
+        await refreshRecentlyPlayedAlbums(showError: false)
+    }
+
+    func refreshAll() async {
+        errorMessage = nil
+        let authorizationStatus = await refreshAuthorizationStatus()
+
+        async let friendsTask: Void = loadFriendPlaylists(showError: false)
+
+        if authorizationStatus == .authorized {
+            async let recentlyPlayedTask: Void = refreshRecentlyPlayedAlbums(showError: false)
+            async let staticContentTask: Void = loadStaticMusicContent(showError: false)
+
+            await friendsTask
+            await recentlyPlayedTask
+            await staticContentTask
+        } else {
+            clearMusicContent()
+            await friendsTask
+        }
+
+        hasCompletedInitialLoad = true
     }
 
     func syncMyPlaylistsIfPossible() async {
@@ -66,6 +99,25 @@ final class SongViewModel: ObservableObject {
                 errorMessage = "내 플레이리스트를 동기화하지 못했어요."
             }
         }
+    }
+
+    func reloadFriendsOnly() async {
+        await loadFriendPlaylists()
+    }
+
+    @discardableResult
+    private func refreshAuthorizationStatus() async -> MusicAuthorization.Status {
+        let updatedStatus = await musicService.requestAuthorizationIfNeeded()
+        musicAuthorizationStatus = updatedStatus
+        return updatedStatus
+    }
+
+    private func clearMusicContent() {
+        recentlyPlayedAlbums = []
+        recommendedPlaylists = []
+        genreAlbumRows = []
+        moodPlaylists = []
+        hasCatalogAccess = false
     }
 
     private func loadFriendPlaylists(showError: Bool = true) async {
@@ -101,9 +153,8 @@ final class SongViewModel: ObservableObject {
         }
     }
 
-    private func loadRecommendations() async {
+    private func loadStaticMusicContent(showError: Bool) async {
         guard musicAuthorizationStatus == .authorized else {
-            recentlyPlayedAlbums = []
             recommendedPlaylists = []
             genreAlbumRows = []
             moodPlaylists = []
@@ -111,10 +162,8 @@ final class SongViewModel: ObservableObject {
             return
         }
 
-        isLoadingRecentlyPlayedAlbums = true
         isLoadingRecommendations = true
         defer {
-            isLoadingRecentlyPlayedAlbums = false
             isLoadingRecommendations = false
         }
 
@@ -123,13 +172,11 @@ final class SongViewModel: ObservableObject {
             hasCatalogAccess = subscription.canPlayCatalogContent
 
             let bundle = try await musicService.fetchRecommendations()
-            recentlyPlayedAlbums = bundle.recentlyPlayedAlbums
             recommendedPlaylists = bundle.playlists
             genreAlbumRows = bundle.genreAlbumRows
             moodPlaylists = bundle.moodPlaylists
 
             let artworkURLs =
-                bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
                 bundle.playlists.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
                 bundle.genreAlbumRows
                     .flatMap(\.albums)
@@ -140,12 +187,36 @@ final class SongViewModel: ObservableObject {
                 await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
             }
         } catch {
+            if showError {
+                errorMessage = "Apple Music 추천을 불러오지 못했어요."
+            }
+        }
+    }
+
+    private func refreshRecentlyPlayedAlbums(showError: Bool) async {
+        guard musicAuthorizationStatus == .authorized else {
             recentlyPlayedAlbums = []
-            recommendedPlaylists = []
-            genreAlbumRows = []
-            moodPlaylists = []
-            hasCatalogAccess = false
-            errorMessage = "Apple Music 추천을 불러오지 못했어요."
+            return
+        }
+
+        isLoadingRecentlyPlayedAlbums = true
+        defer { isLoadingRecentlyPlayedAlbums = false }
+
+        do {
+            let albums = try await musicService.fetchRecentlyPlayedAlbums()
+            recentlyPlayedAlbums = albums
+
+            let artworkURLs = albums.compactMap {
+                $0.artwork?.url(width: 900, height: 900)?.absoluteString
+            }
+
+            Task {
+                await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
+            }
+        } catch {
+            if showError {
+                errorMessage = "최근에 들은 앨범을 불러오지 못했어요."
+            }
         }
     }
 }

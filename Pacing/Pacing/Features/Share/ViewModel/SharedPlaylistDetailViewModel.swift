@@ -134,6 +134,8 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     tracks: preparedTracks
                 )
 
+                let subscription = try await musicService.currentSubscription()
+                canSaveToAppleMusic = subscription.canPlayCatalogContent
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
                     appSaveState = isSaved ? .saved : .idle
@@ -203,15 +205,16 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                try await musicService.play(sharedTracks: tracks)
-            case .recommendation(let playlist):
-                try await musicService.play(playlist: playlist)
-            case .album(let album):
-                try await musicService.play(album: album)
+                try await musicService.play(sharedTracks: tracks, requiresFirstTrack: false)
+            case .recommendation:
+                try await musicService.playTracks(with: tracks.compactMap(\.songStoreID))
+            case .album:
+                try await musicService.playTracks(with: tracks.compactMap(\.songStoreID))
             case .station(let station):
                 try await musicService.play(station: station)
                 playingTrackID = nil
             }
+            syncCurrentTrack()
         } catch {
             isPlaying = false
             playingTrackID = nil
@@ -223,21 +226,49 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         playingTrackID = track.id
 
         do {
+            let queuedTracks = tracksFromSelectedTrack(track)
+
             switch source {
             case .shared:
-                try await musicService.play(sharedTrack: track)
+                try await musicService.play(sharedTracks: queuedTracks, requiresFirstTrack: true)
             default:
-                guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
+                let songStoreIDs = queuedTracks.compactMap(\.songStoreID)
+                guard !songStoreIDs.isEmpty else {
                     errorMessage = "이 곡은 바로 재생할 수 없어요."
                     playingTrackID = nil
                     return
                 }
-                try await musicService.playTracks(with: [songStoreID])
+                try await musicService.playTracks(with: songStoreIDs)
             }
+            syncCurrentTrack()
         } catch {
             playingTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
         }
+    }
+
+    private func tracksFromSelectedTrack(_ track: SharedPlaylistTrack) -> [SharedPlaylistTrack] {
+        guard let selectedIndex = tracks.firstIndex(where: { $0.id == track.id }) else {
+            return [track]
+        }
+
+        return Array(tracks[selectedIndex...])
+    }
+
+    private func currentSummaryForPersistence() -> SharedPlaylistSummary {
+        SharedPlaylistSummary(
+            id: summary.id,
+            ownerUID: summary.ownerUID,
+            ownerNickname: summary.ownerNickname,
+            title: summary.title,
+            subtitle: summary.subtitle,
+            artworkURL: summary.artworkURL,
+            sourcePlaylistID: summary.sourcePlaylistID,
+            sourcePlaylistURL: summary.sourcePlaylistURL,
+            trackCount: tracks.count,
+            updatedAt: summary.updatedAt,
+            tracks: tracks
+        )
     }
 
     func savePrimaryPlaylist() async {
@@ -256,13 +287,35 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func savePlaylist() async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        guard appSaveState != .saving && appSaveState != .saved else { return }
+        guard appSaveState != .saving else { return }
 
         appSaveState = .saving
 
         do {
-            try await firestoreService.saveSharedPlaylistToLibrary(uid: uid, summary: summary)
+            let currentSummary = currentSummaryForPersistence()
+            var didSaveAnywhere = false
+
+            if let uid = Auth.auth().currentUser?.uid {
+                try await firestoreService.saveSharedPlaylistToLibrary(uid: uid, summary: currentSummary)
+                didSaveAnywhere = true
+            }
+
+            if canSaveToAppleMusic {
+                do {
+                    try await musicService.addSharedPlaylistToLibrary(currentSummary)
+                    didSaveToAppleMusic = true
+                    didSaveAnywhere = true
+                } catch {
+                    if !didSaveAnywhere {
+                        throw error
+                    }
+                }
+            }
+
+            guard didSaveAnywhere else {
+                throw AppleMusicRecommendationError.subscriptionUnavailable
+            }
+
             appSaveState = .saved
         } catch {
             appSaveState = .idle
@@ -354,7 +407,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             return "앨범 저장"
         case .station:
             return "저장 불가"
-        case .shared, .recommendation:
+        case .shared:
+            return "내 플레이리스트 저장"
+        case .recommendation:
             return "플레이리스트 저장"
         }
     }
@@ -362,6 +417,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     var isSaveButtonDisabled: Bool {
         if case .station = source {
             return true
+        }
+        if case .shared = source {
+            return appSaveState == .saving || appSaveState == .saved || didSaveToAppleMusic
         }
         return appSaveState == .saving || appSaveState == .saved
     }
@@ -372,6 +430,13 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     var isPlaybackActive: Bool {
         isPlaying || playingTrackID != nil
+    }
+
+    var canStartPlayback: Bool {
+        if isStationSource {
+            return !isLoading
+        }
+        return !isLoading && !tracks.isEmpty
     }
 
     var hasMiniPlayerContent: Bool {

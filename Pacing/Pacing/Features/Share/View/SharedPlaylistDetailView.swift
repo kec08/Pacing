@@ -127,22 +127,10 @@ struct SharedPlaylistDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                 }
                 .buttonStyle(PressableScaleButtonStyle())
+                .disabled(!viewModel.canStartPlayback)
             } else {
                 HStack(spacing: 14) {
                     Button {
-                        if let firstTrack = viewModel.tracks.first {
-                            nowPlayingController.prime(
-                                title: firstTrack.title,
-                                artist: firstTrack.artistName,
-                                artworkURL: firstTrack.effectiveArtworkURL ?? viewModel.summary.effectiveArtworkURL
-                            )
-                        } else {
-                            nowPlayingController.prime(
-                                title: viewModel.summary.title,
-                                artist: viewModel.ownerDescription,
-                                artworkURL: viewModel.summary.effectiveArtworkURL
-                            )
-                        }
                         Task { await viewModel.playAll() }
                     } label: {
                         HStack(spacing: 8) {
@@ -159,6 +147,8 @@ struct SharedPlaylistDetailView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                     .buttonStyle(PressableScaleButtonStyle())
+                    .disabled(!viewModel.canStartPlayback)
+                    .opacity(viewModel.canStartPlayback ? 1 : 0.55)
 
                     Button {
                         Task { await viewModel.savePrimaryPlaylist() }
@@ -247,11 +237,6 @@ struct SharedPlaylistDetailView: View {
                 VStack(spacing: 0) {
                     ForEach(Array(viewModel.tracks.enumerated()), id: \.element.id) { index, track in
                         Button {
-                            nowPlayingController.prime(
-                                title: track.title,
-                                artist: track.artistName,
-                                artworkURL: track.effectiveArtworkURL ?? viewModel.summary.effectiveArtworkURL
-                            )
                             Task { await viewModel.play(track: track) }
                         } label: {
                             if viewModel.isAlbumSource {
@@ -263,11 +248,14 @@ struct SharedPlaylistDetailView: View {
                             } else {
                                 SharedPlaylistTrackRow(
                                     track: track,
+                                    fallbackArtworkURL: viewModel.summary.effectiveArtworkURL,
                                     isPlaying: viewModel.playingTrackID == track.id
                                 )
                             }
                         }
                         .buttonStyle(.plain)
+                        .disabled(!viewModel.canStartPlayback)
+                        .opacity(viewModel.canStartPlayback ? 1 : 0.55)
 
                         if index < viewModel.tracks.count - 1 {
                             Divider()
@@ -358,7 +346,23 @@ private struct SharedAlbumTrackRow: View {
 
 private struct SharedPlaylistTrackRow: View {
     let track: SharedPlaylistTrack
+    let fallbackArtworkURL: String?
     let isPlaying: Bool
+
+    private var artworkURL: String? {
+        track.effectiveArtworkURL ?? fallbackArtworkURL
+    }
+
+    private var subtitle: String {
+        let albumTitle = track.albumTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !albumTitle.isEmpty,
+              albumTitle.caseInsensitiveCompare(track.artistName) != .orderedSame
+        else {
+            return track.artistName
+        }
+
+        return "\(track.artistName) · \(albumTitle)"
+    }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -383,7 +387,7 @@ private struct SharedPlaylistTrackRow: View {
                         )
                 }
 
-                RemoteArtworkView(urlString: track.artworkURL)
+                RemoteArtworkView(urlString: artworkURL)
                     .frame(width: 50, height: 50)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay {
@@ -425,7 +429,7 @@ private struct SharedPlaylistTrackRow: View {
                     .font(.system(size: 15, weight: isPlaying ? .semibold : .medium))
                     .foregroundStyle(trackTitleColor)
                     .lineLimit(1)
-                Text(track.artistName)
+                Text(subtitle)
                     .font(.system(size: 12.5))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
