@@ -12,6 +12,7 @@ final class LocationManager: NSObject, ObservableObject {
 
     private let manager = CLLocationManager()
     private var isRecordingRoute = false
+    private var notificationObservers: [NSObjectProtocol] = []
 
     override init() {
         super.init()
@@ -21,6 +22,7 @@ final class LocationManager: NSObject, ObservableObject {
         manager.activityType = .fitness
         manager.pausesLocationUpdatesAutomatically = false
         authorizationStatus = manager.authorizationStatus
+        observeApplicationLifecycle()
         configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
@@ -68,6 +70,7 @@ final class LocationManager: NSObject, ObservableObject {
         isRecordingRoute = false
         routeCoordinates = []
         recentRecordedLocations = []
+        configureBackgroundLocationSupport()
     }
 
     private func startUpdatingLocationIfAuthorized() {
@@ -75,6 +78,37 @@ final class LocationManager: NSObject, ObservableObject {
         guard authorizationStatus == .authorizedAlways ||
                 authorizationStatus == .authorizedWhenInUse else { return }
         manager.startUpdatingLocation()
+    }
+
+    private func observeApplicationLifecycle() {
+        let center = NotificationCenter.default
+
+        notificationObservers.append(
+            center.addObserver(
+                forName: UIApplication.didEnterBackgroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleApplicationStateChange()
+            }
+        )
+
+        notificationObservers.append(
+            center.addObserver(
+                forName: UIApplication.willEnterForegroundNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleApplicationStateChange()
+            }
+        )
+    }
+
+    private func handleApplicationStateChange() {
+        configureBackgroundLocationSupport()
+
+        guard isRecordingRoute else { return }
+        startUpdatingLocationIfAuthorized()
     }
 
     private func configureBackgroundLocationSupport() {
@@ -86,6 +120,17 @@ final class LocationManager: NSObject, ObservableObject {
 
         manager.allowsBackgroundLocationUpdates = canStayUpInBackground
         manager.showsBackgroundLocationIndicator = canStayUpInBackground && isRecordingRoute
+    }
+
+    private func filteredRouteLocations(from locations: [CLLocation]) -> [CLLocation] {
+        // 백그라운드에서는 위치가 배치로 도착하고 정확도가 다소 흔들릴 수 있어 허용 범위를 완화한다.
+        let maxHorizontalAccuracy = UIApplication.shared.applicationState == .active ? 30.0 : 65.0
+
+        return locations.filter { location in
+            location.horizontalAccuracy >= 0 &&
+            location.horizontalAccuracy <= maxHorizontalAccuracy &&
+            abs(location.timestamp.timeIntervalSinceNow) < 180
+        }
     }
 }
 
@@ -106,14 +151,14 @@ extension LocationManager: CLLocationManagerDelegate {
             return
         }
 
-        let preciseLocations = validLocations.filter { $0.horizontalAccuracy < 20 }
-        guard !preciseLocations.isEmpty else {
+        let recordedLocations = filteredRouteLocations(from: validLocations)
+        guard !recordedLocations.isEmpty else {
             recentRecordedLocations = []
             return
         }
 
-        recentRecordedLocations = preciseLocations
-        appendRouteCoordinates(from: preciseLocations)
+        recentRecordedLocations = recordedLocations
+        appendRouteCoordinates(from: recordedLocations)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
