@@ -57,6 +57,13 @@
 - 현재 워크트리에는 앱 아이콘 관련 별도 변경 흔적이 보이지만, 이번 feat #41 구현 커밋에는 포함하지 않았다.
 - 이 환경에서는 Xcode 전체 빌드 검증이 불가능해 컴파일 성공 여부를 최종 확인하지 못했다.
 
+## 앱 아이콘 재발 방지 메모
+
+- AppIcon 에셋은 `Pacing/Pacing/Assets.xcassets/AppIcon.appiconset/Contents.json`의 `filename`과 실제 파일명이 정확히 일치해야 한다.
+- Xcode에서 `Any Appearance` 1024 슬롯 경고가 뜨면, 대부분 `Contents.json`이 존재하지 않는 파일명을 참조하는 경우다.
+- 이번 충돌 사례처럼 브랜치마다 AppIcon 구조가 다를 수 있으므로, PR 전에는 `origin/dev` 기준 AppIcon 구성을 먼저 확인해야 한다.
+- 현재 `dev` 기준 AppIcon은 `app-icon-single.png` 단일 1024 아이콘 구조를 사용한다. 이후 아이콘 교체 시에도 같은 구조를 유지하는 편이 안전하다.
+
 ## 다음 단계 / 후속 작업
 
 - 실기기에서 `Always` 위치 권한 허용
