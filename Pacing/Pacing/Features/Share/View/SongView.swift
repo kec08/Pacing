@@ -558,6 +558,14 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     private func refresh() {
+        if player.playbackState == .stopped {
+            title = ""
+            artist = ""
+            artwork = nil
+            isPlaying = false
+            return
+        }
+
         guard let item = player.nowPlayingItem else {
             title = ""
             artist = ""
@@ -749,7 +757,7 @@ private struct FriendSharedPlaylistCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RemoteArtworkView(urlString: playlist.artworkURL)
+            RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
                 .frame(width: 212, height: 212)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
@@ -911,23 +919,18 @@ struct RemoteArtworkView: View {
 
     let urlString: String?
     var contentMode: ContentMode = .fill
+    @StateObject private var loader = RemoteArtworkLoader()
 
     var body: some View {
-        if let urlString, let url = URL(string: urlString) {
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .empty:
-                    placeholder
-                case .success(let image):
-                    artwork(image: image)
-                case .failure:
-                    placeholder
-                @unknown default:
-                    placeholder
-                }
+        Group {
+            if let image = loader.image {
+                artwork(image: Image(uiImage: image))
+            } else {
+                placeholder
             }
-        } else {
-            placeholder
+        }
+        .task(id: urlString) {
+            await loader.load(urlString: urlString)
         }
     }
 
@@ -960,6 +963,64 @@ struct RemoteArtworkView: View {
                 .font(.system(size: 28, weight: .semibold))
                 .foregroundStyle(.white.opacity(0.92))
         }
+    }
+}
+
+@MainActor
+final class ArtworkImageStore {
+    static let shared = ArtworkImageStore()
+
+    private let cache = NSCache<NSURL, UIImage>()
+
+    private init() {
+        cache.countLimit = 180
+    }
+
+    func image(for url: URL) async -> UIImage? {
+        if let cachedImage = cache.object(forKey: url as NSURL) {
+            return cachedImage
+        }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        request.timeoutInterval = 20
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  200..<300 ~= httpResponse.statusCode,
+                  let image = UIImage(data: data)
+            else {
+                return nil
+            }
+
+            cache.setObject(image, forKey: url as NSURL)
+            return image
+        } catch {
+            return nil
+        }
+    }
+
+    func prefetch(urlStrings: [String]) async {
+        let uniqueURLs = Array(Set(urlStrings.compactMap(URL.init(string:))))
+        for url in uniqueURLs {
+            _ = await image(for: url)
+        }
+    }
+}
+
+@MainActor
+final class RemoteArtworkLoader: ObservableObject {
+    @Published private(set) var image: UIImage?
+
+    func load(urlString: String?) async {
+        guard let urlString,
+              let url = URL(string: urlString) else {
+            image = nil
+            return
+        }
+
+        image = await ArtworkImageStore.shared.image(for: url)
     }
 }
 

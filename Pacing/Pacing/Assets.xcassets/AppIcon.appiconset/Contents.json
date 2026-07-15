@@ -1,31 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "페이싱_로고.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
-      "filename" : "페이싱_로고 1.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "tinted"
-        }
-      ],
-      "filename" : "페이싱_로고 2.png",
+      "filename" : "app-icon-single.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"
