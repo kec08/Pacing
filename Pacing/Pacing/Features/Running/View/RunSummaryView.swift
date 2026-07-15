@@ -102,7 +102,7 @@ struct RunSummaryView: View {
                 Divider().opacity(0.3).padding(.vertical, 14)
 
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("평균 페이스")
+                    Text("km 평균 페이스")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(Color.textSecondary)
 

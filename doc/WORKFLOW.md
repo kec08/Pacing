@@ -74,6 +74,10 @@ git checkout -b feat/[이슈번호]-[기능명]
   - 예상 동작 vs 실제 동작
   - 스크린샷 또는 로그
   - 심각도 (Critical / Major / Minor)
+- 앱 아이콘 관련 변경이 있으면 아래 항목을 추가 확인
+  - `Pacing/Pacing/Assets.xcassets/AppIcon.appiconset/Contents.json`의 `filename`이 실제 존재 파일과 정확히 일치하는지
+  - AppIcon 기본 1024 슬롯이 비어 있지 않은지
+  - 브랜치 병합 전 `origin/dev`의 AppIcon 구조와 충돌 여부가 없는지
 
 ### 7단계 — 에러 수정
 - 현재 feat 브랜치에서 직접 수정 (Minor 이슈)
@@ -101,6 +105,7 @@ git push origin feat/[이슈번호]-[기능명]
 - PR 본문: PR 템플릿 사용 (아래 참고)
 - Closes #이슈번호 명시
 - ⚠️ `feat → dev` 머지 시 GitHub 이슈 자동 닫기 **미동작** (main 머지 시에만 자동 닫힘) → PR 머지 후 이슈 **수동으로 Close**
+- AppIcon 관련 파일을 수정했다면 PR 생성 전 `origin/dev`를 먼저 반영해 `Contents.json` 충돌을 선해소한다
 
 **PR 템플릿:**
 ```markdown
