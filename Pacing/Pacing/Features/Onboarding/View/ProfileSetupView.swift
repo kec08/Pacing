@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import FirebaseAuth
 
 struct ProfileSetupView: View {
@@ -12,7 +13,11 @@ struct ProfileSetupView: View {
     @State private var weight: Int = 65
     @State private var isSaving = false
 
+    @State private var photoItem: PhotosPickerItem?
+    @State private var profileImage: UIImage?
+
     private let genders = ["남", "여", "선택 안 함"]
+    private let totalSteps = 4
 
     var body: some View {
         VStack(spacing: 0) {
@@ -22,7 +27,7 @@ struct ProfileSetupView: View {
                     Rectangle().fill(Color.gray100).frame(height: 3)
                     Rectangle()
                         .fill(Color.main500)
-                        .frame(width: geo.size.width * CGFloat(step) / 3, height: 3)
+                        .frame(width: geo.size.width * CGFloat(step) / CGFloat(totalSteps), height: 3)
                         .animation(.easeInOut(duration: 0.3), value: step)
                 }
             }
@@ -32,7 +37,8 @@ struct ProfileSetupView: View {
                 switch step {
                 case 1: step1
                 case 2: step2
-                default: step3
+                case 3: step3
+                default: step4
                 }
             }
             .transition(.asymmetric(
@@ -44,16 +50,18 @@ struct ProfileSetupView: View {
         .background(Color.backgroundPrimary)
     }
 
-    // MARK: - Step 1: 닉네임
+    // MARK: - Step 1: 이름(닉네임)
     private var step1: some View {
         VStack(alignment: .leading, spacing: 0) {
-            stepHeader(title: "닉네임을 알려주세요", subtitle: "Pacing에서 사용할 이름이에요")
+            stepHeader(title: "이름을 알려주세요", subtitle: "러닝할 때 사용할 닉네임을 입력해요")
 
             VStack(alignment: .leading, spacing: 8) {
                 Text("닉네임")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                 TextField("닉네임을 입력하세요 (최대 12자)", text: $nickname)
+                    .foregroundStyle(Color(uiColor: .label))
+                    .accentColor(Color.main500)
                     .onChange(of: nickname) { _, new in
                         if new.count > 12 { nickname = String(new.prefix(12)) }
                     }
@@ -63,7 +71,7 @@ struct ProfileSetupView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
             .padding(.horizontal, 24)
-            .padding(.top, 32)
+            .padding(.top, 40)
 
             Spacer()
 
@@ -76,7 +84,7 @@ struct ProfileSetupView: View {
     // MARK: - Step 2: 성별 / 나이
     private var step2: some View {
         VStack(alignment: .leading, spacing: 0) {
-            stepHeader(title: "기본 정보를 입력해주세요", subtitle: "성별과 나이를 선택해주세요")
+            stepHeader(title: "기본 정보를 알려주세요", subtitle: "성별과 나이를 선택해주세요")
 
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -116,7 +124,7 @@ struct ProfileSetupView: View {
     // MARK: - Step 3: 키 / 체중
     private var step3: some View {
         VStack(alignment: .leading, spacing: 0) {
-            stepHeader(title: "신체 정보를 입력해주세요", subtitle: "더 정확한 러닝 데이터를 위해 필요해요")
+            stepHeader(title: "신체 정보를 알려주세요", subtitle: "더 정확한 러닝 데이터를 위해 필요해요")
 
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -147,6 +155,62 @@ struct ProfileSetupView: View {
             }
             .padding(.horizontal, 24)
             .padding(.top, 32)
+
+            Spacer()
+
+            nextButton(label: "다음", enabled: true) {
+                step = 4
+            }
+        }
+    }
+
+    // MARK: - Step 4: 프로필 사진
+    private var step4: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            stepHeader(title: "프로필 사진을 설정해주세요", subtitle: "나중에 언제든지 바꿀 수 있어요")
+
+            PhotosPicker(selection: $photoItem, matching: .images) {
+                ZStack(alignment: .bottomTrailing) {
+                    ZStack {
+                        Circle()
+                            .fill(Color.gray100)
+                            .frame(width: 120, height: 120)
+                        if let img = profileImage {
+                            Image(uiImage: img)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 120, height: 120)
+                                .clipShape(Circle())
+                        } else {
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(Color.gray300)
+                        }
+                    }
+                    ZStack {
+                        Circle().fill(Color.main500).frame(width: 34, height: 34)
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 48)
+            .onChange(of: photoItem) { _, newItem in
+                Task {
+                    if let data = try? await newItem?.loadTransferable(type: Data.self),
+                       let ui = UIImage(data: data) {
+                        profileImage = ui
+                    }
+                }
+            }
+
+            Text(profileImage == nil ? "사진을 선택하지 않아도 괜찮아요" : "프로필 사진이 선택되었어요")
+                .font(.system(size: 13))
+                .foregroundStyle(Color.textSecondary)
+                .frame(maxWidth: .infinity)
+                .padding(.top, 16)
 
             Spacer()
 
@@ -196,19 +260,41 @@ struct ProfileSetupView: View {
 
     private func saveProfile() async {
         isSaving = true
-        UserDefaults.standard.set(nickname, forKey: "nickname")
-        UserDefaults.standard.set(height,   forKey: "height")
-        UserDefaults.standard.set(weight,   forKey: "weight")
-        UserDefaults.standard.set(age,      forKey: "age")
+
+        let imageBase64 = profileImage
+            .flatMap { resizedJPEG($0, max: 200) }
+            .map { $0.base64EncodedString() }
+
+        let d = UserDefaults.standard
+        d.set(nickname, forKey: "nickname")
+        d.set(height,   forKey: "height")
+        d.set(weight,   forKey: "weight")
+        d.set(age,      forKey: "age")
+        if let img = imageBase64 { d.set(img, forKey: "profileImageBase64") }
 
         if let uid = Auth.auth().currentUser?.uid {
             try? await FirestoreService.shared.saveUserProfile(
-                uid: uid, nickname: nickname, height: height, weight: weight, age: age
+                uid: uid, nickname: nickname, height: height, weight: weight, age: age,
+                profileImageBase64: imageBase64
             )
         }
 
         appState.isLoggedIn = true
         appState.isProfileComplete = true
         isSaving = false
+    }
+
+    private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {
+        let size = CGSize(width: side, height: side)
+        let renderer = UIGraphicsImageRenderer(size: size)
+        let resized = renderer.image { _ in
+            let scale = Swift.max(side / image.size.width, side / image.size.height)
+            let w = image.size.width * scale
+            let h = image.size.height * scale
+            let x = (side - w) / 2
+            let y = (side - h) / 2
+            image.draw(in: CGRect(x: x, y: y, width: w, height: h))
+        }
+        return resized.jpegData(compressionQuality: 0.7)
     }
 }

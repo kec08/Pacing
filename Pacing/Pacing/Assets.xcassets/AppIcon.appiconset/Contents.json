@@ -1,31 +1,7 @@
 {
   "images" : [
     {
-      "filename" : "페이싱_로고 11.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
-      "filename" : "페이싱_로고 12.png",
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "tinted"
-        }
-      ],
-      "filename" : "페이싱_로고 10.png",
+      "filename" : "app-icon-single.png",
       "idiom" : "universal",
       "platform" : "ios",
       "size" : "1024x1024"

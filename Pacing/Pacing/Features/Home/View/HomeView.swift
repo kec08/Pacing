@@ -38,7 +38,9 @@ struct HomeView: View {
     private var weeklyStatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("이번 주 러닝")
-            if vm.weeklyStats.isEmpty {
+            if vm.isLoading && vm.weeklyStats.isEmpty {
+                weeklyStatsSkeleton
+            } else if vm.weeklyStats.isEmpty {
                 emptyCard("이번 주 첫 러닝을 시작해보세요")
             } else {
                 WeeklyStatsCard(stats: vm.weeklyStats, vm: vm)
@@ -50,7 +52,17 @@ struct HomeView: View {
     private var recentRunsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("최근 러닝")
-            if vm.recentRuns.isEmpty {
+            if vm.isLoading && vm.recentRuns.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        SkeletonRow()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.backgroundPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            } else if vm.recentRuns.isEmpty {
                 emptyCard("아직 러닝 기록이 없어요")
             } else {
                 VStack(spacing: 10) {
@@ -66,7 +78,17 @@ struct HomeView: View {
     private var listenSessionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("같이 들은 러너")
-            if vm.recentListenSessions.isEmpty {
+            if vm.isLoading && vm.recentListenSessions.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(0..<2, id: \.self) { _ in
+                        SkeletonRow(avatarSize: 38, trailingWidth: 54)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.backgroundPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            } else if vm.recentListenSessions.isEmpty {
                 emptyCard("아직 같이 들은 러너가 없어요")
             } else {
                 VStack(spacing: 10) {
@@ -94,6 +116,22 @@ struct HomeView: View {
             .padding(.vertical, 24)
             .background(Color.backgroundPrimary)
             .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private var weeklyStatsSkeleton: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            SkeletonBlock(width: 96, height: 14)
+            SkeletonBlock(width: 168, height: 32, cornerRadius: 10)
+            HStack(spacing: 10) {
+                ForEach(0..<3, id: \.self) { _ in
+                    SkeletonBlock(height: 64, cornerRadius: 14)
+                }
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var todayString: String {

@@ -7,7 +7,7 @@ struct SplashView: View {
 
     var body: some View {
         Group {
-            if isLoading {
+            if isLoading || appState.isAuthLoading {
                 ZStack {
                     Color.backgroundPrimary.ignoresSafeArea()
                     VStack(spacing: 16) {
@@ -37,14 +37,25 @@ struct SplashView: View {
 
     private func restoreSession() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            if Auth.auth().currentUser != nil {
-                appState.isLoggedIn = true
-                appState.isProfileComplete = UserDefaults.standard.bool(forKey: "isProfileComplete")
-            } else {
+            guard let uid = Auth.auth().currentUser?.uid else {
                 appState.isLoggedIn = false
                 appState.isProfileComplete = false
+                isLoading = false
+                return
             }
-            isLoading = false
+            Task { @MainActor in
+                let exists = await FirestoreService.shared.hasUserProfile(uid: uid)
+                if exists {
+                    appState.isLoggedIn = true
+                    appState.isProfileComplete = true
+                } else {
+                    // 프로필 없는 유저 → 로그아웃 후 로그인 화면
+                    try? Auth.auth().signOut()
+                    appState.isLoggedIn = false
+                    appState.isProfileComplete = false
+                }
+                isLoading = false
+            }
         }
     }
 }
