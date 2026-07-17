@@ -48,6 +48,10 @@ struct RunHistoryCard: View {
             }
 
             Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.gray300)
         }
         .padding(14)
         .background(Color.backgroundPrimary)
