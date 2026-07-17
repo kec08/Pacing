@@ -18,6 +18,7 @@ struct RunRouteThumbnailView: View {
                         )
                 }
                 .mapStyle(.standard)
+                .allowsHitTesting(false)
                 .onAppear { cameraPosition = .region(routeRegion) }
                 .accessibilityLabel("러닝 경로 미리보기")
             } else {

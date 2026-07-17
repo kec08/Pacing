@@ -86,16 +86,9 @@ struct RunActivityDetailView: View {
 
             Group {
                 if record.routeCoordinates.count >= 2 {
-                    Map(position: $cameraPosition, interactionModes: [.pan, .zoom]) {
+                    Map(position: $cameraPosition, interactionModes: []) {
                         MapPolyline(coordinates: record.routeCoordinates)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.main500, Color.sub500],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
-                            )
+                            .stroke(Color.main500, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
 
                         Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .bottom) {
                             RouteEndpointLabel(title: "출발", tint: Color.main500)
@@ -105,6 +98,7 @@ struct RunActivityDetailView: View {
                         }
                     }
                     .mapStyle(.standard)
+                    .allowsHitTesting(false)
                     .accessibilityLabel("러닝 이동 경로 지도")
                 } else {
                     ContentUnavailableView(
@@ -170,16 +164,7 @@ struct RunActivityDetailView: View {
                 .foregroundStyle(Color.textPrimary)
                 .frame(width: 44, alignment: .leading)
 
-            GeometryReader { proxy in
-                Capsule()
-                    .fill(Color.gray100)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(Color.main500)
-                            .frame(width: max(proxy.size.width * paceBarRatio(for: lap), 48))
-                    }
-            }
-            .frame(height: 10)
+            Spacer(minLength: 0)
 
             Text(formattedPace(lap.pace))
                 .font(.system(size: 16, weight: .bold, design: .rounded))
@@ -192,11 +177,6 @@ struct RunActivityDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(lap.kilometer) 킬로미터, 평균 페이스 \(formattedPace(lap.pace))")
-    }
-
-    private func paceBarRatio(for lap: RunLapPace) -> CGFloat {
-        guard let slowestPace = displayLapPaces.map(\.pace).max(), slowestPace > 0 else { return 1 }
-        return CGFloat(min(max(slowestPace / lap.pace, 0.45), 1))
     }
 
     private var startedAtText: String {
