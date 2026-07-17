@@ -12,7 +12,6 @@ struct RunActivityDetailView: View {
             VStack(alignment: .leading, spacing: 24) {
                 activityHeader
                 distanceSection
-                metricsSection
                 routeSection
                 splitSection
             }
@@ -38,18 +37,25 @@ struct RunActivityDetailView: View {
     }
 
     private var distanceSection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(String(format: "%.2f", record.distance))
-                .font(.system(size: 58, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.textPrimary)
-                .accessibilityLabel("거리 \(String(format: "%.2f", record.distance)) 킬로미터")
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(String(format: "%.2f", record.distance))
+                    .font(.system(size: 58, weight: .bold, design: .rounded))
+                    .foregroundStyle(Color.textPrimary)
+                    .accessibilityLabel("거리 \(String(format: "%.2f", record.distance)) 킬로미터")
 
-            Text("킬로미터")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(Color.textSecondary)
+                Text("킬로미터")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+            }
+
+            Divider()
+                .padding(.vertical, 20)
+
+            metricsSection
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(24)
+        .padding(22)
         .background(Color.backgroundPrimary)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
@@ -60,7 +66,6 @@ struct RunActivityDetailView: View {
             compactMetric(value: formattedDuration(record.duration), label: "시간")
             compactMetric(value: "\(estimatedCalories)", label: "칼로리")
         }
-        .padding(.horizontal, 4)
     }
 
     private func compactMetric(value: String, label: String) -> some View {
@@ -88,7 +93,14 @@ struct RunActivityDetailView: View {
                 if record.routeCoordinates.count >= 2 {
                     Map(position: $cameraPosition, interactionModes: []) {
                         MapPolyline(coordinates: record.routeCoordinates)
-                            .stroke(Color.main500, style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round))
+                            .stroke(
+                                LinearGradient(
+                                    colors: [Color.main500, Color.sub500],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                                style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                            )
 
                         Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .bottom) {
                             RouteEndpointLabel(title: "출발", tint: Color.main500)

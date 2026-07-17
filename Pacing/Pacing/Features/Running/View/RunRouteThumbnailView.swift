@@ -13,8 +13,12 @@ struct RunRouteThumbnailView: View {
                 Map(position: $cameraPosition, interactionModes: []) {
                     MapPolyline(coordinates: coordinates)
                         .stroke(
-                            Color.main500,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round)
+                            LinearGradient(
+                                colors: [Color.main500, Color.sub500],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            ),
+                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
                         )
                 }
                 .mapStyle(.standard)
