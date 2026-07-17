@@ -92,15 +92,13 @@ struct RunActivityDetailView: View {
             Group {
                 if record.routeCoordinates.count >= 2 {
                     Map(position: $cameraPosition, interactionModes: []) {
-                        MapPolyline(coordinates: record.routeCoordinates)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [Color.main500, Color.sub500],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                                style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
-                            )
+                        ForEach(routeGradientSegments) { segment in
+                            MapPolyline(coordinates: segment.coordinates)
+                                .stroke(
+                                    segment.color,
+                                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                                )
+                        }
 
                         Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .bottom) {
                             RouteEndpointLabel(title: "출발", tint: Color.main500)
@@ -167,6 +165,10 @@ struct RunActivityDetailView: View {
         return (1...completedKilometers).map {
             RunLapPace(kilometer: $0, pace: record.avgPace)
         }
+    }
+
+    private var routeGradientSegments: [RunRouteGradientSegment] {
+        RunRouteGradient.segments(from: record.routeCoordinates)
     }
 
     private func splitRow(_ lap: RunLapPace) -> some View {

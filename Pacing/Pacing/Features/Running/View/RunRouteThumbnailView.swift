@@ -11,15 +11,13 @@ struct RunRouteThumbnailView: View {
         Group {
             if coordinates.count >= 2 {
                 Map(position: $cameraPosition, interactionModes: []) {
-                    MapPolyline(coordinates: coordinates)
-                        .stroke(
-                            LinearGradient(
-                                colors: [Color.main500, Color.sub500],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            ),
-                            style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
-                        )
+                    ForEach(routeGradientSegments) { segment in
+                        MapPolyline(coordinates: segment.coordinates)
+                            .stroke(
+                                segment.color,
+                                style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round)
+                            )
+                    }
                 }
                 .mapStyle(.standard)
                 .allowsHitTesting(false)
@@ -55,5 +53,9 @@ struct RunRouteThumbnailView: View {
                 longitudeDelta: max((maxLongitude - minLongitude) * 1.6, 0.002)
             )
         )
+    }
+
+    private var routeGradientSegments: [RunRouteGradientSegment] {
+        RunRouteGradient.segments(from: coordinates)
     }
 }
