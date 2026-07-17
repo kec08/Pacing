@@ -430,8 +430,14 @@ struct MyView: View {
             } else {
                 let displayed = showAllHistory ? vm.runHistory : Array(vm.runHistory.prefix(5))
                 ForEach(displayed) { record in
-                    RunHistoryCard(record: record, vm: vm)
-                        .padding(.horizontal, 20)
+                    NavigationLink {
+                        RunActivityDetailView(record: record)
+                    } label: {
+                        RunHistoryCard(record: record, vm: vm)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("러닝 활동 상세를 엽니다")
+                    .padding(.horizontal, 20)
                 }
 
                 if vm.runHistory.count > 5 {

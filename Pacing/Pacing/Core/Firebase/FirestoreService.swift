@@ -51,6 +51,9 @@ final class FirestoreService {
             GeoPoint(latitude: $0.latitude, longitude: $0.longitude)
         }
         data["routeCoordinates"] = geoPoints
+        data["lapPaces"] = record.lapPaces.map {
+            ["kilometer": $0.kilometer, "pace": $0.pace]
+        }
 
         try await db.collection("users").document(uid)
             .collection("runHistory").document(record.id)
@@ -78,6 +81,15 @@ final class FirestoreService {
             let coords = geoPoints.map {
                 CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
             }
+            let lapPaces = ((d["lapPaces"] as? [[String: Any]]) ?? []).compactMap { lap -> RunLapPace? in
+                guard let kilometer = (lap["kilometer"] as? NSNumber)?.intValue,
+                      let pace = (lap["pace"] as? NSNumber)?.doubleValue,
+                      kilometer > 0,
+                      pace > 0 else {
+                    return nil
+                }
+                return RunLapPace(kilometer: kilometer, pace: pace)
+            }
 
             return RunRecord(
                 id: doc.documentID,
@@ -85,7 +97,8 @@ final class FirestoreService {
                 duration: duration,
                 distance: distance,
                 avgPace: avgPace,
-                routeCoordinates: coords
+                routeCoordinates: coords,
+                lapPaces: lapPaces
             )
         }
     }
