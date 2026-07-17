@@ -31,13 +31,15 @@ enum RunRouteGradient {
 
     private static func color(at progress: Double) -> Color {
         let clampedProgress = min(max(progress, 0), 1)
+        // 경로의 앞 65%는 Pacing 핑크를 유지하고, 마지막 구간에서 보라로 전환한다.
+        let gradientProgress = min(max((clampedProgress - 0.65) / 0.35, 0), 1)
         let start = (red: 1.0, green: 0.216, blue: 0.373) // main500
         let end = (red: 0.369, green: 0.361, blue: 0.902) // sub500
 
         return Color(
-            red: start.red + (end.red - start.red) * clampedProgress,
-            green: start.green + (end.green - start.green) * clampedProgress,
-            blue: start.blue + (end.blue - start.blue) * clampedProgress
+            red: start.red + (end.red - start.red) * gradientProgress,
+            green: start.green + (end.green - start.green) * gradientProgress,
+            blue: start.blue + (end.blue - start.blue) * gradientProgress
         )
     }
 }

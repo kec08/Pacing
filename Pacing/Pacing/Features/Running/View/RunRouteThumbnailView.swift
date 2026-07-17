@@ -49,8 +49,8 @@ struct RunRouteThumbnailView: View {
                 longitude: (minLongitude + maxLongitude) / 2
             ),
             span: MKCoordinateSpan(
-                latitudeDelta: max((maxLatitude - minLatitude) * 1.6, 0.002),
-                longitudeDelta: max((maxLongitude - minLongitude) * 1.6, 0.002)
+                latitudeDelta: max((maxLatitude - minLatitude) * 2.4, 0.004),
+                longitudeDelta: max((maxLongitude - minLongitude) * 2.4, 0.004)
             )
         )
     }
