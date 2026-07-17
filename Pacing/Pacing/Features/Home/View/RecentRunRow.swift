@@ -9,14 +9,8 @@ struct RecentRunRow: View {
             RunActivityDetailView(record: run)
         } label: {
             HStack(spacing: 14) {
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.gray100)
+                RunRouteThumbnailView(coordinates: run.routeCoordinates)
                     .frame(width: 56, height: 56)
-                    .overlay {
-                        Image(systemName: "map.fill")
-                            .foregroundStyle(Color.gray400)
-                            .font(.system(size: 20))
-                    }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(vm.formatDate(run.startedAt))

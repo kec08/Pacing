@@ -82,6 +82,7 @@ final class RunningViewModel: ObservableObject {
 
     func stop() {
         syncElapsedSeconds()
+        completePendingLapsIfNeeded()
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
         runningStartedAt = nil
         timer?.cancel()

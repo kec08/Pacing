@@ -14,7 +14,7 @@ struct RunActivityDetailView: View {
                 distanceSection
                 metricsSection
                 routeSection
-                splitLink
+                splitSection
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 20)
@@ -55,34 +55,26 @@ struct RunActivityDetailView: View {
     }
 
     private var metricsSection: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible()), GridItem(.flexible())],
-            alignment: .leading,
-            spacing: 1
-        ) {
-            metric(value: formattedPace(record.avgPace), label: "평균 페이스")
-            metric(value: formattedDuration(record.duration), label: "시간")
-            metric(value: "\(estimatedCalories)", label: "칼로리")
-            metric(value: "\(record.lapPaces.count)", label: "완료 구간")
+        HStack(alignment: .top, spacing: 12) {
+            compactMetric(value: formattedPace(record.avgPace), label: "평균 페이스")
+            compactMetric(value: formattedDuration(record.duration), label: "시간")
+            compactMetric(value: "\(estimatedCalories)", label: "칼로리")
         }
-        .background(Color.gray200)
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .padding(.horizontal, 4)
     }
 
-    private func metric(value: String, label: String) -> some View {
+    private func compactMetric(value: String, label: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(value)
-                .font(.system(size: 25, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(1)
-                .minimumScaleFactor(0.75)
+                .minimumScaleFactor(0.6)
             Text(label)
                 .font(.system(size: 13))
                 .foregroundStyle(Color.textSecondary)
         }
-        .frame(maxWidth: .infinity, minHeight: 92, alignment: .leading)
-        .padding(18)
-        .background(Color.backgroundPrimary)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
@@ -105,10 +97,12 @@ struct RunActivityDetailView: View {
                                 style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
                             )
 
-                        Marker("출발", coordinate: record.routeCoordinates[0])
-                            .tint(Color.main500)
-                        Marker("도착", coordinate: record.routeCoordinates[record.routeCoordinates.count - 1])
-                            .tint(Color.sub500)
+                        Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .bottom) {
+                            RouteEndpointLabel(title: "출발", tint: Color.main500)
+                        }
+                        Annotation("도착", coordinate: record.routeCoordinates[record.routeCoordinates.count - 1], anchor: .bottom) {
+                            RouteEndpointLabel(title: "도착", tint: Color.sub500)
+                        }
                     }
                     .mapStyle(.standard)
                     .accessibilityLabel("러닝 이동 경로 지도")
@@ -128,26 +122,81 @@ struct RunActivityDetailView: View {
         }
     }
 
-    private var splitLink: some View {
-        NavigationLink {
-            RunSplitPaceView(record: record)
-        } label: {
-            HStack {
-                Label("구간별 페이스", systemImage: "chart.bar.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
+    private var splitSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("구간별 페이스")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
+
+            if displayLapPaces.isEmpty {
+                Text("1km 이상 달리면 구간별 페이스가 표시돼요.")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(18)
+                    .background(Color.backgroundPrimary)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                if record.lapPaces.isEmpty {
+                    Text("이전 기록은 평균 페이스 기준으로 표시됩니다.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.textSecondary)
+                }
+
+                VStack(spacing: 8) {
+                    ForEach(displayLapPaces) { lap in
+                        splitRow(lap)
+                    }
+                }
             }
-            .foregroundStyle(Color.textPrimary)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 54)
-            .padding(.horizontal, 18)
-            .background(Color.backgroundPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .accessibilityHint("킬로미터별 페이스를 확인합니다")
+    }
+
+    private var displayLapPaces: [RunLapPace] {
+        if !record.lapPaces.isEmpty { return record.lapPaces }
+
+        let completedKilometers = Int(record.distance.rounded(.down))
+        guard completedKilometers > 0, record.avgPace > 0 else { return [] }
+
+        return (1...completedKilometers).map {
+            RunLapPace(kilometer: $0, pace: record.avgPace)
+        }
+    }
+
+    private func splitRow(_ lap: RunLapPace) -> some View {
+        HStack(spacing: 14) {
+            Text("\(lap.kilometer) km")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(Color.textPrimary)
+                .frame(width: 44, alignment: .leading)
+
+            GeometryReader { proxy in
+                Capsule()
+                    .fill(Color.gray100)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.main500)
+                            .frame(width: max(proxy.size.width * paceBarRatio(for: lap), 48))
+                    }
+            }
+            .frame(height: 10)
+
+            Text(formattedPace(lap.pace))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.textPrimary)
+                .frame(width: 58, alignment: .trailing)
+        }
+        .padding(.horizontal, 18)
+        .frame(minHeight: 56)
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(lap.kilometer) 킬로미터, 평균 페이스 \(formattedPace(lap.pace))")
+    }
+
+    private func paceBarRatio(for lap: RunLapPace) -> CGFloat {
+        guard let slowestPace = displayLapPaces.map(\.pace).max(), slowestPace > 0 else { return 1 }
+        return CGFloat(min(max(slowestPace / lap.pace, 0.45), 1))
     }
 
     private var startedAtText: String {
@@ -201,3 +250,23 @@ struct RunActivityDetailView: View {
     }
 }
 
+private struct RouteEndpointLabel: View {
+    let title: String
+    let tint: Color
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: 12, weight: .bold))
+            .foregroundStyle(tint)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(tint.opacity(0.35), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 2)
+            .accessibilityLabel(title)
+    }
+}
