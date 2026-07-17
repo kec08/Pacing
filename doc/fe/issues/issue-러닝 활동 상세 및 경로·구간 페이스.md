@@ -26,5 +26,5 @@
 
 ## GitHub 연동 상태
 
-GitHub App의 `kec08/Pacing` 이슈 생성 요청이 `403 Resource not accessible by integration`으로 거절됐다.
-`gh auth status`도 저장된 인증 토큰이 유효하지 않다고 보고했다. 권한을 복구한 뒤 이 문서 내용으로 GitHub 이슈를 생성한다.
+GitHub App의 `kec08/Pacing` 이슈·PR 생성 요청이 `403 Resource not accessible by integration`으로 거절됐다.
+`gh auth status`도 저장된 인증 토큰이 유효하지 않다고 보고했다. 브랜치 `origin/feat/run-activity-detail`는 푸시 완료했으며, 권한을 복구한 뒤 이 문서 내용으로 GitHub 이슈와 초안 PR을 생성한다.

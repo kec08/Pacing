@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-07-17  
 > **관련 이슈**: GitHub 권한 오류로 생성 보류  
-> **PR**: 작성 보류  
+> **PR**: GitHub 권한 오류로 생성 보류  
 > **브랜치**: `feat/run-activity-detail`
 
 ---
@@ -50,7 +50,7 @@
 
 | 이슈 | 심각도 | 상태 |
 |------|--------|------|
-| GitHub App에 이슈 생성 권한 없음 (`403`) | Major | 권한 복구 필요 |
+| GitHub App에 이슈·PR 생성 권한 없음 (`403`) | Major | 권한 복구 필요 |
 | 현재 환경에 전체 Xcode 없음 | Major | 실기기 또는 Xcode 설치 환경에서 빌드 QA 필요 |
 
 ## 알려진 제한사항
@@ -63,7 +63,8 @@
 
 - Xcode가 설치된 환경에서 Debug 빌드와 iPhone 시뮬레이터/실기기 QA 진행
 - 실제 러닝 후 경로, 출발·도착 마커, km 랩 페이스 저장 값을 확인
-- GitHub App 권한 또는 `gh auth login` 복구 후 이슈 생성, 푸시 및 PR 작성
+- 브랜치 `origin/feat/run-activity-detail` 푸시 완료
+- GitHub App 권한 또는 `gh auth login` 복구 후 이슈 생성 및 초안 PR 작성
 
 ---
 
