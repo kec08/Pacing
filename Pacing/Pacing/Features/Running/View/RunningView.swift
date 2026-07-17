@@ -342,12 +342,14 @@ struct RunningView: View {
                     let savedElapsedSeconds = viewModel.elapsedSeconds
                     let savedAveragePace = viewModel.avgPace
                     let savedRouteCoordinates = viewModel.locationManager.routeCoordinates
+                    let savedLapPaces = viewModel.completedLapPaces
                     Task {
                         await viewModel.saveRecord(
                             distance: savedDistance,
                             elapsedSeconds: savedElapsedSeconds,
                             avgPace: savedAveragePace,
-                            routeCoordinates: savedRouteCoordinates
+                            routeCoordinates: savedRouteCoordinates,
+                            lapPaces: savedLapPaces
                         )
                     }
                     showSummary = false
