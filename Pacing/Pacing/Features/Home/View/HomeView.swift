@@ -2,7 +2,6 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
-    @State private var hasAppeared = false
 
     var body: some View {
         NavigationStack {
@@ -16,41 +15,23 @@ struct HomeView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
-            .background(Color.surfaceMuted)
+            .background(Color.backgroundSecondary)
             .refreshable { await vm.loadHomeData() }
             .navigationBarHidden(true)
         }
         .task { await vm.loadHomeData() }
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.36)) {
-                hasAppeared = true
-            }
-        }
     }
 
     // MARK: - 헤더
     private var headerSection: some View {
-        HStack(alignment: .bottom, spacing: 16) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(todayString)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.78))
-                Text("안녕하세요, \(vm.nickname) 님")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundStyle(.white)
-                Text("오늘도 당신의 리듬으로 달려보세요")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.86))
-            }
-            Spacer(minLength: 8)
-            PacingBrandMark(size: 54)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(todayString)
+                .font(.system(size: 13))
+                .foregroundStyle(Color.textSecondary)
+            Text("안녕하세요, \(vm.nickname) 님")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
         }
-        .padding(20)
-        .background(Color.pacingGradient)
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .opacity(hasAppeared ? 1 : 0)
-        .offset(y: hasAppeared ? 0 : 10)
-        .accessibilityElement(children: .combine)
     }
 
     // MARK: - 이번 주 통계
@@ -77,7 +58,8 @@ struct HomeView: View {
                         SkeletonRow()
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .modifier(PacingCardModifier())
+                            .background(Color.backgroundPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                 }
             } else if vm.recentRuns.isEmpty {
@@ -102,7 +84,8 @@ struct HomeView: View {
                         SkeletonRow(avatarSize: 38, trailingWidth: 54)
                             .padding(.horizontal, 14)
                             .padding(.vertical, 8)
-                            .modifier(PacingCardModifier())
+                            .background(Color.backgroundPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                 }
             } else if vm.recentListenSessions.isEmpty {
@@ -131,7 +114,8 @@ struct HomeView: View {
             .foregroundStyle(Color.textSecondary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 24)
-        .modifier(PacingCardModifier())
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var weeklyStatsSkeleton: some View {
@@ -146,7 +130,8 @@ struct HomeView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .modifier(PacingCardModifier())
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private var todayString: String {
@@ -154,14 +139,5 @@ struct HomeView: View {
         f.dateFormat = "yyyy년 M월 d일 EEEE"
         f.locale = Locale(identifier: "ko_KR")
         return f.string(from: Date())
-    }
-}
-
-private struct PacingCardModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        content
-            .background(Color.surfaceElevated)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .shadow(color: .black.opacity(0.045), radius: 10, y: 4)
     }
 }

@@ -20,7 +20,7 @@ struct MyView: View {
                     settingsSection
                 }
             }
-            .background(Color.surfaceMuted)
+            .background(Color.backgroundPrimary)
             .navigationBarTitleDisplayMode(.inline)
         }
         .refreshable { vm.loadData() }
@@ -159,10 +159,7 @@ struct MyView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .background(Color.surfaceElevated)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
+        .background(Color.backgroundPrimary)
     }
 
     // MARK: - Stats Section

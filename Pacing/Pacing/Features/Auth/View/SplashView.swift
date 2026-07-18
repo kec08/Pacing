@@ -3,31 +3,22 @@ import FirebaseAuth
 
 struct SplashView: View {
     @EnvironmentObject var appState: AppState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isLoading = true
-    @State private var isBrandVisible = false
 
     var body: some View {
         Group {
             if isLoading || appState.isAuthLoading {
                 ZStack {
-                    Color.pacingGradient.ignoresSafeArea()
-
-                    VStack(spacing: 18) {
-                        PacingBrandMark(size: 112)
-                            .scaleEffect(isBrandVisible ? 1 : 0.88)
-                            .opacity(isBrandVisible ? 1 : 0)
-
+                    Color.backgroundPrimary.ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        Image("PacingSplashMark")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 80, height: 80)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                         Text("Pacing")
-                            .font(.system(size: 34, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                            .opacity(isBrandVisible ? 1 : 0)
-
-                        Text("RUN YOUR RHYTHM")
-                            .font(.system(size: 11, weight: .bold, design: .rounded))
-                            .tracking(1.8)
-                            .foregroundStyle(.white.opacity(0.78))
-                            .opacity(isBrandVisible ? 1 : 0)
+                            .font(.system(size: 32, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
                     }
                 }
             } else if appState.isLoggedIn {
@@ -41,13 +32,6 @@ struct SplashView: View {
             }
         }
         .onAppear {
-            if reduceMotion {
-                isBrandVisible = true
-            } else {
-                withAnimation(.easeOut(duration: 0.42)) {
-                    isBrandVisible = true
-                }
-            }
             restoreSession()
         }
     }

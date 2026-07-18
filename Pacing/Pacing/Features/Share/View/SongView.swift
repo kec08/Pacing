@@ -77,9 +77,9 @@ struct SongView: View {
     private var background: some View {
         LinearGradient(
             colors: [
-                Color.main500.opacity(0.18),
-                Color.brandPurple.opacity(0.10),
-                Color.surfaceMuted
+                Color.main200.opacity(0.35),
+                Color.backgroundSecondary,
+                Color.backgroundPrimary
             ],
             startPoint: .top,
             endPoint: .bottom
@@ -87,27 +87,23 @@ struct SongView: View {
     }
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 22) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 7) {
-                    Text("노래")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
-                    Text("달리는 리듬을 채워보세요")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.82))
-                }
+        HStack(alignment: .top) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("노래")
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(Color.textPrimary)
 
-                Spacer(minLength: 12)
-                Image(systemName: "waveform")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .accessibilityHidden(true)
+                Text("친구 플레이리스트와 Apple Music 추천을 한 번에 둘러보세요")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
             }
+
+            Spacer(minLength: 12)
 
             Button {
                 Task { await vm.syncMyPlaylistsIfPossible() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     if vm.isSyncingLibrary {
                         ProgressView()
                             .controlSize(.small)
@@ -116,23 +112,19 @@ struct SongView: View {
                         Image(systemName: "arrow.clockwise")
                             .font(.system(size: 13, weight: .bold))
                     }
+
                     Text("내 플레이리스트 동기화")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 12, weight: .semibold))
                 }
                 .foregroundStyle(Color.main500)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .background(.white)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(Color.main500.opacity(0.12))
                 .clipShape(Capsule())
             }
-            .buttonStyle(PacingPressStyle())
+            .buttonStyle(.plain)
             .disabled(vm.isSyncingLibrary)
         }
-        .foregroundStyle(.white)
-        .padding(22)
-        .background(Color.pacingGradient)
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .accessibilityElement(children: .combine)
     }
 
     private var friendPlaylistSection: some View {
