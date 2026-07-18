@@ -212,8 +212,9 @@ final class ListenTogetherViewModel: ObservableObject {
         inFlightPlaybackEventID = eventID
         activePlaybackSyncToken = syncToken
         defer {
-            guard activePlaybackSyncToken == syncToken else { return }
-            inFlightPlaybackEventID = nil
+            if activePlaybackSyncToken == syncToken {
+                inFlightPlaybackEventID = nil
+            }
         }
 
         let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
