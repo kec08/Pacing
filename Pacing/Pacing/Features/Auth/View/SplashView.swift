@@ -12,7 +12,9 @@ struct SplashView: View {
         Group {
             if isLoading || appState.isAuthLoading {
                 ZStack {
-                    splashGradient.ignoresSafeArea()
+                    splashGradient
+                        .opacity(isExiting ? 0 : 1)
+                        .ignoresSafeArea()
 
                     Image("PacingSplashMark")
                         .resizable()
