@@ -52,6 +52,9 @@ struct ListenSession: Identifiable {
     var artistName: String
     var artworkURL: String
     var artworkData: String
+    /// 호스트가 곡을 전환할 때만 변경되는 식별자입니다.
+    /// 위치 보정 업데이트와 실제 곡 전환을 구분해 게스트의 중복 큐 준비를 방지합니다.
+    var playbackEventID: String = ""
     var playbackPosition: Double
     var serverTimestamp: Double
     var status: String          // pending / active / ended / rejected
