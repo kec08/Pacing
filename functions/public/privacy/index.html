@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#ff2d55" />
+    <meta name="description" content="Pacing 개인정보 처리방침" />
+    <title>개인정보 처리방침 | Pacing</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #1d1720;
+        --muted: #746a74;
+        --line: #eee8ef;
+        --surface: rgba(255, 255, 255, 0.84);
+        --pink: #ff2d55;
+        --purple: #8038d7;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        min-width: 320px;
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Noto Sans KR", sans-serif;
+        line-height: 1.72;
+        letter-spacing: -0.02em;
+        background:
+          radial-gradient(circle at 95% 5%, rgba(128, 56, 215, 0.14), transparent 25rem),
+          radial-gradient(circle at 6% 22%, rgba(255, 45, 85, 0.12), transparent 28rem),
+          #fffafd;
+      }
+
+      a { color: inherit; }
+      .shell { width: min(1120px, calc(100% - 48px)); margin: 0 auto; }
+      .site-header { padding: 24px 0; }
+      .brand { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; font-weight: 800; font-size: 19px; }
+      .brand img { width: 38px; height: 38px; border-radius: 11px; box-shadow: 0 8px 20px rgba(255, 45, 85, 0.22); }
+      .hero { padding: 58px 0 64px; }
+      .eyebrow { margin: 0 0 16px; color: var(--pink); font-size: 13px; font-weight: 800; letter-spacing: 0.1em; }
+      h1, h2, h3, p { margin-top: 0; }
+      h1 { max-width: 720px; margin-bottom: 18px; font-size: clamp(40px, 6vw, 68px); line-height: 1.16; letter-spacing: -0.06em; }
+      .lead { max-width: 650px; margin-bottom: 24px; color: var(--muted); font-size: clamp(17px, 2.2vw, 21px); }
+      .updated { display: inline-flex; padding: 7px 12px; border: 1px solid #f3dce4; border-radius: 999px; background: #fff; color: #796871; font-size: 13px; font-weight: 650; }
+      .layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 48px; align-items: start; padding-bottom: 72px; }
+      .toc { position: sticky; top: 24px; padding: 19px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(14px); }
+      .toc strong { display: block; margin-bottom: 8px; font-size: 14px; }
+      .toc a { display: block; padding: 6px 0; color: var(--muted); font-size: 14px; text-decoration: none; }
+      .toc a:hover { color: var(--pink); }
+      .policy { padding: clamp(24px, 4vw, 48px); border: 1px solid rgba(236, 227, 238, 0.9); border-radius: 30px; background: var(--surface); box-shadow: 0 20px 64px rgba(58, 28, 62, 0.06); }
+      section + section { margin-top: 54px; }
+      h2 { margin-bottom: 13px; font-size: clamp(23px, 3vw, 31px); line-height: 1.28; letter-spacing: -0.045em; }
+      h3 { margin: 24px 0 8px; font-size: 17px; }
+      p, li { color: #4f4650; }
+      ul { margin: 10px 0 0; padding-left: 22px; }
+      li + li { margin-top: 7px; }
+      .notice { margin: 18px 0 0; padding: 17px 18px; border-radius: 16px; background: linear-gradient(135deg, #fff0f4, #f9f2ff); color: #594651; font-size: 14px; }
+      .data-list { display: grid; gap: 12px; margin-top: 16px; }
+      .data-item { padding: 17px 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,0.68); }
+      .data-item b { display: block; margin-bottom: 3px; font-size: 15px; }
+      .data-item span { color: var(--muted); font-size: 14px; }
+      .table-wrap { overflow-x: auto; margin-top: 18px; border: 1px solid var(--line); border-radius: 16px; }
+      table { width: 100%; min-width: 600px; border-collapse: collapse; font-size: 14px; }
+      th, td { padding: 15px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+      th { background: #fff8fa; color: #5c4a54; font-size: 13px; }
+      tr:last-child td { border-bottom: 0; }
+      .contact-card { padding: 25px; border-radius: 20px; color: white; background: linear-gradient(135deg, var(--pink), var(--purple)); box-shadow: 0 18px 36px rgba(186, 45, 123, 0.18); }
+      .contact-card h2, .contact-card p { color: white; }
+      .contact-card a { display: inline-block; margin-top: 5px; font-weight: 750; }
+      footer { padding: 0 0 40px; color: #8c8189; font-size: 13px; text-align: center; }
+      @media (max-width: 780px) {
+        .shell { width: min(100% - 32px, 680px); }
+        .site-header { padding-top: 16px; }
+        .hero { padding: 36px 0 38px; }
+        .layout { display: block; padding-bottom: 40px; }
+        .toc { position: static; margin-bottom: 18px; padding: 15px 17px; }
+        .toc a { display: inline-block; margin-right: 13px; padding: 3px 0; }
+        .policy { border-radius: 22px; }
+        section + section { margin-top: 42px; }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="site-header shell">
+      <a class="brand" href="/privacy" aria-label="Pacing 개인정보 처리방침 처음으로">
+        <img src="assets/pacing-app-icon.png" alt="Pacing 앱 아이콘" />
+        <span>Pacing</span>
+      </a>
+    </header>
+
+    <main>
+      <div class="hero shell">
+        <p class="eyebrow">PRIVACY POLICY</p>
+        <h1>개인정보 처리방침</h1>
+        <p class="lead">Pacing은 러닝과 음악으로 연결되는 경험을 제공하면서, 이용자의 개인정보를 안전하게 보호하기 위해 노력합니다.</p>
+        <span class="updated">시행일: 2026년 7월 19일</span>
+      </div>
+
+      <div class="shell layout">
+        <nav class="toc" aria-label="개인정보 처리방침 목차">
+          <strong>목차</strong>
+          <a href="#overview">처리방침 개요</a>
+          <a href="#data">수집하는 정보</a>
+          <a href="#purpose">이용 목적과 보관</a>
+          <a href="#sharing">공유 및 위탁</a>
+          <a href="#rights">이용자 권리</a>
+          <a href="#security">보호 조치</a>
+          <a href="#contact">문의</a>
+        </nav>
+
+        <article class="policy">
+          <section id="overview">
+            <h2>1. 처리방침 개요</h2>
+            <p>본 개인정보 처리방침은 Pacing(이하 “서비스”)이 제공하는 러닝 기록, 친구·주변 러너 탐색, 음악 연동 및 플레이리스트 공유 기능과 관련하여 개인정보를 수집·이용·보관하는 방식을 설명합니다.</p>
+            <p>서비스를 이용하면 본 방침에 설명된 방식으로 정보를 처리하는 데 동의하는 것으로 봅니다. 법령 또는 서비스 변경에 따라 본 방침을 수정할 수 있으며, 중요한 변경이 있을 때에는 앱 또는 이 페이지를 통해 안내합니다.</p>
+          </section>
+
+          <section id="data">
+            <h2>2. 수집하는 정보</h2>
+            <p>Pacing은 기능 제공에 필요한 최소한의 정보를 수집합니다. 권한이 필요한 정보는 운영체제의 권한 요청을 통해 이용자의 선택을 받습니다.</p>
+            <div class="data-list">
+              <div class="data-item"><b>계정 및 프로필 정보</b><span>로그인 제공자가 전달하는 식별자, 이메일 또는 이름(제공되는 경우), 닉네임, 프로필 사진, 키·체중·나이 등 이용자가 입력한 프로필 정보</span></div>
+              <div class="data-item"><b>러닝 활동 정보</b><span>러닝 시작 시각, 거리, 시간, 평균·구간 페이스 및 러닝 경로 좌표</span></div>
+              <div class="data-item"><b>실시간 러닝 정보</b><span>주변 러너 및 같이 듣기 기능 이용 중의 현재 위치, 닉네임, 프로필 사진, 현재 재생 곡명·아티스트, 재생 상태</span></div>
+              <div class="data-item"><b>음악·플레이리스트 정보</b><span>Apple Music 권한을 허용한 경우의 곡, 아티스트, 앨범아트, 플레이리스트 식별 정보 및 이용자가 공유한 플레이리스트 정보</span></div>
+              <div class="data-item"><b>서비스 이용 정보</b><span>친구 요청·친구 관계, 공유 플레이리스트, 기능 이용에 필요한 기기 및 로그 정보</span></div>
+            </div>
+            <p class="notice">정확한 위치 정보는 러닝 기록과 주변 러너 기능을 위해 사용됩니다. 위치 권한을 거부하거나 기능을 중지하면 관련 기능을 이용하지 못할 수 있습니다.</p>
+          </section>
+
+          <section id="purpose">
+            <h2>3. 이용 목적과 보관 기간</h2>
+            <ul>
+              <li>계정 생성, 로그인, 프로필 및 친구 기능 제공</li>
+              <li>러닝 거리·시간·페이스·경로의 측정, 저장 및 통계 제공</li>
+              <li>주변 러너 표시 및 이용자 간 음악 동기화 기능 제공</li>
+              <li>Apple Music 연동, 플레이리스트 조회·공유·재생 기능 제공</li>
+              <li>서비스 안정성 유지, 오류 분석 및 부정 이용 방지</li>
+            </ul>
+            <p>개인정보는 원칙적으로 서비스 이용 기간 동안 보관하며, 이용자의 삭제 요청 또는 계정 삭제 요청이 있는 경우 지체 없이 삭제합니다. 다만 관계 법령에서 일정 기간 보관을 요구하는 정보는 해당 기간 동안 보관할 수 있습니다.</p>
+          </section>
+
+          <section id="sharing">
+            <h2>4. 정보의 공유 및 처리 위탁</h2>
+            <p>Pacing은 이용자의 개인정보를 판매하지 않습니다. 서비스 제공을 위해 다음의 경우에 한하여 정보를 공유하거나 처리 위탁할 수 있습니다.</p>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>대상</th><th>처리 목적</th><th>처리 정보</th></tr></thead>
+                <tbody>
+                  <tr><td>다른 Pacing 이용자</td><td>친구, 주변 러너, 같이 듣기 및 공유 플레이리스트 기능 제공</td><td>닉네임, 프로필 사진, 공개한 플레이리스트, 기능 이용 중 위치 및 현재 음악 정보</td></tr>
+                  <tr><td>Google Firebase</td><td>인증, 데이터 저장, 실시간 기능 제공</td><td>계정 식별자, 프로필, 러닝 기록, 친구·플레이리스트 정보, 실시간 기능 정보</td></tr>
+                  <tr><td>Apple 및 Apple Music</td><td>음악 권한 확인, 음악 재생 및 개인 음악 보관함 기능 제공</td><td>Apple Music 권한 범위 내의 음악 및 플레이리스트 정보</td></tr>
+                  <tr><td>소셜 로그인 제공자</td><td>로그인 및 계정 연동</td><td>각 제공자가 이용자 동의에 따라 제공하는 계정 정보</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="notice">다른 이용자에게 표시되는 정보는 관련 기능을 이용하는 동안에 한합니다. 실시간 위치·음악 공유를 중단하면 해당 정보의 실시간 표시도 중단됩니다.</p>
+          </section>
+
+          <section id="rights">
+            <h2>5. 이용자의 권리와 선택</h2>
+            <ul>
+              <li>이용자는 앱의 프로필 및 설정을 통해 일부 정보를 조회·수정할 수 있습니다.</li>
+              <li>위치 및 Apple Music 접근 권한은 기기 설정에서 언제든 철회할 수 있습니다.</li>
+              <li>개인정보 열람·정정·삭제, 처리 정지 또는 계정 삭제를 원하면 아래 문의처로 요청할 수 있습니다.</li>
+              <li>권한 철회 또는 삭제 요청 시 일부 서비스 기능의 이용이 제한될 수 있습니다.</li>
+            </ul>
+          </section>
+
+          <section id="security">
+            <h2>6. 개인정보 보호 조치</h2>
+            <p>Pacing은 접근 통제, 인증, 전송 구간 보호 및 서비스 제공에 필요한 보안 조치를 적용하기 위해 노력합니다. 다만 인터넷을 통한 전송 또는 전자적 저장 방식이 절대적으로 안전하다고 보장할 수는 없습니다.</p>
+          </section>
+
+          <section id="contact" class="contact-card">
+            <h2>7. 문의 및 개인정보 요청</h2>
+            <p>개인정보 처리와 관련한 문의, 열람·삭제·계정 삭제 요청은 아래 이메일로 보내주세요. 요청자 확인 후 가능한 범위에서 신속히 처리하겠습니다.</p>
+            <a href="mailto:kec4489@naver.com">kec4489@naver.com</a>
+          </section>
+        </article>
+      </div>
+    </main>
+
+    <footer class="shell">© 2026 Pacing. All rights reserved.</footer>
+  </body>
+</html>
