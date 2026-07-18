@@ -975,13 +975,23 @@ struct RunningView: View {
                 .scrollIndicators(.hidden)
 
                 if musicSheetPanel == .playlistPicker && !isActiveListenGuest {
+                    Color.black.opacity(0.12)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                musicSheetPanel = nil
+                            }
+                        }
+
                     VStack {
                         playlistPickerPanel
                             .padding(.horizontal, 12)
                             .padding(.top, 12)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                         Spacer()
                     }
+                    .zIndex(1)
                 }
 
                 // MARK: 하단 리스트 패널 및 버튼
@@ -1062,7 +1072,7 @@ struct RunningView: View {
                 clearLocalPlaybackClock()
             }
         }
-        .presentationBackground(.ultraThinMaterial)
+        .presentationBackground(Color.backgroundPrimary)
     }
 
     private var playlistPickerPanel: some View {
@@ -1135,7 +1145,7 @@ struct RunningView: View {
 
             Spacer().frame(height: 8)
         }
-        .background(.ultraThinMaterial)
+        .background(Color.backgroundPrimary)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.1), radius: 10, y: 4)
     }
