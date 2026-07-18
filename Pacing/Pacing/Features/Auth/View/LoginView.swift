@@ -21,7 +21,7 @@ struct LoginView: View {
                         .frame(width: 82, height: 82)
                         .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
 
-                    Spacer().frame(height: 28)
+                    Spacer().frame(height: 20)
 
                     Text("Pacing")
                         .font(.system(size: 36, weight: .bold))
@@ -113,7 +113,7 @@ struct LoginView: View {
                                 Image("NaverLoginMark")
                                     .resizable()
                                     .scaledToFit()
-                                    .frame(width: 26, height: 26)
+                                    .frame(width: 30, height: 30)
                                 Text("네이버로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
