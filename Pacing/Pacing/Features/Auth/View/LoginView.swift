@@ -14,15 +14,20 @@ struct LoginView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                VStack(spacing: 12) {
-                    Image(systemName: "figure.run.circle.fill")
+                VStack(spacing: 0) {
+                    Image("PacingLoginAppIcon")
                         .resizable()
-                        .frame(width: 72, height: 72)
-                        .foregroundStyle(Color.main500)
+                        .scaledToFit()
+                        .frame(width: 82, height: 82)
+                        .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+
+                    Spacer().frame(height: 28)
 
                     Text("Pacing")
                         .font(.system(size: 36, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
+
+                    Spacer().frame(height: 8)
 
                     Text("같은 비트, 같은 페이스")
                         .font(.system(size: 16))
@@ -47,25 +52,31 @@ struct LoginView: View {
                             authVM.prepareNonce()
                         }
 
-                        // 네이버 로그인
+                        // Google 로그인
                         Button {
                             Task {
-                                await authVM.signInWithNaver(appState: appState)
-                                if appState.isLoggedIn { navigateToOnboarding = true }
+                                await authVM.signInWithGoogle(appState: appState)
+                                if appState.isLoggedIn {
+                                    navigateToOnboarding = true
+                                }
                             }
                         } label: {
                             HStack(spacing: 8) {
-                                Image("NaverLoginMark")
+                                Image("GoogleLoginMark")
                                     .resizable()
                                     .scaledToFit()
                                     .frame(width: 20, height: 20)
-                                Text("네이버로 계속하기")
+                                Text("Google로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Color.white)
+                            .foregroundStyle(Color.textPrimary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .background(Color(red: 0, green: 0.78, blue: 0.235))
+                            .background(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .stroke(Color(.systemGray4), lineWidth: 1)
+                            )
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
@@ -91,31 +102,25 @@ struct LoginView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
-                        // 구글 로그인
+                        // 네이버 로그인
                         Button {
                             Task {
-                                await authVM.signInWithGoogle(appState: appState)
-                                if appState.isLoggedIn {
-                                    navigateToOnboarding = true
-                                }
+                                await authVM.signInWithNaver(appState: appState)
+                                if appState.isLoggedIn { navigateToOnboarding = true }
                             }
                         } label: {
                             HStack(spacing: 8) {
-                                Image("GoogleLoginMark")
+                                Image("NaverLoginMark")
                                     .resizable()
                                     .scaledToFit()
-                                    .frame(width: 20, height: 20)
-                                Text("Google로 계속하기")
+                                    .frame(width: 26, height: 26)
+                                Text("네이버로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Color.textPrimary)
+                            .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .background(Color.white)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .stroke(Color(.systemGray4), lineWidth: 1)
-                            )
+                            .background(Color(red: 0, green: 0.78, blue: 0.235))
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
