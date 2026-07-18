@@ -22,34 +22,36 @@ struct MainTabView: View {
             HomeView()
                 .tag(MainTab.home)
                 .tabItem {
-                    Image(systemName: "house.fill")
+                    Label("홈", systemImage: "house.fill")
                 }
 
             FriendsView()
                 .tag(MainTab.friends)
                 .tabItem {
-                    Image(systemName: "person.2.fill")
+                    Label("친구", systemImage: "person.2.fill")
                 }
 
             RunningView()
                 .tag(MainTab.running)
                 .tabItem {
-                    Image(systemName: "figure.run")
+                    Label("러닝", systemImage: "figure.run")
                 }
 
             SongView()
                 .tag(MainTab.song)
                 .tabItem {
-                    Image(systemName: "music.note")
+                    Label("음악", systemImage: "music.note")
                 }
 
             MyView()
                 .tag(MainTab.my)
                 .tabItem {
-                    Image(systemName: "person.fill")
+                    Label("마이", systemImage: "person.fill")
                 }
         }
         .tint(Color.main500)
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(Color.surfaceElevated.opacity(0.96), for: .tabBar)
         .onAppear {
             startPresenceBroadcast()
         }

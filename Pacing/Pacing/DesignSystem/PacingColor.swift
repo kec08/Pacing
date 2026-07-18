@@ -35,6 +35,20 @@ extension Color {
     // MARK: - Accent
     static let accent500 = Color(hex: "#FF3740")
 
+    // MARK: - Brand surfaces
+    static let brandMagenta = Color(hex: "#D91E82")
+    static let brandPurple = Color(hex: "#6E3BE8")
+    static let surfaceElevated = Color(hex: "#FFFFFF")
+    static let surfaceMuted = Color(hex: "#F8F7FB")
+
+    static var pacingGradient: LinearGradient {
+        LinearGradient(
+            colors: [main500, brandMagenta, brandPurple],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+    }
+
     // MARK: - Action
     static let success500 = Color(hex: "#39D053")
     static let warning500 = Color(hex: "#FFA006")
