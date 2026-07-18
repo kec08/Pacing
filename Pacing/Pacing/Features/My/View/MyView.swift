@@ -21,7 +21,7 @@ struct MyView: View {
                 }
             }
             .background(Color.backgroundPrimary)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
         }
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
