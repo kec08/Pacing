@@ -55,15 +55,17 @@ struct LoginView: View {
                             }
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "n.circle.fill")
-                                    .font(.system(size: 18))
+                                Image("NaverLoginMark")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
                                 Text("네이버로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(Color.white)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .background(Color(red: 0.122, green: 0.8, blue: 0.267))
+                            .background(Color(red: 0, green: 0.78, blue: 0.235))
                             .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
 
@@ -75,8 +77,10 @@ struct LoginView: View {
                             }
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "message.fill")
-                                    .font(.system(size: 16))
+                                Image("KakaoLoginMark")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
                                 Text("카카오로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
@@ -97,8 +101,10 @@ struct LoginView: View {
                             }
                         } label: {
                             HStack(spacing: 8) {
-                                Image(systemName: "g.circle.fill")
-                                    .font(.system(size: 18))
+                                Image("GoogleLoginMark")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 20, height: 20)
                                 Text("Google로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
