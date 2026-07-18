@@ -1072,7 +1072,7 @@ struct RunningView: View {
                 clearLocalPlaybackClock()
             }
         }
-        .presentationBackground(Color.backgroundPrimary)
+        .presentationBackground(.ultraThinMaterial)
     }
 
     private var playlistPickerPanel: some View {
@@ -1145,7 +1145,7 @@ struct RunningView: View {
 
             Spacer().frame(height: 8)
         }
-        .background(Color.backgroundPrimary)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.1), radius: 10, y: 4)
     }
