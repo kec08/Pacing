@@ -3,23 +3,24 @@ import FirebaseAuth
 
 struct SplashView: View {
     @EnvironmentObject var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isLoading = true
+    @State private var isExiting = false
+    @State private var didStartRestoration = false
 
     var body: some View {
         Group {
             if isLoading || appState.isAuthLoading {
                 ZStack {
-                    Color.backgroundPrimary.ignoresSafeArea()
-                    VStack(spacing: 16) {
-                        Image("PacingSplashMark")
-                            .resizable()
-                            .scaledToFit()
-                            .frame(width: 80, height: 80)
-                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                        Text("Pacing")
-                            .font(.system(size: 32, weight: .bold))
-                            .foregroundStyle(Color.textPrimary)
-                    }
+                    splashGradient.ignoresSafeArea()
+
+                    Image("PacingSplashMark")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 176, height: 176)
+                        .scaleEffect(isExiting ? 0.28 : 1)
+                        .opacity(isExiting ? 0 : 1)
+                        .accessibilityLabel("Pacing")
                 }
             } else if appState.isLoggedIn {
                 if appState.isProfileComplete {
@@ -32,31 +33,57 @@ struct SplashView: View {
             }
         }
         .onAppear {
+            guard !didStartRestoration else { return }
+            didStartRestoration = true
             restoreSession()
         }
+    }
+
+    private var splashGradient: LinearGradient {
+        LinearGradient(
+            colors: [
+                Color.main500,
+                Color(red: 0.85, green: 0.12, blue: 0.55),
+                Color(red: 0.42, green: 0.19, blue: 0.90)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
     }
 
     private func restoreSession() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             guard let uid = Auth.auth().currentUser?.uid else {
-                appState.isLoggedIn = false
-                appState.isProfileComplete = false
-                isLoading = false
+                completeSplash(isLoggedIn: false, isProfileComplete: false)
                 return
             }
             Task { @MainActor in
                 let exists = await FirestoreService.shared.hasUserProfile(uid: uid)
                 if exists {
-                    appState.isLoggedIn = true
-                    appState.isProfileComplete = true
+                    completeSplash(isLoggedIn: true, isProfileComplete: true)
                 } else {
                     // 프로필 없는 유저 → 로그아웃 후 로그인 화면
                     try? Auth.auth().signOut()
-                    appState.isLoggedIn = false
-                    appState.isProfileComplete = false
+                    completeSplash(isLoggedIn: false, isProfileComplete: false)
                 }
-                isLoading = false
             }
+        }
+    }
+
+    private func completeSplash(isLoggedIn: Bool, isProfileComplete: Bool) {
+        appState.isLoggedIn = isLoggedIn
+        appState.isProfileComplete = isProfileComplete
+
+        guard !reduceMotion else {
+            isLoading = false
+            return
+        }
+
+        withAnimation(.easeInOut(duration: 0.32)) {
+            isExiting = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+            isLoading = false
         }
     }
 }
