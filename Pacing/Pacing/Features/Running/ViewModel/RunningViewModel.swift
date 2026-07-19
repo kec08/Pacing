@@ -47,8 +47,12 @@ final class RunningViewModel: ObservableObject {
 
     // MARK: - Controls
 
-    func start() {
-        locationManager.requestPermission()
+    @discardableResult
+    func start() -> Bool {
+        guard locationManager.hasAlwaysAuthorization else {
+            return false
+        }
+
         locationManager.resetRoute()
         elapsedSeconds = 0
         distance = 0
@@ -60,6 +64,7 @@ final class RunningViewModel: ObservableObject {
         locationManager.startTracking()
         state = .running
         startTimer()
+        return true
     }
 
     func pause() {

@@ -2,6 +2,33 @@ import CoreLocation
 import Combine
 import UIKit
 
+enum LocationBackgroundConfiguration {
+    nonisolated static func supportsLocationMode(_ value: Any?) -> Bool {
+        let normalizedModes: [String]
+
+        switch value {
+        case let values as [String]:
+            normalizedModes = values
+        case let values as [Any]:
+            normalizedModes = values.compactMap { $0 as? String }
+        case let mode as String:
+            normalizedModes = mode.split(whereSeparator: { $0.isWhitespace || $0 == "," }).map(String.init)
+        default:
+            normalizedModes = []
+        }
+
+        return normalizedModes.contains { $0.caseInsensitiveCompare("location") == .orderedSame }
+    }
+
+    nonisolated static func shouldEnableBackgroundUpdates(
+        supportsLocationMode: Bool,
+        authorizationStatus: CLAuthorizationStatus,
+        isRecordingRoute: Bool
+    ) -> Bool {
+        supportsLocationMode && authorizationStatus == .authorizedAlways && isRecordingRoute
+    }
+}
+
 final class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
 
@@ -40,6 +67,10 @@ final class LocationManager: NSObject, ObservableObject {
             return
         }
         manager.requestAlwaysAuthorization()
+    }
+
+    var hasAlwaysAuthorization: Bool {
+        authorizationStatus == .authorizedAlways
     }
 
     func startMonitoringCurrentLocation() {
@@ -112,11 +143,13 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     private func configureBackgroundLocationSupport() {
-        let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String] ?? []
-        let supportsBackgroundLocation = backgroundModes.contains("location")
-        let canStayUpInBackground = supportsBackgroundLocation &&
-            authorizationStatus == .authorizedAlways &&
-            isRecordingRoute
+        let backgroundModes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes")
+        let supportsBackgroundLocation = LocationBackgroundConfiguration.supportsLocationMode(backgroundModes)
+        let canStayUpInBackground = LocationBackgroundConfiguration.shouldEnableBackgroundUpdates(
+            supportsLocationMode: supportsBackgroundLocation,
+            authorizationStatus: authorizationStatus,
+            isRecordingRoute: isRecordingRoute
+        )
 
         manager.allowsBackgroundLocationUpdates = canStayUpInBackground
         manager.showsBackgroundLocationIndicator = canStayUpInBackground && isRecordingRoute
