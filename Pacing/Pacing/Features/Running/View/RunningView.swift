@@ -37,6 +37,7 @@ struct RunningView: View {
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
     @State private var hasCenteredOnInitialLocation = false
+    @State private var showAlwaysLocationPermissionAlert = false
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -331,6 +332,15 @@ struct RunningView: View {
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
         .preferredColorScheme(.light)
+        .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
+            Button("설정으로 이동") {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("백그라운드에서도 거리, 페이스, 칼로리와 경로를 기록하려면 위치 접근을 ‘항상 허용’으로 변경해 주세요.")
+        }
         .sheet(isPresented: $showMusicSheet) { musicSheet }
         .sheet(isPresented: $showNearbySheet) { nearbySheet }
         .sheet(isPresented: $showListenSheet) { listenSheet }
@@ -577,7 +587,7 @@ struct RunningView: View {
 
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                startCountdown()
+                startRunIfAuthorized()
             } label: {
                 Text("시작")
                     .font(.system(size: 20, weight: .bold))
@@ -1887,6 +1897,16 @@ struct RunningView: View {
 
     // MARK: - 카운트다운
 
+    private func startRunIfAuthorized() {
+        guard viewModel.locationManager.hasAlwaysAuthorization else {
+            viewModel.locationManager.requestPermission()
+            showAlwaysLocationPermissionAlert = true
+            return
+        }
+
+        startCountdown()
+    }
+
     private func startCountdown() {
 
         Task {
@@ -1898,8 +1918,11 @@ struct RunningView: View {
             }
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
-                viewModel.start()
-                startNearbyObservationIfNeeded()
+                if viewModel.start() {
+                    startNearbyObservationIfNeeded()
+                } else {
+                    showAlwaysLocationPermissionAlert = true
+                }
             }
         }
     }
