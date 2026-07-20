@@ -7,6 +7,8 @@ struct MyView: View {
     @State private var showPicker = false
     @State private var showAllHistory = false
     @State private var showLogoutAlert = false
+    @State private var showAccountDeletionAlert = false
+    @State private var showAccountDeletion = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +28,9 @@ struct MyView: View {
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
             periodPickerSheet
+        }
+        .navigationDestination(isPresented: $showAccountDeletion) {
+            AccountDeletionView(viewModel: vm)
         }
     }
 
@@ -477,6 +482,27 @@ struct MyView: View {
                 }
             } message: {
                 Text("로그아웃 하시겠습니까?")
+            }
+
+            Button {
+                showAccountDeletionAlert = true
+            } label: {
+                Text("회원탈퇴")
+                    .font(.system(size: 15))
+                    .foregroundStyle(Color.gray500)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .alert("회원탈퇴", isPresented: $showAccountDeletionAlert) {
+                Button("취소", role: .cancel) {}
+                Button("계속", role: .destructive) {
+                    showAccountDeletion = true
+                }
+            } message: {
+                Text("탈퇴 시 계정과 러닝 기록, 친구 관계, 같이 듣기 정보가 삭제되며 복구할 수 없습니다.")
             }
         }
         .background(Color.backgroundPrimary)
