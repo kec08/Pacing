@@ -63,18 +63,23 @@ exports.deleteAccount = onCall(async (request) => {
 
   try {
     const userRef = firestore.collection("users").doc(uid);
-    const [sentRequests, receivedRequests, ownedPlaylists, friendReferences] = await Promise.all([
+    const [sentRequests, receivedRequests, ownedPlaylists, ownFriends] = await Promise.all([
       firestore.collection("friendRequests").where("fromUID", "==", uid).get(),
       firestore.collection("friendRequests").where("toUID", "==", uid).get(),
       firestore.collection("sharedPlaylists").where("ownerUID", "==", uid).get(),
-      firestore.collectionGroup("friends")
-        .where(admin.firestore.FieldPath.documentId(), "==", uid)
-        .get(),
+      userRef.collection("friends").get(),
     ]);
 
     const externalDocuments = new Map();
-    [sentRequests, receivedRequests, ownedPlaylists, friendReferences].forEach((snapshot) => {
+    [sentRequests, receivedRequests, ownedPlaylists].forEach((snapshot) => {
       snapshot.docs.forEach((document) => externalDocuments.set(document.ref.path, document));
+    });
+    ownFriends.docs.forEach((friend) => {
+      const reciprocalFriendRef = firestore.collection("users")
+        .doc(friend.id)
+        .collection("friends")
+        .doc(uid);
+      externalDocuments.set(reciprocalFriendRef.path, { ref: reciprocalFriendRef });
     });
 
     await Promise.all([
