@@ -22,17 +22,18 @@ struct AccountDeletionView: View {
             Text("탈퇴 시 아래 내용이 적용됩니다.")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.textPrimary)
-                .padding(.top, 44)
+                .padding(.top, 32)
 
             VStack(alignment: .leading, spacing: 14) {
                 deletionItem("프로필, 신체 정보, 러닝 기록 및 최근 음악 기록이 삭제됩니다.")
                 deletionItem("친구 관계, 친구 요청, 공유 플레이리스트와 같이 듣기 정보가 삭제됩니다.")
-                deletionItem("삭제된 데이터는 복구할 수 없습니다.")
+                deletionItem("삭제된 데이터는 복구할 수 없습니다.", tint: .accent500)
             }
             .padding(.top, 20)
 
             Divider()
-                .padding(.vertical, 32)
+                .padding(.top, 20)
+                .padding(.bottom, 28)
 
             Text("탈퇴를 확인하려면 아래에 \"\(confirmationPhrase)\"를 입력하세요.")
                 .font(.system(size: 15, weight: .medium))
@@ -78,7 +79,7 @@ struct AccountDeletionView: View {
             }
             .disabled(!canDelete)
             .accessibilityHint("입력 문구가 정확할 때 계정과 관련 데이터가 영구 삭제됩니다")
-            .padding(.bottom, 24)
+            .padding(.bottom, 36)
         }
         .padding(.horizontal, 24)
         .background(Color.backgroundPrimary)
@@ -91,14 +92,14 @@ struct AccountDeletionView: View {
         }
     }
 
-    private func deletionItem(_ text: String) -> some View {
+    private func deletionItem(_ text: String, tint: Color = .textSecondary) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text("•")
             Text(text)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .font(.system(size: 15))
-        .foregroundStyle(Color.textSecondary)
+        .foregroundStyle(tint)
     }
 
     private func deleteAccount() {
