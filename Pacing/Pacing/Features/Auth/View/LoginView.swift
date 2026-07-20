@@ -147,7 +147,7 @@ struct LoginView: View {
 
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, 24)
                 }
 
                 if let error = authVM.errorMessage {
