@@ -2,7 +2,6 @@ import SwiftUI
 
 struct AccountDeletionView: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.dismiss) private var dismiss
     @ObservedObject var viewModel: MyViewModel
 
     @State private var confirmationText = ""
@@ -16,12 +15,12 @@ struct AccountDeletionView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("회원탈퇴")
-                .font(.system(size: 30, weight: .bold))
+                .font(.system(size: 26, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
                 .padding(.top, 32)
 
             Text("탈퇴 시 아래 내용이 적용됩니다.")
-                .font(.system(size: 19, weight: .semibold))
+                .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(Color.textPrimary)
                 .padding(.top, 44)
 
@@ -35,12 +34,12 @@ struct AccountDeletionView: View {
             Divider()
                 .padding(.vertical, 32)
 
-            Text("탈퇴를 확인하려면 아래에 \"(confirmationPhrase)\"를 입력하세요.")
-                .font(.system(size: 16, weight: .medium))
+            Text("탈퇴를 확인하려면 아래에 \"\(confirmationPhrase)\"를 입력하세요.")
+                .font(.system(size: 15, weight: .medium))
                 .foregroundStyle(Color.textSecondary)
 
             TextField(confirmationPhrase, text: $confirmationText)
-                .font(.system(size: 18))
+                .font(.system(size: 16))
                 .foregroundStyle(Color.textPrimary)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -70,7 +69,7 @@ struct AccountDeletionView: View {
                         Text("탈퇴하기")
                     }
                 }
-                .font(.system(size: 17, weight: .semibold))
+                .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 54)
@@ -98,7 +97,7 @@ struct AccountDeletionView: View {
             Text(text)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .font(.system(size: 16))
+        .font(.system(size: 15))
         .foregroundStyle(Color.textSecondary)
     }
 

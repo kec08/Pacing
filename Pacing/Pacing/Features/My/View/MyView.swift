@@ -476,11 +476,11 @@ struct MyView: View {
                 showLogoutAlert = true
             } label: {
                 Text("로그아웃")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Color.accent500)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 28)
-                    .padding(.vertical, 18)
+                    .padding(.vertical, 16)
             }
             .buttonStyle(.plain)
             .alert("로그아웃", isPresented: $showLogoutAlert) {
@@ -496,11 +496,11 @@ struct MyView: View {
                 showAccountDeletionAlert = true
             } label: {
                 Text("회원탈퇴")
-                    .font(.system(size: 17, weight: .medium))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(Color.gray500)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 28)
-                    .padding(.vertical, 18)
+                    .padding(.vertical, 16)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
