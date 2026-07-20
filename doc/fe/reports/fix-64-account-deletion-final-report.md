@@ -28,6 +28,8 @@
 - 데이터 정리 후 Firebase Authentication 사용자를 삭제한다.
 - 이메일/비밀번호, Apple, Google, Kakao, Naver 로그인 계정 모두 같은 흐름을 사용한다.
 - 동일 OAuth 계정으로 재로그인하는 경우 기존 데이터를 복원하지 않고 신규 프로필 설정을 시작한다.
+- OAuth UID를 Firestore 문서 경로로 잘못 해석하던 친구 관계 삭제 로직을, 현재 사용자의 친구 목록 기반 정리 방식으로 수정했다.
+- Realtime Database에서 부모 경로와 하위 경로를 동시에 삭제하던 충돌을 제거했다.
 
 ## 검증 결과
 
@@ -36,22 +38,23 @@
 | Cloud Function JavaScript 문법 검사 | 통과 (`node --check`) |
 | 변경 파일 공백/패치 검사 | 통과 (`git diff --check`) |
 | iPhone 17 Pro Max 시뮬레이터 Debug 빌드 | 통과 (`xcodebuild`, 코드 서명 비활성화) |
-| 실제 Firebase 계정·데이터 삭제 | 배포 전이므로 미실행 |
-| OAuth 제공업체별 재로그인 | 배포 후 실기기 테스트 필요 |
+| Firebase `deleteAccount` 함수 운영 배포 | 완료 (`asia-northeast3`, Node.js 24) |
+| 네이버 계정 실제 탈퇴 | 통과 — 계정 삭제 후 로그인 화면 전환 확인 |
+| Apple·Google·Kakao 실제 탈퇴 및 재로그인 | 테스트 계정으로 추가 확인 필요 |
 
-## 배포 후 필수 QA
+## 잔여 QA
 
-1. `functions` 디렉터리에서 `firebase deploy --only functions:deleteAccount`로 함수를 배포한다.
-2. 별도의 이메일/비밀번호 테스트 계정으로 프로필, 러닝 기록, 친구 요청, 같이 듣기 데이터를 만든다.
-3. 앱에서 탈퇴 완료 후 Firestore, Realtime Database, Firebase Authentication에 데이터가 남지 않는지 확인한다.
-4. Apple·Google·Kakao·Naver 테스트 계정별로 탈퇴 후 재로그인하여 오류 없이 신규 프로필 설정으로 이동하는지 확인한다.
-5. 실제 기기에서 로그인 → 마이 → 회원탈퇴 → 확인 문구 입력 → 로그인 화면 복귀 전체를 화면 녹화한다.
+1. 별도의 이메일/비밀번호, Apple, Google, Kakao 테스트 계정으로 프로필, 러닝 기록, 친구 요청, 같이 듣기 데이터를 만든다.
+2. 각 계정에서 탈퇴 완료 후 Firestore, Realtime Database, Firebase Authentication에 데이터가 남지 않는지 확인한다.
+3. 동일 OAuth 계정으로 다시 로그인했을 때 오류 없이 신규 프로필 설정으로 이동하는지 확인한다.
+4. 실제 기기에서 로그인 → 마이 → 회원탈퇴 → 확인 문구 입력 → 로그인 화면 복귀 전체를 화면 녹화한다.
 
 ## 심사 제출 반영
 
 App Review Information의 Notes에 계정 삭제 경로와 실제 기기 화면 녹화본을 첨부한다. 녹화에는 로그인, 회원탈퇴 진입, 확인 문구 입력, 삭제 완료 후 로그인 화면 복귀를 모두 포함한다.
 
-## 남은 검토 사항
+## 심사 대응 상태
 
-- Firebase Functions 배포는 운영 데이터에 영향을 주므로 개발자 승인 후 진행한다.
-- 배포 후 실제 계정으로 영구 삭제 테스트를 완료한 뒤 PR을 생성한다.
+- App Store 심사에서 요구한 앱 내 계정 삭제 시작·완료 흐름을 구현했다.
+- 운영 Firebase Function 배포와 네이버 OAuth 계정의 실제 탈퇴 완료까지 확인했다.
+- 심사 제출 전에는 Apple·Google·Kakao를 포함한 추가 테스트 계정 QA와 실제 기기 화면 녹화본 첨부가 필요하다.
