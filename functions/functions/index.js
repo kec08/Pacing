@@ -8,6 +8,90 @@ setGlobalOptions({ maxInstances: 10, region: "asia-northeast3" });
 
 admin.initializeApp();
 
+const firestore = admin.firestore();
+const realtimeDatabase = admin.database();
+
+async function deleteFirestoreDocuments(documents) {
+  const chunks = [];
+  for (let index = 0; index < documents.length; index += 400) {
+    chunks.push(documents.slice(index, index + 400));
+  }
+
+  await Promise.all(chunks.map(async (documentsChunk) => {
+    const batch = firestore.batch();
+    documentsChunk.forEach((document) => batch.delete(document.ref));
+    await batch.commit();
+  }));
+}
+
+async function deleteListenSessionsForUser(uid) {
+  const sessionsRef = realtimeDatabase.ref("listenSessions");
+  const [hostSnapshot, guestSnapshot] = await Promise.all([
+    sessionsRef.orderByChild("hostUID").equalTo(uid).once("value"),
+    sessionsRef.orderByChild("guestUID").equalTo(uid).once("value"),
+  ]);
+
+  const sessions = new Map();
+  [hostSnapshot, guestSnapshot].forEach((snapshot) => {
+    snapshot.forEach((child) => sessions.set(child.key, child.val()));
+  });
+
+  const updates = {
+    [`activeRunners/${uid}`]: null,
+    [`incomingRequests/${uid}`]: null,
+  };
+
+  sessions.forEach((session, sessionID) => {
+    updates[`listenSessions/${sessionID}`] = null;
+    if (session.guestUID) {
+      updates[`incomingRequests/${session.guestUID}/${sessionID}`] = null;
+    }
+  });
+
+  await realtimeDatabase.ref().update(updates);
+}
+
+/**
+ * Permanently deletes the authenticated user's Pacing account and all Pacing data.
+ * OAuth provider accounts (Apple, Google, Kakao, Naver) are not affected.
+ */
+exports.deleteAccount = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "로그인한 사용자만 계정을 삭제할 수 있어요.");
+  }
+
+  try {
+    const userRef = firestore.collection("users").doc(uid);
+    const [sentRequests, receivedRequests, ownedPlaylists, friendReferences] = await Promise.all([
+      firestore.collection("friendRequests").where("fromUID", "==", uid).get(),
+      firestore.collection("friendRequests").where("toUID", "==", uid).get(),
+      firestore.collection("sharedPlaylists").where("ownerUID", "==", uid).get(),
+      firestore.collectionGroup("friends")
+        .where(admin.firestore.FieldPath.documentId(), "==", uid)
+        .get(),
+    ]);
+
+    const externalDocuments = new Map();
+    [sentRequests, receivedRequests, ownedPlaylists, friendReferences].forEach((snapshot) => {
+      snapshot.docs.forEach((document) => externalDocuments.set(document.ref.path, document));
+    });
+
+    await Promise.all([
+      deleteFirestoreDocuments([...externalDocuments.values()]),
+      deleteListenSessionsForUser(uid),
+    ]);
+
+    await firestore.recursiveDelete(userRef);
+    await admin.auth().deleteUser(uid);
+    logger.info("Pacing account deleted", { uid });
+    return { deleted: true };
+  } catch (error) {
+    logger.error("Pacing account deletion failed", { uid, error });
+    throw new HttpsError("internal", "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
+  }
+});
+
 exports.naverLogin = onCall(async (request) => {
   logger.info("naverLogin called");
 
@@ -115,4 +199,3 @@ exports.kakaoLogin = onCall(async (request) => {
     throw new HttpsError("internal", "Custom Token 생성에 실패했어요.");
   }
 });
-
