@@ -87,7 +87,12 @@ exports.deleteAccount = onCall(async (request) => {
     logger.info("Pacing account deleted", { uid });
     return { deleted: true };
   } catch (error) {
-    logger.error("Pacing account deletion failed", { uid, error });
+    logger.error("Pacing account deletion failed", {
+      uid,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+      errorStack: error?.stack,
+    });
     throw new HttpsError("internal", "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.");
   }
 });
