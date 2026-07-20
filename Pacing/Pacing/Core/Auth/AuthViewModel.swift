@@ -20,7 +20,7 @@ final class AuthViewModel: ObservableObject {
     @Published var isLoading = false  // LoginView에서 scenePhase 감지로 리셋 가능
     @Published var errorMessage: String?
 
-    private var currentNonce: String?
+    private var appleNonceStore = AppleNonceStore()
 
     // MARK: - Pacing 이메일 로그인
     func signInWithEmail(email: String, password: String, appState: AppState) async {
@@ -98,10 +98,21 @@ final class AuthViewModel: ObservableObject {
         case .success(let auth):
             guard
                 let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                let nonce = currentNonce,
                 let tokenData = credential.identityToken,
                 let tokenString = String(data: tokenData, encoding: .utf8)
-            else { return }
+            else {
+                errorMessage = "Apple 로그인 정보를 확인하지 못했어요. 다시 시도해주세요."
+                return
+            }
+
+            guard
+                let nonceHash = AppleNonceStore.nonceHash(fromIDToken: tokenString),
+                let nonce = appleNonceStore.consume(rawNonceHash: nonceHash)
+            else {
+                appleNonceStore.removeAll()
+                errorMessage = "Apple 로그인 요청이 만료되었어요. 다시 시도해주세요."
+                return
+            }
 
             isLoading = true
             let firebaseCredential = OAuthProvider.appleCredential(
@@ -110,6 +121,7 @@ final class AuthViewModel: ObservableObject {
                 fullName: credential.fullName
             )
 
+            defer { appleNonceStore.removeAll() }
             do {
                 try await Auth.auth().signIn(with: firebaseCredential)
                 appState.isLoggedIn = true
@@ -117,7 +129,8 @@ final class AuthViewModel: ObservableObject {
                 await restoreProfile(appState: appState)
                 appState.isAuthLoading = false
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.koreanAuthError(error)
+                    ?? "Apple 로그인에 실패했어요. 다시 시도해주세요."
             }
             isLoading = false
         }
@@ -402,9 +415,7 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Nonce 생성
     func prepareNonce() -> String {
-        let nonce = randomNonceString()
-        currentNonce = nonce
-        return sha256(nonce)
+        appleNonceStore.register(rawNonce: randomNonceString())
     }
 
     private func randomNonceString(length: Int = 32) -> String {
@@ -414,11 +425,6 @@ final class AuthViewModel: ObservableObject {
         return String(randomBytes.map { charset[Int($0) % charset.count] })
     }
 
-    private func sha256(_ input: String) -> String {
-        let data = Data(input.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
-    }
 }
 
 // MARK: - ASWebAuthenticationSession context
@@ -446,4 +452,3 @@ final class NaverLoginDelegate: NSObject, NaverThirdPartyLoginConnectionDelegate
         AuthViewModel.naverLoginCompletion?(.failure(error ?? NSError(domain: "NaverLogin", code: -2)))
     }
 }
-

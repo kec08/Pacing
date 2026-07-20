@@ -69,4 +69,21 @@ final class PacingTests: XCTestCase {
         )
     }
 
+    func testAppleNonceStoreUsesNonceClaimToResolveMatchingRawNonce() {
+        var nonceStore = AppleNonceStore()
+        let rawNonce = "raw-nonce-for-apple"
+        let nonceHash = nonceStore.register(rawNonce: rawNonce)
+        let idToken = "header.eyJub25jZSI6XCIi.signature"
+
+        let payload = "{\"nonce\":\"\(nonceHash)\"}"
+            .data(using: .utf8)!
+            .base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+        let tokenWithNonce = "header.\(payload).signature"
+
+        XCTAssertEqual(AppleNonceStore.nonceHash(fromIDToken: tokenWithNonce), nonceHash)
+        XCTAssertEqual(nonceStore.consume(rawNonceHash: nonceHash), rawNonce)
+        XCTAssertNil(AppleNonceStore.nonceHash(fromIDToken: idToken))
+    }
+
 }
