@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1242" height="2688" viewBox="0 0 1242 2688">
+    <image href="source/hero.jpg" x="0" y="0" width="1242" height="2688" preserveAspectRatio="xMidYMid slice"/>
+       <rect width="1242" height="2688" fill="#160019" opacity="0.12"/>
+    <rect x="66" y="136" width="210" height="52" rx="26" fill="#fff" fill-opacity="0.18"/><text x="171" y="172" text-anchor="middle" fill="#fff" font-family="Apple SD Gothic Neo, NanumSquare, sans-serif" font-size="24" font-weight="700" letter-spacing="2">PACING</text>
+    <text x="80" y="326" fill="#fff" font-family="Apple SD Gothic Neo, NanumSquare, sans-serif" font-size="29" font-weight="800" letter-spacing="2">RUN WITH THE SAME RHYTHM</text>
+    <text x="80" y="468" fill="#fff" font-family="Apple SD Gothic Neo, NanumSquare, sans-serif" font-size="88" font-weight="800" letter-spacing="-4"><tspan x="80" dy="0">같은 음악,</tspan><tspan x="80" dy="106">같은 페이스</tspan></text>
+    <text x="82" y="690" fill="#fff" font-family="Apple SD Gothic Neo, NanumSquare, sans-serif" font-size="33" font-weight="500" letter-spacing="-1">음악으로 연결되는 새로운 러닝 경험</text>
+
+    <text x="621" y="2500" text-anchor="middle" fill="#fff" fill-opacity="0.82" font-family="Apple SD Gothic Neo, NanumSquare, sans-serif" font-size="28" font-weight="700" letter-spacing="3">RUN. LISTEN. CONNECT.</text>
+  </svg>
