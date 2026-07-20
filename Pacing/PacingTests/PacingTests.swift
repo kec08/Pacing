@@ -41,4 +41,49 @@ final class PacingTests: XCTestCase {
             )
         )
     }
+    func testEmailValidatorRejectsInvalidEmail() {
+        XCTAssertEqual(
+            AuthInputValidator.emailError(for: "pacing.example.com"),
+            "올바른 이메일 주소를 입력해주세요."
+        )
+    }
+
+    func testSignUpValidatorRequiresMatchingSecurePassword() {
+        XCTAssertEqual(
+            AuthInputValidator.signUpError(
+                email: "reviewer@pacing.app",
+                password: "pacing123",
+                confirmation: "different123"
+            ),
+            "비밀번호가 일치하지 않아요."
+        )
+    }
+
+    func testSignUpValidatorAcceptsValidCredentials() {
+        XCTAssertNil(
+            AuthInputValidator.signUpError(
+                email: "reviewer@pacing.app",
+                password: "pacing123",
+                confirmation: "pacing123"
+            )
+        )
+    }
+
+    func testAppleNonceStoreUsesNonceClaimToResolveMatchingRawNonce() {
+        var nonceStore = AppleNonceStore()
+        let rawNonce = "raw-nonce-for-apple"
+        let nonceHash = nonceStore.register(rawNonce: rawNonce)
+        let idToken = "header.eyJub25jZSI6XCIi.signature"
+
+        let payload = "{\"nonce\":\"\(nonceHash)\"}"
+            .data(using: .utf8)!
+            .base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+        let tokenWithNonce = "header.\(payload).signature"
+
+        XCTAssertEqual(AppleNonceStore.nonceHash(fromIDToken: tokenWithNonce), nonceHash)
+        XCTAssertEqual(nonceStore.consume(rawNonceHash: nonceHash), rawNonce)
+        XCTAssertNil(AppleNonceStore.nonceHash(fromIDToken: idToken))
+    }
+
 }

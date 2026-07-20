@@ -7,6 +7,7 @@ struct LoginView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var authVM = AuthViewModel()
     @State private var navigateToOnboarding = false
+    @State private var navigateToEmailLogin = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -41,6 +42,26 @@ struct LoginView: View {
                         .padding(.bottom, 48)
                 } else {
                     VStack(spacing: 12) {
+                        Button {
+                            authVM.errorMessage = nil
+                            navigateToEmailLogin = true
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image("PacingAuthMark")
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 22, height: 22)
+                                Text("Pacing으로 로그인")
+                            }
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 54)
+                            .background(Color.main500)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        }
+                        .accessibilityHint("이메일과 비밀번호로 로그인합니다")
+
                         AppleSignInButton { result in
                             Task {
                                 await authVM.handleSignInWithApple(result, appState: appState)
@@ -126,7 +147,7 @@ struct LoginView: View {
 
                     }
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 48)
+                    .padding(.bottom, 24)
                 }
 
                 if let error = authVM.errorMessage {
@@ -141,6 +162,12 @@ struct LoginView: View {
             .navigationDestination(isPresented: $navigateToOnboarding) {
                 OnboardingPermissionView()
                     .navigationBarBackButtonHidden(true)
+            }
+            .navigationDestination(isPresented: $navigateToEmailLogin) {
+                EmailLoginView(authViewModel: authVM) {
+                    navigateToEmailLogin = false
+                    navigateToOnboarding = true
+                }
             }
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active && authVM.isLoading {

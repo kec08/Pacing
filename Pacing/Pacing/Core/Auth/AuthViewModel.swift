@@ -20,7 +20,74 @@ final class AuthViewModel: ObservableObject {
     @Published var isLoading = false  // LoginView에서 scenePhase 감지로 리셋 가능
     @Published var errorMessage: String?
 
-    private var currentNonce: String?
+    private var appleNonceStore = AppleNonceStore()
+
+    // MARK: - Pacing 이메일 로그인
+    func signInWithEmail(email: String, password: String, appState: AppState) async {
+        guard let validationError = AuthInputValidator.emailError(for: email)
+            ?? AuthInputValidator.passwordError(for: password) else {
+            await authenticateWithEmail(email: email, password: password, appState: appState)
+            return
+        }
+        errorMessage = validationError
+    }
+
+    // MARK: - Pacing 이메일 회원가입
+    func signUpWithEmail(email: String, password: String, confirmation: String, appState: AppState) async {
+        guard let validationError = AuthInputValidator.signUpError(
+            email: email,
+            password: password,
+            confirmation: confirmation
+        ) else {
+            await createEmailAccount(email: email, password: password, appState: appState)
+            return
+        }
+        errorMessage = validationError
+    }
+
+    private func authenticateWithEmail(email: String, password: String, appState: AppState) async {
+        isLoading = true
+        errorMessage = nil
+        appState.isAuthLoading = true
+        defer {
+            isLoading = false
+            appState.isAuthLoading = false
+        }
+
+        do {
+            try await Auth.auth().signIn(
+                withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password
+            )
+            appState.isLoggedIn = true
+            await restoreProfile(appState: appState)
+        } catch {
+            appState.isLoggedIn = false
+            errorMessage = Self.emailAuthErrorMessage(for: error)
+        }
+    }
+
+    private func createEmailAccount(email: String, password: String, appState: AppState) async {
+        isLoading = true
+        errorMessage = nil
+        appState.isAuthLoading = true
+        defer {
+            isLoading = false
+            appState.isAuthLoading = false
+        }
+
+        do {
+            try await Auth.auth().createUser(
+                withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
+                password: password
+            )
+            appState.isLoggedIn = true
+            appState.isProfileComplete = false
+        } catch {
+            appState.isLoggedIn = false
+            errorMessage = Self.emailAuthErrorMessage(for: error)
+        }
+    }
 
     // MARK: - Apple 로그인 요청
     func handleSignInWithApple(_ result: Result<ASAuthorization, Error>, appState: AppState) async {
@@ -31,10 +98,21 @@ final class AuthViewModel: ObservableObject {
         case .success(let auth):
             guard
                 let credential = auth.credential as? ASAuthorizationAppleIDCredential,
-                let nonce = currentNonce,
                 let tokenData = credential.identityToken,
                 let tokenString = String(data: tokenData, encoding: .utf8)
-            else { return }
+            else {
+                errorMessage = "Apple 로그인 정보를 확인하지 못했어요. 다시 시도해주세요."
+                return
+            }
+
+            guard
+                let nonceHash = AppleNonceStore.nonceHash(fromIDToken: tokenString),
+                let nonce = appleNonceStore.consume(rawNonceHash: nonceHash)
+            else {
+                appleNonceStore.removeAll()
+                errorMessage = "Apple 로그인 요청이 만료되었어요. 다시 시도해주세요."
+                return
+            }
 
             isLoading = true
             let firebaseCredential = OAuthProvider.appleCredential(
@@ -43,6 +121,7 @@ final class AuthViewModel: ObservableObject {
                 fullName: credential.fullName
             )
 
+            defer { appleNonceStore.removeAll() }
             do {
                 try await Auth.auth().signIn(with: firebaseCredential)
                 appState.isLoggedIn = true
@@ -50,7 +129,8 @@ final class AuthViewModel: ObservableObject {
                 await restoreProfile(appState: appState)
                 appState.isAuthLoading = false
             } catch {
-                errorMessage = error.localizedDescription
+                errorMessage = Self.koreanAuthError(error)
+                    ?? "Apple 로그인에 실패했어요. 다시 시도해주세요."
             }
             isLoading = false
         }
@@ -152,6 +232,29 @@ final class AuthViewModel: ObservableObject {
         // 다른 계정 로그인 시 이전 프로필 잔상 방지
         let d = UserDefaults.standard
         ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
+    }
+
+    private static func emailAuthErrorMessage(for error: Error) -> String {
+        guard let authError = AuthErrorCode(rawValue: (error as NSError).code) else {
+            return "로그인에 실패했어요. 잠시 후 다시 시도해주세요."
+        }
+
+        switch authError.code {
+        case .invalidEmail:
+            return "올바른 이메일 주소를 입력해주세요."
+        case .emailAlreadyInUse:
+            return "이미 가입된 이메일이에요. 로그인해주세요."
+        case .weakPassword:
+            return "비밀번호는 8자 이상으로 입력해주세요."
+        case .wrongPassword, .userNotFound, .invalidCredential:
+            return "이메일 또는 비밀번호가 올바르지 않아요."
+        case .networkError:
+            return "네트워크 연결을 확인한 뒤 다시 시도해주세요."
+        case .tooManyRequests:
+            return "요청이 너무 많아요. 잠시 후 다시 시도해주세요."
+        default:
+            return "인증에 실패했어요. 잠시 후 다시 시도해주세요."
+        }
     }
 
     // MARK: - 네이버 로그인 (ASWebAuthenticationSession + Firebase Hosting 리다이렉트)
@@ -312,9 +415,7 @@ final class AuthViewModel: ObservableObject {
 
     // MARK: - Nonce 생성
     func prepareNonce() -> String {
-        let nonce = randomNonceString()
-        currentNonce = nonce
-        return sha256(nonce)
+        appleNonceStore.register(rawNonce: randomNonceString())
     }
 
     private func randomNonceString(length: Int = 32) -> String {
@@ -324,11 +425,6 @@ final class AuthViewModel: ObservableObject {
         return String(randomBytes.map { charset[Int($0) % charset.count] })
     }
 
-    private func sha256(_ input: String) -> String {
-        let data = Data(input.utf8)
-        let hash = SHA256.hash(data: data)
-        return hash.compactMap { String(format: "%02x", $0) }.joined()
-    }
 }
 
 // MARK: - ASWebAuthenticationSession context
@@ -356,5 +452,3 @@ final class NaverLoginDelegate: NSObject, NaverThirdPartyLoginConnectionDelegate
         AuthViewModel.naverLoginCompletion?(.failure(error ?? NSError(domain: "NaverLogin", code: -2)))
     }
 }
-
-
