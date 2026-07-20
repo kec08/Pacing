@@ -7,6 +7,8 @@ struct MyView: View {
     @State private var showPicker = false
     @State private var showAllHistory = false
     @State private var showLogoutAlert = false
+    @State private var showAccountDeletionAlert = false
+    @State private var showAccountDeletion = false
 
     var body: some View {
         NavigationStack {
@@ -22,6 +24,9 @@ struct MyView: View {
             }
             .background(Color.backgroundPrimary)
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showAccountDeletion) {
+                AccountDeletionView(viewModel: vm)
+            }
         }
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
@@ -467,9 +472,17 @@ struct MyView: View {
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "rectangle.portrait.and.arrow.right", label: "로그아웃", tint: .accent500) {
+            Button {
                 showLogoutAlert = true
+            } label: {
+                Text("로그아웃")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.accent500)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
             }
+            .buttonStyle(.plain)
             .alert("로그아웃", isPresented: $showLogoutAlert) {
                 Button("취소", role: .cancel) {}
                 Button("로그아웃", role: .destructive) {
@@ -477,6 +490,27 @@ struct MyView: View {
                 }
             } message: {
                 Text("로그아웃 하시겠습니까?")
+            }
+
+            Button {
+                showAccountDeletionAlert = true
+            } label: {
+                Text("회원탈퇴")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.gray500)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .alert("회원탈퇴", isPresented: $showAccountDeletionAlert) {
+                Button("취소", role: .cancel) {}
+                Button("계속", role: .destructive) {
+                    showAccountDeletion = true
+                }
+            } message: {
+                Text("탈퇴 시 계정과 러닝 기록, 친구 관계, 같이 듣기 정보가 삭제되며 복구할 수 없습니다.")
             }
         }
         .background(Color.backgroundPrimary)

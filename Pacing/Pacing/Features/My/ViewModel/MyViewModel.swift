@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import FirebaseAuth
+import FirebaseFunctions
 
 enum StatsPeriod: String, CaseIterable {
     case week = "주"
@@ -44,6 +45,8 @@ final class MyViewModel: ObservableObject {
     @Published var chartEntries: [BarChartEntry] = []
     @Published var runHistory: [RunRecord] = []
     @Published var isLoading: Bool = true
+    @Published var isDeletingAccount: Bool = false
+    @Published var accountDeletionError: String?
 
     private let cal = Calendar.current
 
@@ -246,6 +249,27 @@ final class MyViewModel: ObservableObject {
 
     func logout(appState: AppState) {
         try? Auth.auth().signOut()
+        clearLocalSession(appState: appState)
+    }
+
+    func deleteAccount(appState: AppState) async {
+        guard !isDeletingAccount else { return }
+
+        isDeletingAccount = true
+        accountDeletionError = nil
+        defer { isDeletingAccount = false }
+
+        do {
+            let functions = Functions.functions(region: "asia-northeast3")
+            _ = try await functions.httpsCallable("deleteAccount").call()
+            try? Auth.auth().signOut()
+            clearLocalSession(appState: appState)
+        } catch {
+            accountDeletionError = "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
+        }
+    }
+
+    private func clearLocalSession(appState: AppState) {
         appState.isLoggedIn = false
         appState.isProfileComplete = false
         // 계정 전환 시 이전 프로필 잔상 방지
