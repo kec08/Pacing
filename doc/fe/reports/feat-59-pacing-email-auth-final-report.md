@@ -12,24 +12,27 @@
 - 가입 후 기존 `ProfileSetupView`를 재사용해 닉네임, 성별·나이, 키·체중, 프로필 사진을 수집하고 Firestore에 저장한다.
 - 기존 계정 로그인 시 프로필을 복원하고, 입력/네트워크/Firebase 인증 오류를 한국어 메시지로 표시한다.
 - P 로고 에셋과 이메일 입력 검증 단위 테스트를 추가했다.
+- Apple ID 토큰의 nonce 해시로 원본 nonce를 조회하도록 변경해 nonce 불일치 인증 오류를 방지했다.
+- Pacing 로그인 버튼을 소셜 로그인 목록의 최상단으로 유지하고, 전체 로그인 버튼 묶음을 24pt 아래로 조정했다.
 
 ## 계획 대비 변경 사항
 
 - 프로필 정보 입력을 별도 가입 화면에 중복 구현하지 않고, 기존 4단계 온보딩을 재사용했다. 소셜 로그인과 이메일 가입의 데이터 저장 규칙이 동일하게 유지된다.
 - 최신 `dev`에 포함된 브랜드 로그인 UI와 충돌 없이 기능을 통합했다.
+- Apple 로그인은 단일 nonce 저장 방식 대신 nonce 해시별 원본 nonce 저장 방식으로 보강했다. 요청 생성 콜백이 다시 호출돼도 토큰과 원본 nonce를 정확히 연결한다.
 
 ## 검증 결과
 
 - iOS Simulator Debug 빌드 통과 (Xcode, iOS 26.0 SDK)
 - `PacingTests` 통과 (iPhone 17 Pro Max, iOS 26.0 Simulator)
 - 이메일 형식, 비밀번호 확인 불일치, 정상 가입 입력 검증 테스트 통과
+- Apple ID 토큰 nonce 해시와 원본 nonce 매칭 테스트 통과
 
 ## 배포 전 필수 확인
 
-1. Firebase Console에서 Authentication > Sign-in method > Email/Password를 활성화한다.
-2. 심사용 이메일 계정을 생성하고, 프로필 및 모든 기능에 접근 가능한 데이터를 준비한다.
-3. App Store Connect App Review Information에 계정·비밀번호·로그인 절차를 등록한다.
-4. Release 빌드 실기기에서 이메일 가입/로그인, 재로그인, Apple 로그인 성공·취소·오류를 확인한다.
+1. 심사용 이메일 계정을 생성하고, 프로필 및 모든 기능에 접근 가능한 데이터를 준비한다.
+2. App Store Connect App Review Information에 계정·비밀번호·로그인 절차를 등록한다.
+3. Release 빌드 실기기에서 이메일 가입/로그인, 재로그인, Apple 로그인 성공·취소·오류를 확인한다.
 
 ## 알려진 제한 사항
 

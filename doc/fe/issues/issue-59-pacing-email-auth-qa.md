@@ -11,10 +11,12 @@
 | `PacingTests` | 통과 | iPhone 17 Pro Max, iOS 26.0 Simulator |
 | 이메일 형식 검증 | 통과 | 잘못된 이메일 입력 거부 테스트 |
 | 회원가입 비밀번호 확인 | 통과 | 불일치 입력 거부 및 정상 입력 테스트 |
+| Apple nonce 매칭 | 통과 | ID 토큰 nonce 해시로 원본 nonce를 조회 |
+| 로그인 버튼 레이아웃 | 통과 | Pacing 로그인 최상단 유지, 전체 버튼 묶음 24pt 하향 |
 
 ## 수동 QA 체크리스트
 
-- [ ] Firebase Console에서 Email/Password 제공업체 활성화
+- [x] Firebase Console에서 Email/Password 제공업체 활성화
 - [ ] 신규 계정 생성 후 권한·음악 안내 및 4단계 프로필 입력 완료
 - [ ] 프로필 저장 후 로그아웃·재로그인 시 메인 화면 진입 확인
 - [ ] 잘못된 이메일·비밀번호·네트워크 오류 문구 확인
