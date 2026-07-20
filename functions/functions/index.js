@@ -43,7 +43,8 @@ async function deleteListenSessionsForUser(uid) {
 
   sessions.forEach((session, sessionID) => {
     updates[`listenSessions/${sessionID}`] = null;
-    if (session.guestUID) {
+    // 탈퇴 사용자의 수신함은 위에서 전체 삭제하므로 하위 경로를 함께 넣지 않는다.
+    if (session.guestUID && session.guestUID !== uid) {
       updates[`incomingRequests/${session.guestUID}/${sessionID}`] = null;
     }
   });
