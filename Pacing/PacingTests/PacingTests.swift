@@ -41,4 +41,32 @@ final class PacingTests: XCTestCase {
             )
         )
     }
+    func testEmailValidatorRejectsInvalidEmail() {
+        XCTAssertEqual(
+            AuthInputValidator.emailError(for: "pacing.example.com"),
+            "올바른 이메일 주소를 입력해주세요."
+        )
+    }
+
+    func testSignUpValidatorRequiresMatchingSecurePassword() {
+        XCTAssertEqual(
+            AuthInputValidator.signUpError(
+                email: "reviewer@pacing.app",
+                password: "pacing123",
+                confirmation: "different123"
+            ),
+            "비밀번호가 일치하지 않아요."
+        )
+    }
+
+    func testSignUpValidatorAcceptsValidCredentials() {
+        XCTAssertNil(
+            AuthInputValidator.signUpError(
+                email: "reviewer@pacing.app",
+                password: "pacing123",
+                confirmation: "pacing123"
+            )
+        )
+    }
+
 }
