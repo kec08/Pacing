@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    private let locationFocusDistance: Double = 1_000
+
     @StateObject private var viewModel = RunningViewModel()
     @StateObject private var musicVM = RunningMusicViewModel()
     @StateObject private var nearbyVM = NearbyRunnerViewModel()
@@ -88,8 +90,8 @@ struct RunningView: View {
                         runnerMapPin(runner: myRunner)
                     }
                 }
-                // 주변 러너 핀
-                ForEach(nearbyVM.nearbyRunners) { runner in
+                // 현재 러닝 중인 친구 핀
+                ForEach(nearbyVM.activeFriendRunners) { runner in
                     Annotation("", coordinate: runner.coordinate) {
                         runnerMapPin(runner: runner)
                     }
@@ -106,7 +108,7 @@ struct RunningView: View {
                         if viewModel.state == .idle {
                             // idle: 줌 +/-  +  내 위치
                             Button {
-                                let newDist = max(100, mapZoomDistance / 1.5)
+                                let newDist = max(1, mapZoomDistance / 1.5)
                                 mapZoomDistance = newDist
                                 recenterCamera(distance: newDist)
                             } label: {
@@ -118,7 +120,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                let newDist = min(3000, mapZoomDistance * 1.5)
+                                let newDist = mapZoomDistance * 1.5
                                 mapZoomDistance = newDist
                                 recenterCamera(distance: newDist)
                             } label: {
@@ -130,8 +132,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                isFollowingUser = true
-                                recenterCamera(distance: mapZoomDistance)
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -143,8 +144,7 @@ struct RunningView: View {
                         } else {
                             // 러닝 중: 항상 내 위치 버튼 표시 (추적 중이면 파란색)
                             Button {
-                                isFollowingUser = true
-                                recenterCamera(distance: mapZoomDistance)
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -263,28 +263,8 @@ struct RunningView: View {
         }
         .onMapCameraChange(frequency: .continuous) { context in
             guard !isProgrammaticMove else { return }
-            mapZoomDistance = min(max(context.camera.distance, 100), 3000)
+            mapZoomDistance = context.camera.distance
             isFollowingUser = false
-        }
-        .onMapCameraChange(frequency: .onEnd) { context in
-            guard !isProgrammaticMove else { return }
-            let dist = context.camera.distance
-            mapZoomDistance = min(max(dist, 100), 3000)
-            guard dist > 3000 || dist < 100 else { return }
-            let clamped = min(max(dist, 100), 3000)
-            let center = viewModel.locationManager.currentLocation?.coordinate
-                ?? context.camera.centerCoordinate
-            // 관성 이동이 완전히 끝난 뒤 스냅백 (즉시 덮어쓰면 충돌)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                isProgrammaticMove = true
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
-                    cameraPosition = .camera(MapCamera(centerCoordinate: center, distance: clamped))
-                }
-                isFollowingUser = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isProgrammaticMove = false
-                }
-            }
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
@@ -310,6 +290,10 @@ struct RunningView: View {
                 nearbyVM.stopObserving()
             } else {
                 startNearbyObservationIfNeeded()
+                if newState == .running {
+                    isFollowingUser = true
+                    recenterCamera(distance: mapZoomDistance)
+                }
             }
         }
         .onChange(of: musicVM.currentSong) { _, _ in
@@ -1883,14 +1867,20 @@ struct RunningView: View {
 
     // MARK: - 카메라
 
+    private func focusOnMyLocation() {
+        mapZoomDistance = locationFocusDistance
+        isFollowingUser = true
+        recenterCamera(distance: locationFocusDistance)
+    }
+
     private func recenterCamera(distance: Double) {
         guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
         isProgrammaticMove = true
-        withAnimation(.interpolatingSpring(stiffness: 40, damping: 12)) {
+        withAnimation(.easeInOut(duration: 0.65)) {
             cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: distance))
         }
-        // 애니메이션 완료 후 플래그 해제 (0.6초면 충분)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        // 카메라 애니메이션 중 발생하는 MapKit 콜백은 수동 조작으로 처리하지 않는다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
             isProgrammaticMove = false
         }
     }
