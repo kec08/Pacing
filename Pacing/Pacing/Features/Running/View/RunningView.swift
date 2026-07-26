@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    private let locationFocusDistance: Double = 1_000
+
     @StateObject private var viewModel = RunningViewModel()
     @StateObject private var musicVM = RunningMusicViewModel()
     @StateObject private var nearbyVM = NearbyRunnerViewModel()
@@ -130,8 +132,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                isFollowingUser = true
-                                recenterCamera(distance: mapZoomDistance)
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -143,8 +144,7 @@ struct RunningView: View {
                         } else {
                             // 러닝 중: 항상 내 위치 버튼 표시 (추적 중이면 파란색)
                             Button {
-                                isFollowingUser = true
-                                recenterCamera(distance: mapZoomDistance)
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -1866,6 +1866,12 @@ struct RunningView: View {
     }
 
     // MARK: - 카메라
+
+    private func focusOnMyLocation() {
+        mapZoomDistance = locationFocusDistance
+        isFollowingUser = true
+        recenterCamera(distance: locationFocusDistance)
+    }
 
     private func recenterCamera(distance: Double) {
         guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
