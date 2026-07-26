@@ -103,6 +103,75 @@ exports.deleteAccount = onCall(async (request) => {
   }
 });
 
+/**
+ * Accepts an incoming friend request and creates the reciprocal friend records.
+ * Admin SDK writes bypass client rules so a recipient cannot forge access to a
+ * different user's friend list from the iOS client.
+ */
+exports.acceptFriendRequest = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  const requestID = request.data?.requestID;
+  if (!uid) {
+    throw new HttpsError("unauthenticated", "로그인한 사용자만 친구 요청을 수락할 수 있어요.");
+  }
+  if (!requestID || typeof requestID !== "string") {
+    throw new HttpsError("invalid-argument", "친구 요청 ID가 필요해요.");
+  }
+
+  const requestRef = firestore.collection("friendRequests").doc(requestID);
+  const friendProfile = (user, fallbackNickname) => ({
+    uid: user.id,
+    nickname: user.get("nickname") || fallbackNickname,
+    statusText: "최근 활동 없음",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    ...(user.get("profileImageBase64") ? { profileImageBase64: user.get("profileImageBase64") } : {}),
+  });
+
+  try {
+    await firestore.runTransaction(async (transaction) => {
+      const friendRequest = await transaction.get(requestRef);
+      if (!friendRequest.exists) {
+        throw new HttpsError("not-found", "친구 요청을 찾을 수 없어요.");
+      }
+
+      const data = friendRequest.data();
+      if (data.toUID !== uid || data.status !== "pending") {
+        throw new HttpsError("permission-denied", "수락할 수 없는 친구 요청이에요.");
+      }
+
+      const senderRef = firestore.collection("users").doc(data.fromUID);
+      const recipientRef = firestore.collection("users").doc(uid);
+      const [sender, recipient] = await Promise.all([
+        transaction.get(senderRef),
+        transaction.get(recipientRef),
+      ]);
+
+      transaction.set(
+        recipientRef.collection("friends").doc(data.fromUID),
+        friendProfile(sender, "러너"),
+        { merge: true },
+      );
+      transaction.set(
+        senderRef.collection("friends").doc(uid),
+        friendProfile(recipient, "러너"),
+        { merge: true },
+      );
+      transaction.update(requestRef, { status: "accepted" });
+    });
+
+    return { accepted: true };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    logger.error("Friend request acceptance failed", {
+      uid,
+      requestID,
+      errorCode: error?.code,
+      errorMessage: error?.message,
+    });
+    throw new HttpsError("internal", "친구 요청을 수락하지 못했어요. 잠시 후 다시 시도해 주세요.");
+  }
+});
+
 exports.naverLogin = onCall(async (request) => {
   logger.info("naverLogin called");
 

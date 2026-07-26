@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 테스트 모드의 전체 공개를 대체합니다. 모든 클라이언트 요청은 Firebase
+    // Authentication 로그인이 선행되어야 합니다.
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // 친구의 러닝/최근 음악 정보는 상호 친구 문서가 존재할 때만 조회할 수 있습니다.
+    function isFriendOf(uid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid));
+    }
+
+    match /users/{userId} {
+      // 현재 앱은 닉네임 검색·친구 추천을 위해 사용자 문서를 조회합니다.
+      // 쓰기는 반드시 본인 문서에만 허용합니다.
+      allow read: if signedIn();
+      allow create, update, delete: if isOwner(userId);
+
+      match /runHistory/{recordId} {
+        allow read: if isOwner(userId) || isFriendOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /recentSongs/{songId} {
+        allow read: if isOwner(userId) || isFriendOf(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /friends/{friendId} {
+        allow read: if isOwner(userId);
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /savedSharedPlaylists/{playlistId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    match /friendRequests/{requestId} {
+      allow read: if signedIn()
+        && (resource.data.fromUID == request.auth.uid || resource.data.toUID == request.auth.uid);
+
+      allow create: if signedIn()
+        && request.resource.data.fromUID == request.auth.uid
+        && request.resource.data.toUID is string
+        && request.resource.data.toUID != request.auth.uid
+        && request.resource.data.status == 'pending';
+
+      // 발신자는 취소(거절)할 수 있고, 수신자는 수락 또는 거절할 수 있습니다.
+      // 요청의 당사자와 상태 외의 필드는 수정할 수 없습니다.
+      allow update: if signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+        && (
+          (resource.data.fromUID == request.auth.uid && request.resource.data.status == 'rejected')
+          || (resource.data.toUID == request.auth.uid && request.resource.data.status in ['accepted', 'rejected'])
+        );
+
+      allow delete: if false;
+    }
+
+    match /sharedPlaylists/{playlistId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.resource.data.ownerUID == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.ownerUID == request.auth.uid
+        && request.resource.data.ownerUID == resource.data.ownerUID;
+      allow delete: if signedIn() && resource.data.ownerUID == request.auth.uid;
+    }
+
+    // 명시하지 않은 모든 경로는 기본 거부입니다.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
