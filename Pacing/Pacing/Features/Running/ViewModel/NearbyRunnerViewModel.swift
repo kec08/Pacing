@@ -68,8 +68,8 @@ final class NearbyRunnerViewModel: ObservableObject {
         }
         let myPoint = CLLocation(latitude: myLoc.latitude, longitude: myLoc.longitude)
 
-        let activeRunners = allRunners
-            .compactMap { runner in
+        let activeRunners: [NearbyRunner] = allRunners
+            .compactMap { runner -> NearbyRunner? in
                 guard runner.id != myUID else { return nil }
                 let point = CLLocation(latitude: runner.coordinate.latitude, longitude: runner.coordinate.longitude)
                 let dist = myPoint.distance(from: point)
