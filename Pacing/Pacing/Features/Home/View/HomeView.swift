@@ -87,14 +87,14 @@ struct HomeView: View {
                     HStack(spacing: 12) {
                         ForEach(0..<3, id: \.self) { _ in
                             VStack(alignment: .leading, spacing: 8) {
-                                SkeletonBlock(width: 92, height: 92, cornerRadius: 16)
-                                SkeletonBlock(width: 76, height: 13, cornerRadius: 6)
+                                SkeletonBlock(width: 80, height: 80, cornerRadius: 14)
+                                SkeletonBlock(width: 70, height: 13, cornerRadius: 6)
                                 SkeletonBlock(width: 54, height: 11, cornerRadius: 6)
                             }
-                            .frame(width: 112, alignment: .leading)
-                            .padding(10)
+                            .frame(width: 96, alignment: .leading)
+                            .padding(8)
                             .background(Color.backgroundPrimary)
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                     }
                 }
@@ -179,8 +179,8 @@ private struct FriendRecentMusicCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             artwork
-                .frame(width: 92, height: 92)
-                .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .frame(width: 80, height: 80)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
             Text(activity.song.title)
                 .font(.system(size: 13, weight: .semibold))
@@ -197,12 +197,12 @@ private struct FriendRecentMusicCard: View {
                 .foregroundStyle(Color.main500)
                 .lineLimit(1)
         }
-        .frame(width: 112, alignment: .leading)
-        .padding(10)
+        .frame(width: 96, alignment: .leading)
+        .padding(8)
         .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(Color.gray200.opacity(0.8), lineWidth: 1)
         )
     }
