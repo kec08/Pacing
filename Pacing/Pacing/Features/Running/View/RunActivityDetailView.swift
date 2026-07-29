@@ -176,7 +176,9 @@ struct RunActivityDetailView: View {
             Text("\(lap.kilometer) km")
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.textPrimary)
-                .frame(width: 44, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: 56, alignment: .leading)
 
             Spacer(minLength: 0)
 

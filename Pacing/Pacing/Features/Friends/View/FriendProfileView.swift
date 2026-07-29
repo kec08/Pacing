@@ -31,6 +31,7 @@ struct FriendProfileView: View {
                     profileHeader
                     relationshipAction
                     statsSection
+                    recentRunsSection
                     recentSongsSection
                 }
                 .padding(.horizontal, 18)
@@ -47,6 +48,37 @@ struct FriendProfileView: View {
             Button("확인", role: .cancel) { vm.errorMessage = nil }
         } message: {
             Text(vm.errorMessage ?? "")
+        }
+    }
+
+    private var recentRunsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("최근 러닝")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
+
+            if vm.isLoading && vm.recentRuns.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        SkeletonRow()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                    }
+                }
+            } else if vm.recentRuns.isEmpty {
+                ContentUnavailableView(
+                    "최근 러닝이 없어요",
+                    systemImage: "figure.run",
+                    description: Text("친구의 러닝 기록이 등록되면 여기에서 확인할 수 있어요."))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 22)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(vm.recentRuns) { run in
+                        FriendProfileRecentRunRow(run: run)
+                    }
+                }
+            }
         }
     }
 
@@ -368,6 +400,72 @@ private struct FriendRecentSongRow: View {
         formatter.locale = Locale(identifier: "ko_KR")
         formatter.unitsStyle = .short
         return formatter.localizedString(for: playedAt, relativeTo: Date())
+    }
+}
+
+private struct FriendProfileRecentRunRow: View {
+    let run: RunRecord
+
+    var body: some View {
+        NavigationLink {
+            RunActivityDetailView(record: run)
+        } label: {
+            HStack(spacing: 14) {
+                RunRouteThumbnailView(coordinates: run.routeCoordinates)
+                    .frame(width: 56, height: 56)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(formattedDate(run.startedAt))
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.textSecondary)
+
+                    HStack(spacing: 10) {
+                        Label(formattedDistance(run.distance), systemImage: "figure.run")
+                        Text(formattedDuration(run.duration))
+                        Text(formattedPace(run.avgPace) + "/km")
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.gray300)
+            }
+            .padding(14)
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("친구의 러닝 활동 상세를 엽니다")
+    }
+
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일"
+        return formatter.string(from: date)
+    }
+
+    private func formattedDistance(_ distance: Double) -> String {
+        String(format: "%.1f km", distance)
+    }
+
+    private func formattedDuration(_ seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        return hours > 0 ? String(format: "%d:%02d", hours, minutes) : "\(minutes)분"
+    }
+
+    private func formattedPace(_ pace: Double) -> String {
+        guard pace > 0 else { return "--'--\"" }
+        let minutes = Int(pace)
+        let seconds = Int((pace - Double(minutes)) * 60)
+        return String(format: "%d'%02d\"", minutes, seconds)
     }
 }
 

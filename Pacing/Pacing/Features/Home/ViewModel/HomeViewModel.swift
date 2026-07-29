@@ -6,10 +6,13 @@ import FirebaseAuth
 final class HomeViewModel: ObservableObject {
     @Published var weeklyStats: WeeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
     @Published var recentRuns: [RunRecord] = []
+    @Published var friendRecentRuns: [FriendRecentRunActivity] = []
     @Published var friendRecentSongs: [FriendRecentSongActivity] = []
     @Published private(set) var isLoadingRuns: Bool = false
+    @Published private(set) var isLoadingFriendRuns: Bool = false
     @Published private(set) var isLoadingFriendMusic: Bool = false
     @Published private(set) var runLoadError: String?
+    @Published private(set) var friendRunsLoadError: String?
     @Published private(set) var friendMusicLoadError: String?
     @Published var nickname: String = "러너"
 
@@ -25,20 +28,25 @@ final class HomeViewModel: ObservableObject {
         guard let uid = Auth.auth().currentUser?.uid else {
             recentRuns = []
             weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            friendRecentRuns = []
             friendRecentSongs = []
             isLoadingRuns = false
+            isLoadingFriendRuns = false
             isLoadingFriendMusic = false
             return
         }
 
         isLoadingRuns = true
+        isLoadingFriendRuns = true
         isLoadingFriendMusic = true
         runLoadError = nil
+        friendRunsLoadError = nil
         friendMusicLoadError = nil
 
         async let runs: Void = loadRunData(uid: uid)
+        async let friendRuns: Void = loadFriendRecentRuns(uid: uid)
         async let friendMusic: Void = loadFriendRecentMusic(uid: uid)
-        _ = await (runs, friendMusic)
+        _ = await (runs, friendRuns, friendMusic)
     }
 
     func retryRuns() async {
@@ -53,6 +61,13 @@ final class HomeViewModel: ObservableObject {
         isLoadingFriendMusic = true
         friendMusicLoadError = nil
         await loadFriendRecentMusic(uid: uid)
+    }
+
+    func retryFriendRecentRuns() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingFriendRuns = true
+        friendRunsLoadError = nil
+        await loadFriendRecentRuns(uid: uid)
     }
 
     private func loadRunData(uid: String) async {
@@ -80,13 +95,21 @@ final class HomeViewModel: ObservableObject {
         }
     }
 
+    private func loadFriendRecentRuns(uid: String) async {
+        defer { isLoadingFriendRuns = false }
+
+        do {
+            friendRecentRuns = try await FirestoreService.shared.fetchFriendsRecentRuns(currentUID: uid)
+        } catch {
+            friendRecentRuns = []
+            friendRunsLoadError = "친구의 최근 러닝을 불러오지 못했어요."
+        }
+    }
+
     private func calcWeeklyStats(from records: [RunRecord]) -> WeeklyStats {
         let now = Date()
-        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)),
-              let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else {
-            return WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
-        }
-        let weekly = records.filter { $0.startedAt >= weekStart && $0.startedAt < weekEnd }
+        let weekInterval = WeeklyDateRange.interval(containing: now, calendar: cal)
+        let weekly = records.filter { weekInterval.contains($0.startedAt) }
         let dist = weekly.reduce(0.0) { $0 + $1.distance }
         let dur  = weekly.reduce(0)   { $0 + $1.duration }
         let pace = weekly.isEmpty ? 0.0 : weekly.reduce(0.0) { $0 + $1.avgPace } / Double(weekly.count)
