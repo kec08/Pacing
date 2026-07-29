@@ -329,46 +329,34 @@ final class AppleMusicRecommendationService {
     }
 
     func enrichedSharedPlaylistSummary(_ summary: SharedPlaylistSummary) async -> SharedPlaylistSummary {
+        if Self.isRemoteArtworkURL(summary.artworkURL) {
+            return summary
+        }
+
+        // 목록 진입은 대표 커버 한 장만 보강한다. 전체 수록곡 보강은 상세 진입 시 실행한다.
+        guard let missingArtworkIndex = summary.tracks.firstIndex(where: {
+            !Self.isRemoteArtworkURL($0.artworkURL)
+        }) else {
+            return summary
+        }
+
+        let track = summary.tracks[missingArtworkIndex]
+        guard let song = try? await searchCatalogSong(title: track.title, artist: track.artistName),
+              let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320)
+        else {
+            return summary
+        }
+
         var updatedTracks = summary.tracks
-        var resolvedArtworkCount = 0
-
-        for index in updatedTracks.indices {
-            let track = updatedTracks[index]
-            let hasArtwork = Self.isRemoteArtworkURL(track.artworkURL)
-
-            if hasArtwork {
-                continue
-            }
-
-            // 목록 진입 시 카탈로그 요청이 과도하게 늘어나지 않도록, 먼저 보이는 곡의 커버만 보강한다.
-            guard resolvedArtworkCount < 8 else { break }
-            resolvedArtworkCount += 1
-
-            guard let song = try? await searchCatalogSong(
-                title: track.title,
-                artist: track.artistName
-            ) else {
-                continue
-            }
-
-            let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320)
-            updatedTracks[index] = SharedPlaylistTrack(
-                id: track.id,
-                title: track.title,
-                artistName: track.artistName,
-                albumTitle: track.albumTitle,
-                songStoreID: "\(song.id)",
-                artworkURL: artworkURL,
-                durationText: track.durationText
-            )
-        }
-
-        let summaryArtworkURL: String?
-        if Self.isRemoteArtworkURL(summary.artworkURL), let artworkURL = summary.artworkURL {
-            summaryArtworkURL = artworkURL
-        } else {
-            summaryArtworkURL = updatedTracks.first(where: { !($0.artworkURL ?? "").isEmpty })?.artworkURL
-        }
+        updatedTracks[missingArtworkIndex] = SharedPlaylistTrack(
+            id: track.id,
+            title: track.title,
+            artistName: track.artistName,
+            albumTitle: track.albumTitle,
+            songStoreID: "\(song.id)",
+            artworkURL: artworkURL,
+            durationText: track.durationText
+        )
 
         return SharedPlaylistSummary(
             id: summary.id,
@@ -376,7 +364,7 @@ final class AppleMusicRecommendationService {
             ownerNickname: summary.ownerNickname,
             title: summary.title,
             subtitle: summary.subtitle,
-            artworkURL: summaryArtworkURL,
+            artworkURL: artworkURL,
             sourcePlaylistID: summary.sourcePlaylistID,
             sourcePlaylistURL: summary.sourcePlaylistURL,
             trackCount: summary.trackCount,
@@ -575,14 +563,14 @@ final class AppleMusicRecommendationService {
             }
         }
 
-        for track in tracks where resolvedSongsByTrackID[track.id] == nil {
-            if let fallbackSong = try? await searchCatalogSong(title: track.title, artist: track.artistName) {
-                resolvedCatalogSongsByStoreID.setObject(
-                    CachedCatalogSong(fallbackSong),
-                    forKey: "\(fallbackSong.id)" as NSString
-                )
-                resolvedSongsByTrackID[track.id] = fallbackSong
-            }
+        let fallbackTracks = tracks.filter { resolvedSongsByTrackID[$0.id] == nil }
+        let fallbackMatches = await resolveFallbackCatalogSongMatches(for: fallbackTracks)
+        for (trackID, song) in fallbackMatches {
+            resolvedCatalogSongsByStoreID.setObject(
+                CachedCatalogSong(song),
+                forKey: "\(song.id)" as NSString
+            )
+            resolvedSongsByTrackID[trackID] = song
         }
 
         return resolvedSongsByTrackID
@@ -638,40 +626,65 @@ final class AppleMusicRecommendationService {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private func enrichedSharedTracks(from playlist: Playlist) async throws -> [SharedPlaylistTrack] {
-        let baseTracks = Self.makeSharedTracks(from: playlist)
-        guard !baseTracks.isEmpty else { return [] }
+    private func resolveFallbackCatalogSongMatches(
+        for tracks: [SharedPlaylistTrack],
+        maximumConcurrentRequests: Int = 4
+    ) async -> [String: Song] {
+        guard !tracks.isEmpty else { return [:] }
 
-        var enrichedTracks = baseTracks
+        var resolvedSongsByTrackID: [String: Song] = [:]
+        let batches = stride(from: 0, to: tracks.count, by: maximumConcurrentRequests).map {
+            Array(tracks[$0..<min($0 + maximumConcurrentRequests, tracks.count)])
+        }
 
-        for index in enrichedTracks.indices {
-            if Self.isRemoteArtworkURL(enrichedTracks[index].artworkURL) {
-                continue
+        for batch in batches {
+            let matches = await withTaskGroup(of: (String, Song?).self, returning: [(String, Song)].self) { group in
+                for track in batch {
+                    group.addTask { [self] in
+                        let song = try? await searchCatalogSong(title: track.title, artist: track.artistName)
+                        return (track.id, song)
+                    }
+                }
+
+                var batchMatches: [(String, Song)] = []
+                for await (trackID, song) in group {
+                    if let song {
+                        batchMatches.append((trackID, song))
+                    }
+                }
+                return batchMatches
             }
 
-            guard let song = try await searchCatalogSong(
-                title: enrichedTracks[index].title,
-                artist: enrichedTracks[index].artistName
-            ) else {
-                continue
-            }
-
-            enrichedTracks[index] = SharedPlaylistTrack(
-                id: enrichedTracks[index].id,
-                title: enrichedTracks[index].title,
-                artistName: enrichedTracks[index].artistName,
-                albumTitle: enrichedTracks[index].albumTitle,
-                songStoreID: "\(song.id)",
-                artworkURL: Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320),
-                durationText: enrichedTracks[index].durationText
-            )
-
-            if index >= 4 && enrichedTracks.contains(where: { Self.isRemoteArtworkURL($0.artworkURL) }) {
-                break
+            for (trackID, song) in matches {
+                resolvedSongsByTrackID[trackID] = song
             }
         }
 
-        return enrichedTracks
+        return resolvedSongsByTrackID
+    }
+
+    private func enrichedSharedTracks(from playlist: Playlist) async throws -> [SharedPlaylistTrack] {
+        let baseTracks = Self.makeSharedTracks(from: playlist)
+        guard !baseTracks.isEmpty else { return [] }
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: baseTracks)
+
+        return baseTracks.map { track in
+            guard !Self.isRemoteArtworkURL(track.artworkURL),
+                  let song = resolvedSongsByTrackID[track.id]
+            else {
+                return track
+            }
+
+            return SharedPlaylistTrack(
+                id: track.id,
+                title: track.title,
+                artistName: track.artistName,
+                albumTitle: track.albumTitle,
+                songStoreID: "\(song.id)",
+                artworkURL: Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320),
+                durationText: track.durationText
+            )
+        }
     }
 
     private func resolvedPlaylistArtworkURL(
