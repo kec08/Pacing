@@ -86,15 +86,13 @@ struct HomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(0..<3, id: \.self) { _ in
-                            VStack(alignment: .leading, spacing: 8) {
-                                SkeletonBlock(width: 80, height: 80, cornerRadius: 14)
-                                SkeletonBlock(width: 70, height: 13, cornerRadius: 6)
-                                SkeletonBlock(width: 54, height: 11, cornerRadius: 6)
+                            VStack(alignment: .leading, spacing: 5) {
+                                SkeletonBlock(width: 76, height: 76, cornerRadius: 13)
+                                SkeletonBlock(width: 52, height: 11, cornerRadius: 6)
+                                SkeletonBlock(width: 78, height: 13, cornerRadius: 6)
+                                SkeletonBlock(width: 62, height: 11, cornerRadius: 6)
                             }
                             .frame(width: 96, alignment: .leading)
-                            .padding(8)
-                            .background(Color.backgroundPrimary)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
                     }
                 }
@@ -177,10 +175,15 @@ private struct FriendRecentMusicCard: View {
     let activity: FriendRecentSongActivity
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 5) {
             artwork
-                .frame(width: 80, height: 80)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .frame(width: 76, height: 76)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+            Text("\(activity.friendNickname) 님")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Color.main500)
+                .lineLimit(1)
 
             Text(activity.song.title)
                 .font(.system(size: 13, weight: .semibold))
@@ -191,20 +194,8 @@ private struct FriendRecentMusicCard: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
-
-            Text("\(activity.friendNickname) 님")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.main500)
-                .lineLimit(1)
         }
         .frame(width: 96, alignment: .leading)
-        .padding(8)
-        .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.gray200.opacity(0.8), lineWidth: 1)
-        )
     }
 
     @ViewBuilder
