@@ -192,6 +192,35 @@ final class FirestoreService {
         }
     }
 
+    // MARK: - 친구 최근 재생 음악 조회
+    func fetchFriendsRecentSongs(currentUID: String, friendLimit: Int = 8) async throws -> [FriendRecentSongActivity] {
+        let snapshot = try await db.collection("users").document(currentUID)
+            .collection("friends")
+            .order(by: "createdAt", descending: true)
+            .limit(to: friendLimit)
+            .getDocuments()
+
+        var activities: [FriendRecentSongActivity] = []
+        for friendDocument in snapshot.documents {
+            let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
+            guard let song = try await fetchRecentSongs(uid: friendDocument.documentID, limit: 1).first else {
+                continue
+            }
+
+            activities.append(
+                FriendRecentSongActivity(
+                    friendUID: friendDocument.documentID,
+                    friendNickname: nickname,
+                    song: song
+                )
+            )
+        }
+
+        return activities.sorted {
+            ($0.song.playedAt ?? .distantPast) > ($1.song.playedAt ?? .distantPast)
+        }
+    }
+
     // MARK: - 친구 목록 조회
     func fetchFriends(uid: String) async throws -> [FriendUser] {
         let snapshot = try await db.collection("users").document(uid)

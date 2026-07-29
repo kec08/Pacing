@@ -977,6 +977,10 @@ final class ArtworkImageStore {
     }
 
     func image(for url: URL) async -> UIImage? {
+        guard ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
+            return nil
+        }
+
         if let cachedImage = cache.object(forKey: url as NSURL) {
             return cachedImage
         }
@@ -1002,7 +1006,13 @@ final class ArtworkImageStore {
     }
 
     func prefetch(urlStrings: [String]) async {
-        let uniqueURLs = Array(Set(urlStrings.compactMap(URL.init(string:))))
+        let uniqueURLs = Array(
+            Set(
+                urlStrings
+                    .compactMap(URL.init(string:))
+                    .filter { ["https", "http"].contains($0.scheme?.lowercased() ?? "") }
+            )
+        )
         for url in uniqueURLs {
             _ = await image(for: url)
         }
@@ -1014,13 +1024,17 @@ final class RemoteArtworkLoader: ObservableObject {
     @Published private(set) var image: UIImage?
 
     func load(urlString: String?) async {
+        image = nil
+
         guard let urlString,
-              let url = URL(string: urlString) else {
-            image = nil
+              let url = URL(string: urlString),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
             return
         }
 
-        image = await ArtworkImageStore.shared.image(for: url)
+        let loadedImage = await ArtworkImageStore.shared.image(for: url)
+        guard !Task.isCancelled else { return }
+        image = loadedImage
     }
 }
 

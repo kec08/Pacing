@@ -93,7 +93,7 @@ final class AppleMusicRecommendationService {
                 title: loadedPlaylist.name,
                 subtitle: loadedPlaylist.curatorName ?? loadedPlaylist.shortDescription ?? "내 플레이리스트",
                 artworkURL: try await resolvedPlaylistArtworkURL(
-                    playlistArtworkURL: loadedPlaylist.artwork?.url(width: 800, height: 800)?.absoluteString,
+                    playlistArtworkURL: Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800),
                     tracks: sharedTracks
                 ),
                 sourcePlaylistID: "\(loadedPlaylist.id)",
@@ -320,43 +320,54 @@ final class AppleMusicRecommendationService {
                 artistName: track.artistName,
                 albumTitle: track.albumTitle,
                 songStoreID: "\(song.id)",
-                artworkURL: track.artworkURL ?? song.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artworkURL: Self.isRemoteArtworkURL(track.artworkURL)
+                    ? track.artworkURL
+                    : Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320),
                 durationText: track.durationText
             )
         }
     }
 
     func enrichedSharedPlaylistSummary(_ summary: SharedPlaylistSummary) async -> SharedPlaylistSummary {
-        guard summary.effectiveArtworkURL == nil else { return summary }
-
         var updatedTracks = summary.tracks
+        var resolvedArtworkCount = 0
 
         for index in updatedTracks.indices {
-            if updatedTracks[index].artworkURL != nil {
+            let track = updatedTracks[index]
+            let hasArtwork = Self.isRemoteArtworkURL(track.artworkURL)
+
+            if hasArtwork {
                 continue
             }
 
+            // 목록 진입 시 카탈로그 요청이 과도하게 늘어나지 않도록, 먼저 보이는 곡의 커버만 보강한다.
+            guard resolvedArtworkCount < 8 else { break }
+            resolvedArtworkCount += 1
+
             guard let song = try? await searchCatalogSong(
-                title: updatedTracks[index].title,
-                artist: updatedTracks[index].artistName
+                title: track.title,
+                artist: track.artistName
             ) else {
                 continue
             }
 
-            let artworkURL = song.artwork?.url(width: 320, height: 320)?.absoluteString
+            let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320)
             updatedTracks[index] = SharedPlaylistTrack(
-                id: updatedTracks[index].id,
-                title: updatedTracks[index].title,
-                artistName: updatedTracks[index].artistName,
-                albumTitle: updatedTracks[index].albumTitle,
+                id: track.id,
+                title: track.title,
+                artistName: track.artistName,
+                albumTitle: track.albumTitle,
                 songStoreID: "\(song.id)",
                 artworkURL: artworkURL,
-                durationText: updatedTracks[index].durationText
+                durationText: track.durationText
             )
+        }
 
-            if artworkURL != nil {
-                break
-            }
+        let summaryArtworkURL: String?
+        if Self.isRemoteArtworkURL(summary.artworkURL), let artworkURL = summary.artworkURL {
+            summaryArtworkURL = artworkURL
+        } else {
+            summaryArtworkURL = updatedTracks.first(where: { !($0.artworkURL ?? "").isEmpty })?.artworkURL
         }
 
         return SharedPlaylistSummary(
@@ -365,7 +376,7 @@ final class AppleMusicRecommendationService {
             ownerNickname: summary.ownerNickname,
             title: summary.title,
             subtitle: summary.subtitle,
-            artworkURL: updatedTracks.first(where: { $0.artworkURL != nil })?.artworkURL,
+            artworkURL: summaryArtworkURL,
             sourcePlaylistID: summary.sourcePlaylistID,
             sourcePlaylistURL: summary.sourcePlaylistURL,
             trackCount: summary.trackCount,
@@ -382,8 +393,7 @@ final class AppleMusicRecommendationService {
         for song in songs {
             let songID = "\(song.id)"
 
-            if let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString,
-               !artworkURL.isEmpty {
+            if let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 900, height: 900) {
                 artworkURLsBySongID[songID] = artworkURL
                 continue
             }
@@ -392,8 +402,7 @@ final class AppleMusicRecommendationService {
                 title: song.title,
                 artist: song.artistName
             ),
-            let artworkURL = matchedSong.artwork?.url(width: 900, height: 900)?.absoluteString,
-            !artworkURL.isEmpty
+            let artworkURL = Self.remoteArtworkURL(from: matchedSong.artwork, width: 900, height: 900)
             else {
                 continue
             }
@@ -412,8 +421,7 @@ final class AppleMusicRecommendationService {
         for playlist in playlists {
             let playlistID = "\(playlist.id)"
 
-            if let artworkURL = playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
-               !artworkURL.isEmpty {
+            if let artworkURL = Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900) {
                 artworkURLsByPlaylistID[playlistID] = artworkURL
                 continue
             }
@@ -423,8 +431,7 @@ final class AppleMusicRecommendationService {
             }
 
             guard let sharedTracks = try? await enrichedSharedTracks(from: loadedPlaylist),
-                  let artworkURL = sharedTracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL,
-                  !artworkURL.isEmpty
+                  let artworkURL = sharedTracks.first(where: { Self.isRemoteArtworkURL($0.artworkURL) })?.artworkURL
             else {
                 continue
             }
@@ -458,7 +465,7 @@ final class AppleMusicRecommendationService {
                 artistName: song.artistName,
                 albumTitle: song.albumTitle ?? "",
                 songStoreID: songID,
-                artworkURL: song.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artworkURL: Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320),
                 durationText: Self.formatDuration(song.duration)
             )
         } ?? []
@@ -475,8 +482,8 @@ final class AppleMusicRecommendationService {
                 artistName: track.artistName,
                 albumTitle: track.albumTitle ?? album.title,
                 songStoreID: songID,
-                artworkURL: track.artwork?.url(width: 320, height: 320)?.absoluteString
-                    ?? album.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artworkURL: Self.remoteArtworkURL(from: track.artwork, width: 320, height: 320)
+                    ?? Self.remoteArtworkURL(from: album.artwork, width: 320, height: 320),
                 durationText: Self.formatDuration(track.duration)
             )
         } ?? []
@@ -490,6 +497,27 @@ final class AppleMusicRecommendationService {
         let minutes = totalSeconds / 60
         let seconds = totalSeconds % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    static func isRemoteArtworkURL(_ urlString: String?) -> Bool {
+        guard let urlString,
+              let url = URL(string: urlString),
+              let scheme = url.scheme?.lowercased()
+        else {
+            return false
+        }
+
+        return scheme == "https" || scheme == "http"
+    }
+
+    static func remoteArtworkURL(from artwork: Artwork?, width: Int, height: Int) -> String? {
+        guard let urlString = artwork?.url(width: width, height: height)?.absoluteString,
+              isRemoteArtworkURL(urlString)
+        else {
+            return nil
+        }
+
+        return urlString
     }
 
     private func resolveCatalogSongs(for tracks: [SharedPlaylistTrack]) async throws -> [Song] {
@@ -548,7 +576,7 @@ final class AppleMusicRecommendationService {
         }
 
         for track in tracks where resolvedSongsByTrackID[track.id] == nil {
-            if let fallbackSong = try await searchCatalogSong(title: track.title, artist: track.artistName) {
+            if let fallbackSong = try? await searchCatalogSong(title: track.title, artist: track.artistName) {
                 resolvedCatalogSongsByStoreID.setObject(
                     CachedCatalogSong(fallbackSong),
                     forKey: "\(fallbackSong.id)" as NSString
@@ -617,7 +645,7 @@ final class AppleMusicRecommendationService {
         var enrichedTracks = baseTracks
 
         for index in enrichedTracks.indices {
-            if enrichedTracks[index].artworkURL != nil {
+            if Self.isRemoteArtworkURL(enrichedTracks[index].artworkURL) {
                 continue
             }
 
@@ -634,11 +662,11 @@ final class AppleMusicRecommendationService {
                 artistName: enrichedTracks[index].artistName,
                 albumTitle: enrichedTracks[index].albumTitle,
                 songStoreID: "\(song.id)",
-                artworkURL: song.artwork?.url(width: 320, height: 320)?.absoluteString,
+                artworkURL: Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320),
                 durationText: enrichedTracks[index].durationText
             )
 
-            if index >= 4 && enrichedTracks.contains(where: { $0.artworkURL != nil }) {
+            if index >= 4 && enrichedTracks.contains(where: { Self.isRemoteArtworkURL($0.artworkURL) }) {
                 break
             }
         }
@@ -650,11 +678,11 @@ final class AppleMusicRecommendationService {
         playlistArtworkURL: String?,
         tracks: [SharedPlaylistTrack]
     ) async throws -> String? {
-        if let playlistArtworkURL, !playlistArtworkURL.isEmpty {
+        if Self.isRemoteArtworkURL(playlistArtworkURL), let playlistArtworkURL {
             return playlistArtworkURL
         }
 
-        if let trackArtworkURL = tracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL {
+        if let trackArtworkURL = tracks.first(where: { Self.isRemoteArtworkURL($0.artworkURL) })?.artworkURL {
             return trackArtworkURL
         }
 

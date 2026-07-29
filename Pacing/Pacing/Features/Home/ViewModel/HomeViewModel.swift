@@ -2,11 +2,15 @@ import SwiftUI
 import Combine
 import FirebaseAuth
 
+@MainActor
 final class HomeViewModel: ObservableObject {
     @Published var weeklyStats: WeeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
     @Published var recentRuns: [RunRecord] = []
-    @Published var recentListenSessions: [ListenSession] = []
-    @Published var isLoading: Bool = false
+    @Published var friendRecentSongs: [FriendRecentSongActivity] = []
+    @Published private(set) var isLoadingRuns: Bool = false
+    @Published private(set) var isLoadingFriendMusic: Bool = false
+    @Published private(set) var runLoadError: String?
+    @Published private(set) var friendMusicLoadError: String?
     @Published var nickname: String = "러너"
 
     var currentUID: String {
@@ -16,27 +20,63 @@ final class HomeViewModel: ObservableObject {
     private let cal = Calendar.current
 
     func loadHomeData() async {
-        await MainActor.run {
-            isLoading = true
-            nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        }
+        nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
 
         guard let uid = Auth.auth().currentUser?.uid else {
-            await MainActor.run { isLoading = false }
+            recentRuns = []
+            weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            friendRecentSongs = []
+            isLoadingRuns = false
+            isLoadingFriendMusic = false
             return
         }
 
-        async let recordsTask = FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
-        async let sessionsTask = RealtimeDBService.shared.fetchRecentListenSessions(uid: uid, limit: 10)
+        isLoadingRuns = true
+        isLoadingFriendMusic = true
+        runLoadError = nil
+        friendMusicLoadError = nil
 
-        let records = (try? await recordsTask) ?? []
-        let sessions = (try? await sessionsTask) ?? []
+        async let runs: Void = loadRunData(uid: uid)
+        async let friendMusic: Void = loadFriendRecentMusic(uid: uid)
+        _ = await (runs, friendMusic)
+    }
 
-        await MainActor.run {
+    func retryRuns() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingRuns = true
+        runLoadError = nil
+        await loadRunData(uid: uid)
+    }
+
+    func retryFriendRecentMusic() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingFriendMusic = true
+        friendMusicLoadError = nil
+        await loadFriendRecentMusic(uid: uid)
+    }
+
+    private func loadRunData(uid: String) async {
+        defer { isLoadingRuns = false }
+
+        do {
+            let records = try await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
             recentRuns = Array(records.prefix(3))
             weeklyStats = calcWeeklyStats(from: records)
-            recentListenSessions = sessions
-            isLoading = false
+        } catch {
+            recentRuns = []
+            weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            runLoadError = "러닝 기록을 불러오지 못했어요."
+        }
+    }
+
+    private func loadFriendRecentMusic(uid: String) async {
+        defer { isLoadingFriendMusic = false }
+
+        do {
+            friendRecentSongs = try await FirestoreService.shared.fetchFriendsRecentSongs(currentUID: uid)
+        } catch {
+            friendRecentSongs = []
+            friendMusicLoadError = "친구가 최근에 들은 음악을 불러오지 못했어요."
         }
     }
 
@@ -78,6 +118,7 @@ final class HomeViewModel: ObservableObject {
         return f.string(from: date)
     }
 
+    // ListenSessionRow는 다른 화면에서 재사용될 수 있어 표시 보조 메서드를 유지한다.
     func listenPartnerNickname(_ session: ListenSession) -> String {
         session.partnerNickname(for: currentUID)
     }
@@ -88,4 +129,5 @@ final class HomeViewModel: ObservableObject {
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
     }
+
 }
