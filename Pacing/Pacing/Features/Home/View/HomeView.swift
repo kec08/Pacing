@@ -38,8 +38,10 @@ struct HomeView: View {
     private var weeklyStatsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("이번 주 러닝")
-            if vm.isLoading && vm.weeklyStats.isEmpty {
+            if vm.isLoadingRuns && vm.weeklyStats.isEmpty {
                 weeklyStatsSkeleton
+            } else if let errorMessage = vm.runLoadError, vm.weeklyStats.isEmpty {
+                errorCard(errorMessage) { Task { await vm.retryRuns() } }
             } else if vm.weeklyStats.isEmpty {
                 emptyCard("이번 주 첫 러닝을 시작해보세요")
             } else {
@@ -52,7 +54,7 @@ struct HomeView: View {
     private var recentRunsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("최근 러닝")
-            if vm.isLoading && vm.recentRuns.isEmpty {
+            if vm.isLoadingRuns && vm.recentRuns.isEmpty {
                 VStack(spacing: 10) {
                     ForEach(0..<3, id: \.self) { _ in
                         SkeletonRow()
@@ -62,6 +64,8 @@ struct HomeView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                 }
+            } else if let errorMessage = vm.runLoadError, vm.recentRuns.isEmpty {
+                errorCard(errorMessage) { Task { await vm.retryRuns() } }
             } else if vm.recentRuns.isEmpty {
                 emptyCard("아직 러닝 기록이 없어요")
             } else {
@@ -78,7 +82,7 @@ struct HomeView: View {
     private var listenSessionSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             sectionTitle("같이 들은 러너")
-            if vm.isLoading && vm.recentListenSessions.isEmpty {
+            if vm.isLoadingListenSessions && vm.recentListenSessions.isEmpty {
                 VStack(spacing: 10) {
                     ForEach(0..<2, id: \.self) { _ in
                         SkeletonRow(avatarSize: 38, trailingWidth: 54)
@@ -88,6 +92,8 @@ struct HomeView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     }
                 }
+            } else if let errorMessage = vm.listenSessionLoadError, vm.recentListenSessions.isEmpty {
+                errorCard(errorMessage) { Task { await vm.retryListenSessions() } }
             } else if vm.recentListenSessions.isEmpty {
                 emptyCard("아직 같이 들은 러너가 없어요")
             } else {
@@ -116,6 +122,23 @@ struct HomeView: View {
             .padding(.vertical, 24)
             .background(Color.backgroundPrimary)
             .clipShape(RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func errorCard(_ message: String, retry: @escaping () -> Void) -> some View {
+        VStack(spacing: 10) {
+            Text(message)
+                .font(.system(size: 14))
+                .foregroundStyle(Color.textSecondary)
+
+            Button("다시 시도", action: retry)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(Color.main500)
+                .frame(minHeight: 44)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var weeklyStatsSkeleton: some View {

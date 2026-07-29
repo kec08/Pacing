@@ -2,11 +2,15 @@ import SwiftUI
 import Combine
 import FirebaseAuth
 
+@MainActor
 final class HomeViewModel: ObservableObject {
     @Published var weeklyStats: WeeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
     @Published var recentRuns: [RunRecord] = []
     @Published var recentListenSessions: [ListenSession] = []
-    @Published var isLoading: Bool = false
+    @Published private(set) var isLoadingRuns: Bool = false
+    @Published private(set) var isLoadingListenSessions: Bool = false
+    @Published private(set) var runLoadError: String?
+    @Published private(set) var listenSessionLoadError: String?
     @Published var nickname: String = "러너"
 
     var currentUID: String {
@@ -16,27 +20,63 @@ final class HomeViewModel: ObservableObject {
     private let cal = Calendar.current
 
     func loadHomeData() async {
-        await MainActor.run {
-            isLoading = true
-            nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        }
+        nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
 
         guard let uid = Auth.auth().currentUser?.uid else {
-            await MainActor.run { isLoading = false }
+            recentRuns = []
+            weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            recentListenSessions = []
+            isLoadingRuns = false
+            isLoadingListenSessions = false
             return
         }
 
-        async let recordsTask = FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
-        async let sessionsTask = RealtimeDBService.shared.fetchRecentListenSessions(uid: uid, limit: 10)
+        isLoadingRuns = true
+        isLoadingListenSessions = true
+        runLoadError = nil
+        listenSessionLoadError = nil
 
-        let records = (try? await recordsTask) ?? []
-        let sessions = (try? await sessionsTask) ?? []
+        async let runs: Void = loadRunData(uid: uid)
+        async let sessions: Void = loadListenSessionData(uid: uid)
+        _ = await (runs, sessions)
+    }
 
-        await MainActor.run {
+    func retryRuns() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingRuns = true
+        runLoadError = nil
+        await loadRunData(uid: uid)
+    }
+
+    func retryListenSessions() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingListenSessions = true
+        listenSessionLoadError = nil
+        await loadListenSessionData(uid: uid)
+    }
+
+    private func loadRunData(uid: String) async {
+        defer { isLoadingRuns = false }
+
+        do {
+            let records = try await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
             recentRuns = Array(records.prefix(3))
             weeklyStats = calcWeeklyStats(from: records)
-            recentListenSessions = sessions
-            isLoading = false
+        } catch {
+            recentRuns = []
+            weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            runLoadError = "러닝 기록을 불러오지 못했어요."
+        }
+    }
+
+    private func loadListenSessionData(uid: String) async {
+        defer { isLoadingListenSessions = false }
+
+        do {
+            recentListenSessions = try await RealtimeDBService.shared.fetchRecentListenSessions(uid: uid, limit: 10)
+        } catch {
+            recentListenSessions = []
+            listenSessionLoadError = "같이 들은 러너를 불러오지 못했어요."
         }
     }
 

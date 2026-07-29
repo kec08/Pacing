@@ -296,11 +296,23 @@ final class RealtimeDBService {
 
     private func fetchListenSessions(where child: String, equals uid: String, limit: Int) async throws -> [ListenSession] {
         try await withCheckedThrowingContinuation { continuation in
-            db.child("listenSessions")
+            let lock = NSLock()
+            var didResume = false
+
+            func resumeOnce(with result: Result<[ListenSession], Error>) {
+                lock.lock()
+                defer { lock.unlock() }
+
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(with: result)
+            }
+
+            let query = db.child("listenSessions")
                 .queryOrdered(byChild: child)
                 .queryEqual(toValue: uid)
                 .queryLimited(toLast: UInt(limit))
-                .observeSingleEvent(of: .value) { snapshot in
+            query.observeSingleEvent(of: .value) { snapshot in
                     var sessions: [ListenSession] = []
 
                     for childSnapshot in snapshot.children {
@@ -330,8 +342,22 @@ final class RealtimeDBService {
                         )
                     }
 
-                    continuation.resume(returning: sessions)
+                    resumeOnce(with: .success(sessions))
+                } withCancel: { error in
+                    resumeOnce(with: .failure(error))
                 }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                resumeOnce(with: .failure(RealtimeDBRequestError.timedOut))
+            }
         }
+    }
+}
+
+private enum RealtimeDBRequestError: LocalizedError {
+    case timedOut
+
+    var errorDescription: String? {
+        "실시간 데이터 요청 시간이 초과되었어요."
     }
 }
