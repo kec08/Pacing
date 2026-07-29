@@ -327,36 +327,45 @@ final class AppleMusicRecommendationService {
     }
 
     func enrichedSharedPlaylistSummary(_ summary: SharedPlaylistSummary) async -> SharedPlaylistSummary {
-        guard summary.effectiveArtworkURL == nil else { return summary }
-
         var updatedTracks = summary.tracks
+        var resolvedArtworkCount = 0
 
         for index in updatedTracks.indices {
-            if updatedTracks[index].artworkURL != nil {
+            let track = updatedTracks[index]
+            let hasArtwork = !(track.artworkURL ?? "").isEmpty
+
+            if hasArtwork {
                 continue
             }
 
+            // 목록 진입 시 카탈로그 요청이 과도하게 늘어나지 않도록, 먼저 보이는 곡의 커버만 보강한다.
+            guard resolvedArtworkCount < 8 else { break }
+            resolvedArtworkCount += 1
+
             guard let song = try? await searchCatalogSong(
-                title: updatedTracks[index].title,
-                artist: updatedTracks[index].artistName
+                title: track.title,
+                artist: track.artistName
             ) else {
                 continue
             }
 
             let artworkURL = song.artwork?.url(width: 320, height: 320)?.absoluteString
             updatedTracks[index] = SharedPlaylistTrack(
-                id: updatedTracks[index].id,
-                title: updatedTracks[index].title,
-                artistName: updatedTracks[index].artistName,
-                albumTitle: updatedTracks[index].albumTitle,
+                id: track.id,
+                title: track.title,
+                artistName: track.artistName,
+                albumTitle: track.albumTitle,
                 songStoreID: "\(song.id)",
                 artworkURL: artworkURL,
-                durationText: updatedTracks[index].durationText
+                durationText: track.durationText
             )
+        }
 
-            if artworkURL != nil {
-                break
-            }
+        let summaryArtworkURL: String?
+        if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
+            summaryArtworkURL = artworkURL
+        } else {
+            summaryArtworkURL = updatedTracks.first(where: { !($0.artworkURL ?? "").isEmpty })?.artworkURL
         }
 
         return SharedPlaylistSummary(
@@ -365,7 +374,7 @@ final class AppleMusicRecommendationService {
             ownerNickname: summary.ownerNickname,
             title: summary.title,
             subtitle: summary.subtitle,
-            artworkURL: updatedTracks.first(where: { $0.artworkURL != nil })?.artworkURL,
+            artworkURL: summaryArtworkURL,
             sourcePlaylistID: summary.sourcePlaylistID,
             sourcePlaylistURL: summary.sourcePlaylistURL,
             trackCount: summary.trackCount,

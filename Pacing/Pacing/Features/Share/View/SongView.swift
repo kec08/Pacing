@@ -1014,13 +1014,16 @@ final class RemoteArtworkLoader: ObservableObject {
     @Published private(set) var image: UIImage?
 
     func load(urlString: String?) async {
+        image = nil
+
         guard let urlString,
               let url = URL(string: urlString) else {
-            image = nil
             return
         }
 
-        image = await ArtworkImageStore.shared.image(for: url)
+        let loadedImage = await ArtworkImageStore.shared.image(for: url)
+        guard !Task.isCancelled else { return }
+        image = loadedImage
     }
 }
 
