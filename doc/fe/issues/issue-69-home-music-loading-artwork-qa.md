@@ -3,7 +3,7 @@
 > **심각도**: Major 🟠  
 > **발견일**: 2026-07-29  
 > **발견 브랜치**: `feat/69-home-music-loading-artwork`  
-> **상태**: 수정 완료 / Draft PR #70 / 실기기 확인 대기
+> **상태**: 추가 수정 완료 / 기존 PR #70 닫힘 / 실기기 확인 대기
 
 ---
 
@@ -42,6 +42,8 @@
 - 홈 오류 카드에 44pt 이상 재시도 버튼을 제공했다.
 - 공유 플레이리스트와 수록곡의 빈 문자열 커버 URL을 누락값으로 정규화하고, Apple Music 카탈로그로 누락된 수록곡 커버를 최대 8곡까지 보강한다.
 - 이미지 로더가 URL 변경 시 이전 이미지를 지우고, 취소된 요청 결과가 새 카드에 반영되지 않도록 했다.
+- 친구가 최근에 들은 음악을 Firestore `recentSongs`에서 조회해, 홈의 같이 들은 러너 섹션을 작은 앨범 카드로 교체했다.
+- 개별 Apple Music 카탈로그 검색 실패를 곡 단위로 처리해, 한 곡 실패가 전체 수록곡 커버 보강을 막지 않도록 했다.
 
 ## 검증 결과
 
@@ -50,6 +52,7 @@
 | 변경 Swift 파일 구문 검사 | ✅ 통과 | `swiftc -parse` |
 | 변경 파일 공백 오류 검사 | ✅ 통과 | `git diff --check` |
 | iOS Simulator Debug 빌드 | ✅ 통과 | `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` |
+| 친구 최근 음악 홈 카드 컴파일·빌드 | ✅ 통과 | 2026-07-29 추가 수정 빌드 |
 | 실제 Firebase 지연·타임아웃 UI | ⏳ 실기기 확인 필요 | 인증된 Firebase 세션 필요 |
 | 친구 플레이리스트 실제 커버 표시 | ⏳ 실기기 확인 필요 | Apple Music 권한·카탈로그 데이터 필요 |
 
@@ -61,3 +64,5 @@
 - `Pacing/Pacing/Models/SharedPlaylistModels.swift`: 빈 커버 URL 폴백
 - `Pacing/Pacing/Core/Music/AppleMusicRecommendationService.swift`: 누락 수록곡 커버 보강
 - `Pacing/Pacing/Features/Share/View/SongView.swift`: 취소 안전 이미지 로드
+- `Pacing/Pacing/Features/Home/View/HomeView.swift`: 친구 최근 음악 미니 카드 UI
+- `Pacing/Pacing/Core/Firebase/FirestoreService.swift`: 친구 최근 음악 조회
