@@ -133,8 +133,7 @@ final class MyViewModel: ObservableObject {
         let now = Date()
         switch selectedPeriod {
         case .week:
-            // 이번 주 시작 = 월요일 기준
-            let thisMonday = mondayOfWeek(containing: now)
+            let thisMonday = WeeklyDateRange.start(containing: now, calendar: cal)
             let start = cal.date(byAdding: .day, value: weekOffset * 7, to: thisMonday)!
             let end   = cal.date(byAdding: .day, value: 7, to: start)!
             return records.filter { $0.startedAt >= start && $0.startedAt < end }
@@ -154,19 +153,13 @@ final class MyViewModel: ObservableObject {
         }
     }
 
-    private func mondayOfWeek(containing date: Date) -> Date {
-        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        comps.weekday = 2 // 월요일
-        return cal.date(from: comps) ?? cal.startOfDay(for: date)
-    }
-
     private func buildChartEntries(from records: [RunRecord]) -> [BarChartEntry] {
         let now = Date()
 
         switch selectedPeriod {
         case .week:
             let labels = ["월", "화", "수", "목", "금", "토", "일"]
-            let monday = cal.date(byAdding: .day, value: weekOffset * 7, to: mondayOfWeek(containing: now))!
+            let monday = cal.date(byAdding: .day, value: weekOffset * 7, to: WeeklyDateRange.start(containing: now, calendar: cal))!
             return (0..<7).map { i in
                 let date = cal.date(byAdding: .day, value: i, to: monday)!
                 let next = cal.date(byAdding: .day, value: 1, to: date)!

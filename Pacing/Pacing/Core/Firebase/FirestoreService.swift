@@ -221,6 +221,33 @@ final class FirestoreService {
         }
     }
 
+    // MARK: - 친구 최근 러닝 조회
+    func fetchFriendsRecentRuns(currentUID: String, friendLimit: Int = 8) async throws -> [FriendRecentRunActivity] {
+        let snapshot = try await db.collection("users").document(currentUID)
+            .collection("friends")
+            .order(by: "createdAt", descending: true)
+            .limit(to: friendLimit)
+            .getDocuments()
+
+        var activities: [FriendRecentRunActivity] = []
+        for friendDocument in snapshot.documents {
+            guard let run = try await fetchRunHistory(uid: friendDocument.documentID, limit: 1).first else {
+                continue
+            }
+
+            let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
+            activities.append(
+                FriendRecentRunActivity(
+                    friendUID: friendDocument.documentID,
+                    friendNickname: nickname,
+                    run: run
+                )
+            )
+        }
+
+        return activities.sorted { $0.run.startedAt > $1.run.startedAt }
+    }
+
     // MARK: - 친구 목록 조회
     func fetchFriends(uid: String) async throws -> [FriendUser] {
         let snapshot = try await db.collection("users").document(uid)

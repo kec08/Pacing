@@ -10,6 +10,22 @@ import XCTest
 import CoreLocation
 
 final class PacingTests: XCTestCase {
+    func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = calendar.timeZone
+
+        let thursday = formatter.date(from: "2026-07-30T12:00:00+09:00")!
+        let sunday = formatter.date(from: "2026-07-26T12:00:00+09:00")!
+        let monday = formatter.date(from: "2026-07-27T00:00:00+09:00")!
+
+        let interval = WeeklyDateRange.interval(containing: thursday, calendar: calendar)
+
+        XCTAssertFalse(interval.contains(sunday))
+        XCTAssertTrue(interval.contains(monday))
+    }
+
     func testLocationModeSupportsPlistArrayAndString() throws {
         XCTAssertTrue(LocationBackgroundConfiguration.supportsLocationMode(["location", "audio"]))
         XCTAssertTrue(LocationBackgroundConfiguration.supportsLocationMode("location audio"))

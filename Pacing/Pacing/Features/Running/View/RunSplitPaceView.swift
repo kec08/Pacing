@@ -45,10 +45,12 @@ struct RunSplitPaceView: View {
 
     private func splitRow(_ lap: RunLapPace) -> some View {
         HStack(spacing: 14) {
-            Text("\(lap.kilometer)")
+            Text("\(lap.kilometer) km")
                 .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundStyle(Color.textPrimary)
-                .frame(width: 28, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .frame(width: 58, alignment: .leading)
                 .accessibilityLabel("\(lap.kilometer) 킬로미터")
 
             GeometryReader { proxy in

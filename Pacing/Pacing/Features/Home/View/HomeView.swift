@@ -10,6 +10,7 @@ struct HomeView: View {
                     headerSection
                     weeklyStatsSection
                     recentRunsSection
+                    friendRecentRunsSection
                     friendRecentMusicSection
                 }
                 .padding(.horizontal, 20)
@@ -20,6 +21,34 @@ struct HomeView: View {
             .navigationBarHidden(true)
         }
         .task { await vm.loadHomeData() }
+    }
+
+    // MARK: - 친구 최근 러닝
+    private var friendRecentRunsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionTitle("친구 최근 러닝")
+            if vm.isLoadingFriendRuns && vm.friendRecentRuns.isEmpty {
+                VStack(spacing: 10) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        SkeletonRow()
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(Color.backgroundPrimary)
+                            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    }
+                }
+            } else if let errorMessage = vm.friendRunsLoadError, vm.friendRecentRuns.isEmpty {
+                errorCard(errorMessage) { Task { await vm.retryFriendRecentRuns() } }
+            } else if vm.friendRecentRuns.isEmpty {
+                emptyCard("친구의 최근 러닝이 없어요")
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(vm.friendRecentRuns.prefix(3)) { activity in
+                        FriendRecentRunRow(activity: activity, vm: vm)
+                    }
+                }
+            }
+        }
     }
 
     // MARK: - 헤더
@@ -84,15 +113,15 @@ struct HomeView: View {
             sectionTitle("친구가 최근에 들은 음악")
             if vm.isLoadingFriendMusic && vm.friendRecentSongs.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         ForEach(0..<3, id: \.self) { _ in
-                            VStack(alignment: .leading, spacing: 5) {
-                                SkeletonBlock(width: 76, height: 76, cornerRadius: 13)
+                            VStack(alignment: .leading, spacing: 8) {
+                                SkeletonBlock(width: 88, height: 88, cornerRadius: 14)
                                 SkeletonBlock(width: 52, height: 11, cornerRadius: 6)
                                 SkeletonBlock(width: 78, height: 13, cornerRadius: 6)
                                 SkeletonBlock(width: 62, height: 11, cornerRadius: 6)
                             }
-                            .frame(width: 96, alignment: .leading)
+                            .frame(width: 112, alignment: .leading)
                         }
                     }
                 }
@@ -102,7 +131,7 @@ struct HomeView: View {
                 emptyCard("친구가 최근에 들은 음악이 없어요")
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         ForEach(vm.friendRecentSongs) { activity in
                             FriendRecentMusicCard(activity: activity)
                         }
@@ -175,12 +204,12 @@ private struct FriendRecentMusicCard: View {
     let activity: FriendRecentSongActivity
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
             artwork
-                .frame(width: 76, height: 76)
-                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .frame(width: 88, height: 88)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-            Text("\(activity.friendNickname) 님")
+            Text(activity.friendNickname)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Color.main500)
                 .lineLimit(1)
@@ -195,7 +224,7 @@ private struct FriendRecentMusicCard: View {
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
         }
-        .frame(width: 96, alignment: .leading)
+        .frame(width: 112, alignment: .leading)
     }
 
     @ViewBuilder
@@ -209,5 +238,53 @@ private struct FriendRecentMusicCard: View {
         } else {
             RemoteArtworkView(urlString: activity.song.artworkURL)
         }
+    }
+}
+
+private struct FriendRecentRunRow: View {
+    let activity: FriendRecentRunActivity
+    let vm: HomeViewModel
+
+    var body: some View {
+        NavigationLink {
+            RunActivityDetailView(record: activity.run)
+        } label: {
+            HStack(spacing: 14) {
+                RunRouteThumbnailView(coordinates: activity.run.routeCoordinates)
+                    .frame(width: 56, height: 56)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(activity.friendNickname)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.main500)
+                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(vm.formatDate(activity.run.startedAt))
+                        Text("·")
+                        Text(vm.formatDistance(activity.run.distance))
+                    }
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.textSecondary)
+
+                    HStack(spacing: 12) {
+                        Text(vm.formatDuration(activity.run.duration))
+                        Text(vm.formatPace(activity.run.avgPace) + "/km")
+                    }
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Color.textPrimary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.gray300)
+            }
+            .padding(14)
+            .background(Color.backgroundPrimary)
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("친구의 러닝 활동 상세를 엽니다")
     }
 }
