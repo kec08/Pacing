@@ -44,6 +44,7 @@
 - 이미지 로더가 URL 변경 시 이전 이미지를 지우고, 취소된 요청 결과가 새 카드에 반영되지 않도록 했다.
 - 친구가 최근에 들은 음악을 Firestore `recentSongs`에서 조회해, 홈의 같이 들은 러너 섹션을 작은 앨범 카드로 교체했다.
 - 개별 Apple Music 카탈로그 검색 실패를 곡 단위로 처리해, 한 곡 실패가 전체 수록곡 커버 보강을 막지 않도록 했다.
+- `musicKit://artwork/library/...`를 일반 URLSession으로 요청해 발생한 `NSURLErrorDomain -1002`를 확인하고, 라이브러리 전용 URL은 저장·prefetch·이미지 로드 대상에서 제외했다. 기존 공유 데이터는 카탈로그 HTTPS artwork로 다시 보강한다.
 
 ## 검증 결과
 
@@ -53,6 +54,7 @@
 | 변경 파일 공백 오류 검사 | ✅ 통과 | `git diff --check` |
 | iOS Simulator Debug 빌드 | ✅ 통과 | `xcodebuild ... build CODE_SIGNING_ALLOWED=NO` |
 | 친구 최근 음악 홈 카드 컴파일·빌드 | ✅ 통과 | 2026-07-29 추가 수정 빌드 |
+| 라이브러리 전용 artwork URL 차단 및 카탈로그 HTTPS 폴백 | ✅ 통과 | 2026-07-29 Debug 빌드 |
 | 실제 Firebase 지연·타임아웃 UI | ⏳ 실기기 확인 필요 | 인증된 Firebase 세션 필요 |
 | 친구 플레이리스트 실제 커버 표시 | ⏳ 실기기 확인 필요 | Apple Music 권한·카탈로그 데이터 필요 |
 
