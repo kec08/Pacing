@@ -3,6 +3,7 @@ import MusicKit
 import MediaPlayer
 import UIKit
 import Combine
+import ImageIO
 
 struct SongView: View {
     @StateObject private var vm = SongViewModel()
@@ -971,9 +972,21 @@ final class ArtworkImageStore {
     static let shared = ArtworkImageStore()
 
     private let cache = NSCache<NSURL, UIImage>()
+    private let session: URLSession
+    private var inFlightTasks: [URL: Task<UIImage?, Never>] = [:]
 
     private init() {
         cache.countLimit = 180
+        cache.totalCostLimit = 80 * 1024 * 1024
+
+        let configuration = URLSessionConfiguration.default
+        configuration.requestCachePolicy = .returnCacheDataElseLoad
+        configuration.urlCache = URLCache(
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 120 * 1024 * 1024,
+            diskPath: "PacingArtworkCache"
+        )
+        session = URLSession(configuration: configuration)
     }
 
     func image(for url: URL) async -> UIImage? {
@@ -985,24 +998,24 @@ final class ArtworkImageStore {
             return cachedImage
         }
 
-        var request = URLRequest(url: url)
-        request.cachePolicy = .returnCacheDataElseLoad
-        request.timeoutInterval = 20
-
-        do {
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse,
-                  200..<300 ~= httpResponse.statusCode,
-                  let image = UIImage(data: data)
-            else {
-                return nil
+        let task: Task<UIImage?, Never>
+        if let inFlightTask = inFlightTasks[url] {
+            task = inFlightTask
+        } else {
+            task = Task { [session] in
+                await Self.downloadImage(from: url, session: session)
             }
-
-            cache.setObject(image, forKey: url as NSURL)
-            return image
-        } catch {
-            return nil
+            inFlightTasks[url] = task
         }
+
+        let image = await task.value
+        inFlightTasks[url] = nil
+
+        if let image {
+            cache.setObject(image, forKey: url as NSURL, cost: image.memoryCost)
+        }
+
+        return image
     }
 
     func prefetch(urlStrings: [String]) async {
@@ -1010,12 +1023,62 @@ final class ArtworkImageStore {
             Set(
                 urlStrings
                     .compactMap(URL.init(string:))
-                    .filter { ["https", "http"].contains($0.scheme?.lowercased() ?? "") }
+                .filter { ["https", "http"].contains($0.scheme?.lowercased() ?? "") }
             )
         )
-        for url in uniqueURLs {
-            _ = await image(for: url)
+
+        for batchStartIndex in stride(from: 0, to: uniqueURLs.count, by: 4) {
+            let batch = uniqueURLs[batchStartIndex..<min(batchStartIndex + 4, uniqueURLs.count)]
+            await withTaskGroup(of: Void.self) { group in
+                for url in batch {
+                    group.addTask { [weak self] in
+                        _ = await self?.image(for: url)
+                    }
+                }
+            }
         }
+    }
+
+    private static func downloadImage(from url: URL, session: URLSession) async -> UIImage? {
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        request.timeoutInterval = 15
+
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  200..<300 ~= httpResponse.statusCode
+            else {
+                return nil
+            }
+
+            return downsampledImage(from: data)
+        } catch {
+            return nil
+        }
+    }
+
+    private static func downsampledImage(from data: Data, maximumPixelSize: CGFloat = 720) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize
+        ]
+
+        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary)
+        else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+private extension UIImage {
+    var memoryCost: Int {
+        guard let cgImage else { return 1 }
+        return cgImage.bytesPerRow * cgImage.height
     }
 }
 

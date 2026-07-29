@@ -7,6 +7,18 @@ import UIKit
 
 @MainActor
 final class SharedPlaylistDetailViewModel: ObservableObject {
+    private struct DetailCacheEntry {
+        let summary: SharedPlaylistSummary
+        let tracks: [SharedPlaylistTrack]
+        let appSaveState: SharedPlaylistSaveState
+        let didSaveToAppleMusic: Bool
+        let canSaveToAppleMusic: Bool
+        let cachedAt: Date
+    }
+
+    private static var detailCache: [String: DetailCacheEntry] = [:]
+    private static let cacheLifetime: TimeInterval = 10 * 60
+
     enum Source {
         case shared(SharedPlaylistSummary)
         case recommendation(Playlist)
@@ -112,8 +124,17 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func load() async {
+        guard !isLoading else { return }
+
+        if applyCachedDetailIfAvailable() {
+            return
+        }
+
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            cacheCurrentDetail()
+        }
 
         do {
             switch source {
@@ -192,6 +213,40 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         } catch {
             errorMessage = "플레이리스트 정보를 불러오지 못했어요."
         }
+    }
+
+    private var detailCacheKey: String {
+        let version = summary.updatedAt?.timeIntervalSinceReferenceDate ?? 0
+        let userID = Auth.auth().currentUser?.uid ?? "anonymous"
+        return "\(userID)_\(summary.id)_\(version)"
+    }
+
+    private func applyCachedDetailIfAvailable() -> Bool {
+        guard let cachedDetail = Self.detailCache[detailCacheKey],
+              Date().timeIntervalSince(cachedDetail.cachedAt) < Self.cacheLifetime
+        else {
+            return false
+        }
+
+        summary = cachedDetail.summary
+        tracks = cachedDetail.tracks
+        appSaveState = cachedDetail.appSaveState
+        didSaveToAppleMusic = cachedDetail.didSaveToAppleMusic
+        canSaveToAppleMusic = cachedDetail.canSaveToAppleMusic
+        return true
+    }
+
+    private func cacheCurrentDetail() {
+        guard !tracks.isEmpty else { return }
+
+        Self.detailCache[detailCacheKey] = DetailCacheEntry(
+            summary: summary,
+            tracks: tracks,
+            appSaveState: appSaveState,
+            didSaveToAppleMusic: didSaveToAppleMusic,
+            canSaveToAppleMusic: canSaveToAppleMusic,
+            cachedAt: Date()
+        )
     }
 
     func playAll() async {
