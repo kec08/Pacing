@@ -557,7 +557,7 @@ final class AppleMusicRecommendationService {
         }
 
         for track in tracks where resolvedSongsByTrackID[track.id] == nil {
-            if let fallbackSong = try await searchCatalogSong(title: track.title, artist: track.artistName) {
+            if let fallbackSong = try? await searchCatalogSong(title: track.title, artist: track.artistName) {
                 resolvedCatalogSongsByStoreID.setObject(
                     CachedCatalogSong(fallbackSong),
                     forKey: "\(fallbackSong.id)" as NSString
