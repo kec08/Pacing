@@ -53,23 +53,6 @@ struct RunningView: View {
         smoothedRouteCoordinates(from: viewModel.locationManager.routeCoordinates)
     }
 
-    private var myRunner: NearbyRunner? {
-        guard let coordinate = viewModel.locationManager.currentLocation?.coordinate else { return nil }
-        let snapshot = musicVM.currentSongSnapshot()
-        let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "나"
-
-        return NearbyRunner(
-            id: "me",
-            nickname: nickname,
-            coordinate: coordinate,
-            songTitle: snapshot?.title ?? "",
-            artist: snapshot?.artistName ?? "",
-            profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64"),
-            distance: 0,
-            isMe: true
-        )
-    }
-
     var body: some View {
         ZStack {
             // 풀스크린 지도
@@ -84,11 +67,6 @@ struct RunningView: View {
                             ),
                             style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
                         )
-                }
-                if let myRunner {
-                    Annotation("", coordinate: myRunner.coordinate) {
-                        runnerMapPin(runner: myRunner)
-                    }
                 }
                 // 현재 러닝 중인 친구 핀
                 ForEach(nearbyVM.activeFriendRunners) { runner in

@@ -29,6 +29,7 @@ final class NearbyRunnerViewModel: ObservableObject {
     private var myUID: String = ""
     private var allRunners: [ActiveRunner] = []
     private var friendIDs: Set<String> = []
+    private var friendProfileImages: [String: String] = [:]
     private var myLocation: CLLocationCoordinate2D?
 
     func startObserving(uid: String) {
@@ -79,7 +80,7 @@ final class NearbyRunnerViewModel: ObservableObject {
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
-                    profileImageBase64: runner.profileImageBase64,
+                    profileImageBase64: friendProfileImages[runner.id] ?? runner.profileImageBase64,
                     distance: dist,
                     isMe: false
                 )
@@ -107,9 +108,16 @@ final class NearbyRunnerViewModel: ObservableObject {
         do {
             let friends = try await FirestoreService.shared.fetchFriends(uid: uid)
             friendIDs = Set(friends.map(\.id))
+            friendProfileImages = Dictionary(
+                uniqueKeysWithValues: friends.compactMap { friend in
+                    guard let image = friend.profileImageBase64, !image.isEmpty else { return nil }
+                    return (friend.id, image)
+                }
+            )
             filterRunners()
         } catch {
             friendIDs = []
+            friendProfileImages = [:]
             filterRunners()
         }
     }
