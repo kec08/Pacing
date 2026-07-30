@@ -95,10 +95,9 @@ final class AppleMusicRecommendationService {
                 ownerNickname: nickname,
                 title: loadedPlaylist.name,
                 subtitle: loadedPlaylist.curatorName ?? loadedPlaylist.shortDescription ?? "내 플레이리스트",
-                artworkURL: try await resolvedPlaylistArtworkURL(
-                    playlistArtworkURL: Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800),
-                    tracks: sharedTracks
-                ),
+                // 플레이리스트 대표 커버만 저장한다. 수록곡 앨범 커버를 대신 쓰면
+                // 다른 기기에서 대표 이미지와 곡 매핑이 달라질 수 있다.
+                artworkURL: Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800),
                 sourcePlaylistID: "\(loadedPlaylist.id)",
                 sourcePlaylistURL: loadedPlaylist.url?.absoluteString,
                 trackCount: loadedPlaylist.tracks?.count ?? 0,
@@ -361,103 +360,6 @@ final class AppleMusicRecommendationService {
         }
     }
 
-    func enrichedSharedPlaylistSummary(_ summary: SharedPlaylistSummary) async -> SharedPlaylistSummary {
-        if Self.isRemoteArtworkURL(summary.artworkURL) {
-            return summary
-        }
-
-        let resolvedArtworkURL: String?
-        if let sourcePlaylistID = summary.sourcePlaylistID {
-            if let artworkURL = await resolveCatalogPlaylistArtworkURL(sourcePlaylistID: sourcePlaylistID) {
-                resolvedArtworkURL = artworkURL
-            } else {
-                resolvedArtworkURL = await resolveCatalogPlaylistArtworkURL(title: summary.title)
-            }
-        } else {
-            resolvedArtworkURL = await resolveCatalogPlaylistArtworkURL(title: summary.title)
-        }
-
-        if let artworkURL = resolvedArtworkURL {
-            return SharedPlaylistSummary(
-                id: summary.id,
-                ownerUID: summary.ownerUID,
-                ownerNickname: summary.ownerNickname,
-                title: summary.title,
-                subtitle: summary.subtitle,
-                artworkURL: artworkURL,
-                sourcePlaylistID: summary.sourcePlaylistID,
-                sourcePlaylistURL: summary.sourcePlaylistURL,
-                trackCount: summary.trackCount,
-                updatedAt: summary.updatedAt,
-                tracks: summary.tracks
-            )
-        }
-
-        // 목록 진입은 대표 커버 한 장만 보강한다. 전체 수록곡 보강은 상세 진입 시 실행한다.
-        guard let missingArtworkIndex = summary.tracks.firstIndex(where: {
-            !Self.isRemoteArtworkURL($0.artworkURL)
-        }) else {
-            return summary
-        }
-
-        let track = summary.tracks[missingArtworkIndex]
-        guard let song = try? await searchCatalogSong(title: track.title, artist: track.artistName),
-              let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320)
-        else {
-            return summary
-        }
-
-        var updatedTracks = summary.tracks
-        updatedTracks[missingArtworkIndex] = SharedPlaylistTrack(
-            id: track.id,
-            title: track.title,
-            artistName: track.artistName,
-            albumTitle: track.albumTitle,
-            songStoreID: "\(song.id)",
-            artworkURL: artworkURL,
-            durationText: track.durationText
-        )
-
-        return SharedPlaylistSummary(
-            id: summary.id,
-            ownerUID: summary.ownerUID,
-            ownerNickname: summary.ownerNickname,
-            title: summary.title,
-            subtitle: summary.subtitle,
-            artworkURL: artworkURL,
-            sourcePlaylistID: summary.sourcePlaylistID,
-            sourcePlaylistURL: summary.sourcePlaylistURL,
-            trackCount: summary.trackCount,
-            updatedAt: summary.updatedAt,
-            tracks: updatedTracks
-        )
-    }
-
-    private func resolveCatalogPlaylistArtworkURL(sourcePlaylistID: String) async -> String? {
-        let playlistID = MusicItemID(sourcePlaylistID)
-        var request = MusicCatalogResourceRequest<Playlist>(matching: \.id, memberOf: [playlistID])
-        request.limit = 1
-
-        guard let playlist = try? await request.response().items.first else {
-            return nil
-        }
-
-        return Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900)
-    }
-
-    private func resolveCatalogPlaylistArtworkURL(title: String) async -> String? {
-        var request = MusicCatalogSearchRequest(term: title, types: [Playlist.self])
-        request.limit = 5
-
-        guard let response = try? await request.response(),
-              let playlist = response.playlists.first(where: { $0.name == title }) ?? response.playlists.first
-        else {
-            return nil
-        }
-
-        return Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900)
-    }
-
     func resolvedArtworkURLs(for songs: [Song]) async -> [String: String] {
         guard !songs.isEmpty else { return [:] }
 
@@ -499,43 +401,6 @@ final class AppleMusicRecommendationService {
                 continue
             }
 
-            guard let loadedPlaylist = try? await playlist.with([.tracks], preferredSource: .library) else {
-                continue
-            }
-
-            guard let sharedTracks = try? await enrichedSharedTracks(from: loadedPlaylist),
-                  let artworkURL = sharedTracks.first(where: { Self.isRemoteArtworkURL($0.artworkURL) })?.artworkURL
-            else {
-                continue
-            }
-
-            artworkURLsByPlaylistID[playlistID] = artworkURL
-        }
-
-        return artworkURLsByPlaylistID
-    }
-
-    func resolvedCatalogPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
-        guard !playlists.isEmpty else { return [:] }
-
-        var artworkURLsByPlaylistID: [String: String] = [:]
-
-        for playlist in playlists {
-            let playlistID = "\(playlist.id)"
-
-            if let artworkURL = Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900) {
-                artworkURLsByPlaylistID[playlistID] = artworkURL
-                continue
-            }
-
-            guard let loadedPlaylist = try? await playlist.with([.tracks], preferredSource: .catalog),
-                  let sharedTracks = try? await enrichedSharedTracks(from: loadedPlaylist),
-                  let artworkURL = sharedTracks.first(where: { Self.isRemoteArtworkURL($0.artworkURL) })?.artworkURL
-            else {
-                continue
-            }
-
-            artworkURLsByPlaylistID[playlistID] = artworkURL
         }
 
         return artworkURLsByPlaylistID
@@ -798,20 +663,6 @@ final class AppleMusicRecommendationService {
         }
     }
 
-    private func resolvedPlaylistArtworkURL(
-        playlistArtworkURL: String?,
-        tracks: [SharedPlaylistTrack]
-    ) async throws -> String? {
-        if Self.isRemoteArtworkURL(playlistArtworkURL), let playlistArtworkURL {
-            return playlistArtworkURL
-        }
-
-        if let trackArtworkURL = tracks.first(where: { Self.isRemoteArtworkURL($0.artworkURL) })?.artworkURL {
-            return trackArtworkURL
-        }
-
-        return nil
-    }
 }
 
 private final class CachedCatalogSong: NSObject {

@@ -139,21 +139,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                let preparedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
-                tracks = preparedTracks
-                summary = SharedPlaylistSummary(
-                    id: summary.id,
-                    ownerUID: summary.ownerUID,
-                    ownerNickname: summary.ownerNickname,
-                    title: summary.title,
-                    subtitle: summary.subtitle,
-                    artworkURL: summary.artworkURL ?? preparedTracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL,
-                    sourcePlaylistID: summary.sourcePlaylistID,
-                    sourcePlaylistURL: summary.sourcePlaylistURL,
-                    trackCount: preparedTracks.count,
-                    updatedAt: summary.updatedAt,
-                    tracks: preparedTracks
-                )
+                // 전달받은 스냅샷을 먼저 표시한다. 상세 진입 시 제목 검색을 하면
+                // 유사 제목의 다른 곡으로 바뀌고 목록이 늦게 나타날 수 있다.
+                tracks = summary.tracks
 
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
