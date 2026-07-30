@@ -2,6 +2,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
+    @State private var playingFriendSongID: String?
 
     var body: some View {
         NavigationStack {
@@ -104,7 +105,10 @@ struct HomeView: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 12) {
                         ForEach(vm.friendRecentSongs) { activity in
-                            FriendRecentMusicCard(activity: activity)
+                            FriendRecentMusicCard(
+                                activity: activity,
+                                playingSongID: $playingFriendSongID
+                            )
                         }
                     }
                 }
@@ -173,25 +177,27 @@ struct HomeView: View {
 
 private struct FriendRecentMusicCard: View {
     let activity: FriendRecentSongActivity
-    @State private var isPlaying = false
+    @Binding var playingSongID: String?
     @State private var playbackError: String?
+
+    private var isPlaying: Bool {
+        playingSongID == activity.id
+    }
 
     var body: some View {
         Button {
             Task { await playSong() }
         } label: {
             VStack(alignment: .leading, spacing: 7) {
-                ZStack(alignment: .bottomTrailing) {
+                ZStack {
                     artwork
                         .frame(width: 112, height: 112)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-                    Image(systemName: isPlaying ? "speaker.wave.2.fill" : "play.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 32, height: 32)
-                        .background(.black.opacity(0.6), in: Circle())
-                        .padding(8)
+                    if isPlaying {
+                        PlayingWaveformView()
+                            .transition(.opacity.combined(with: .scale(scale: 0.84)))
+                    }
                 }
 
                 Text("\(activity.friendNickname) 님")
@@ -237,13 +243,43 @@ private struct FriendRecentMusicCard: View {
             return
         }
 
-        isPlaying = true
+        playingSongID = activity.id
         playbackError = nil
         do {
             try await AppleMusicRecommendationService.shared.playTracks(with: [songStoreID])
         } catch {
             playbackError = "재생을 시작하지 못했어요"
+            playingSongID = nil
         }
-        isPlaying = false
+    }
+}
+
+private struct PlayingWaveformView: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 5) {
+            waveBar(height: 34, delay: 0.0)
+            waveBar(height: 22, delay: 0.12)
+            waveBar(height: 42, delay: 0.24)
+            waveBar(height: 28, delay: 0.36)
+        }
+        .frame(width: 62, height: 58)
+        .background(.black.opacity(0.22), in: Circle())
+        .onAppear { isAnimating = true }
+        .accessibilityLabel("재생 중")
+    }
+
+    private func waveBar(height: CGFloat, delay: Double) -> some View {
+        Capsule()
+            .fill(.white)
+            .frame(width: 7, height: height)
+            .scaleEffect(y: isAnimating ? 0.52 : 1, anchor: .center)
+            .animation(
+                .easeInOut(duration: 0.52)
+                    .repeatForever(autoreverses: true)
+                    .delay(delay),
+                value: isAnimating
+            )
     }
 }
