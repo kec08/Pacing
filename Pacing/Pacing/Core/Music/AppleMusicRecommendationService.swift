@@ -36,6 +36,7 @@ struct MoodPlaylistShelfItem: Identifiable {
 enum AppleMusicRecommendationError: LocalizedError {
     case notAuthorized
     case subscriptionUnavailable
+    case catalogUnavailable
     case noPlayableTracks
 
     var errorDescription: String? {
@@ -44,6 +45,8 @@ enum AppleMusicRecommendationError: LocalizedError {
             return "Apple Music 권한이 필요해요."
         case .subscriptionUnavailable:
             return "Apple Music 구독 상태를 확인해주세요."
+        case .catalogUnavailable:
+            return "Apple Music 추천을 일시적으로 불러올 수 없어요."
         case .noPlayableTracks:
             return "재생할 수 있는 곡을 찾지 못했어요."
         }
@@ -118,15 +121,20 @@ final class AppleMusicRecommendationService {
         }
 
         let recentlyPlayedAlbums: [Album]
+        let didReceiveRecentlyPlayedResponse: Bool
         do {
             recentlyPlayedAlbums = try await fetchRecentlyPlayedAlbums(limit: limit)
+            didReceiveRecentlyPlayedResponse = true
         } catch {
             // Keep recommendations available even if recent-played lookup fails.
             recentlyPlayedAlbums = []
+            didReceiveRecentlyPlayedResponse = false
         }
+
         var playlists: [Playlist] = []
-        let genreAlbumRows = try await fetchGenreAlbumRows()
-        let moodPlaylists = try await fetchMoodPlaylists()
+        let genreResult = await fetchGenreAlbumRows()
+        let moodResult = await fetchMoodPlaylists()
+        var didReceivePlaylistResponse = false
 
         do {
             var request = MusicPersonalRecommendationsRequest()
@@ -138,31 +146,44 @@ final class AppleMusicRecommendationService {
                 .uniquedByID()
                 .prefix(limit)
                 .map { $0 }
+            didReceivePlaylistResponse = true
 
         } catch {
             playlists = []
         }
 
         if playlists.isEmpty {
-            var chartsRequest = MusicCatalogChartsRequest(types: [Playlist.self])
-            chartsRequest.limit = limit
-            let charts = try await chartsRequest.response()
-            playlists = charts.playlistCharts
-                .flatMap { Array($0.items) }
-                .uniquedByID()
-                .prefix(limit)
-                .map { $0 }
+            do {
+                var chartsRequest = MusicCatalogChartsRequest(types: [Playlist.self])
+                chartsRequest.limit = limit
+                let charts = try await chartsRequest.response()
+                playlists = charts.playlistCharts
+                    .flatMap { Array($0.items) }
+                    .uniquedByID()
+                    .prefix(limit)
+                    .map { $0 }
+                didReceivePlaylistResponse = true
+            } catch {
+                playlists = []
+            }
+        }
+
+        guard didReceiveRecentlyPlayedResponse ||
+            genreResult.didReceiveResponse ||
+            moodResult.didReceiveResponse ||
+            didReceivePlaylistResponse else {
+            throw AppleMusicRecommendationError.catalogUnavailable
         }
 
         return ShareRecommendationBundle(
             recentlyPlayedAlbums: recentlyPlayedAlbums,
             playlists: playlists,
-            genreAlbumRows: genreAlbumRows,
-            moodPlaylists: moodPlaylists
+            genreAlbumRows: genreResult.items,
+            moodPlaylists: moodResult.items
         )
     }
 
-    func fetchGenreAlbumRows() async throws -> [GenreAlbumRow] {
+    private func fetchGenreAlbumRows() async -> (items: [GenreAlbumRow], didReceiveResponse: Bool) {
         let genreQueries: [(label: String, term: String)] = [
             ("R&B", "R&B"),
             ("인디", "Indie"),
@@ -171,25 +192,31 @@ final class AppleMusicRecommendationService {
         ]
 
         var rows: [GenreAlbumRow] = []
+        var didReceiveResponse = false
 
         for query in genreQueries {
-            var request = MusicCatalogSearchRequest(term: query.term, types: [Album.self])
-            request.limit = 5
-            let response = try await request.response()
+            do {
+                var request = MusicCatalogSearchRequest(term: query.term, types: [Album.self])
+                request.limit = 5
+                let response = try await request.response()
+                didReceiveResponse = true
 
-            let albums = response.albums.prefix(6).map {
-                GenreAlbumShelfItem(genreTitle: query.label, album: $0)
-            }
+                let albums = response.albums.prefix(6).map {
+                    GenreAlbumShelfItem(genreTitle: query.label, album: $0)
+                }
 
-            if !albums.isEmpty {
-                rows.append(GenreAlbumRow(genreTitle: query.label, albums: Array(albums)))
+                if !albums.isEmpty {
+                    rows.append(GenreAlbumRow(genreTitle: query.label, albums: Array(albums)))
+                }
+            } catch {
+                continue
             }
         }
 
-        return rows
+        return (rows, didReceiveResponse)
     }
 
-    func fetchMoodPlaylists() async throws -> [MoodPlaylistShelfItem] {
+    private func fetchMoodPlaylists() async -> (items: [MoodPlaylistShelfItem], didReceiveResponse: Bool) {
         let moodQueries: [(label: String, term: String)] = [
             ("Chill", "Chill"),
             ("Workout", "Workout"),
@@ -198,18 +225,24 @@ final class AppleMusicRecommendationService {
         ]
 
         var items: [MoodPlaylistShelfItem] = []
+        var didReceiveResponse = false
 
         for query in moodQueries {
-            var request = MusicCatalogSearchRequest(term: query.term, types: [Playlist.self])
-            request.limit = 5
-            let response = try await request.response()
+            do {
+                var request = MusicCatalogSearchRequest(term: query.term, types: [Playlist.self])
+                request.limit = 5
+                let response = try await request.response()
+                didReceiveResponse = true
 
-            if let playlist = response.playlists.first {
-                items.append(MoodPlaylistShelfItem(moodTitle: query.label, playlist: playlist))
+                if let playlist = response.playlists.first {
+                    items.append(MoodPlaylistShelfItem(moodTitle: query.label, playlist: playlist))
+                }
+            } catch {
+                continue
             }
         }
 
-        return items
+        return (items, didReceiveResponse)
     }
 
     func fetchRecentlyPlayedAlbums(limit: Int = 8) async throws -> [Album] {

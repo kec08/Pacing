@@ -161,13 +161,18 @@ final class SongViewModel: ObservableObject {
                 let bundle = try await musicService.fetchRecommendations()
                 return (subscription, bundle)
             } catch let error as AppleMusicRecommendationError {
-                throw error
+                switch error {
+                case .notAuthorized, .subscriptionUnavailable:
+                    throw error
+                case .catalogUnavailable, .noPlayableTracks:
+                    lastError = error
+                }
             } catch {
                 lastError = error
-
-                guard attempt < recommendationRetryDelays.count else { break }
-                try? await Task.sleep(nanoseconds: recommendationRetryDelays[attempt])
             }
+
+            guard attempt < recommendationRetryDelays.count else { break }
+            try? await Task.sleep(nanoseconds: recommendationRetryDelays[attempt])
         }
 
         throw lastError ?? AppleMusicRecommendationError.subscriptionUnavailable
@@ -181,7 +186,7 @@ final class SongViewModel: ObservableObject {
         switch recommendationError {
         case .notAuthorized, .subscriptionUnavailable:
             return false
-        case .noPlayableTracks:
+        case .catalogUnavailable, .noPlayableTracks:
             return true
         }
     }
