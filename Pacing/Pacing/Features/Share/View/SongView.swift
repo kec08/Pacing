@@ -98,33 +98,6 @@ struct SongView: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
             }
-
-            Spacer(minLength: 12)
-
-            Button {
-                Task { await vm.syncMyPlaylistsIfPossible() }
-            } label: {
-                HStack(spacing: 6) {
-                    if vm.isSyncingLibrary {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Color.main500)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-
-                    Text("내 플레이리스트 동기화")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(Color.main500)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.main500.opacity(0.12))
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(vm.isSyncingLibrary)
         }
     }
 
@@ -236,7 +209,7 @@ struct SongView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("장르별 추천 앨범")
 
-            if !vm.hasCompletedInitialLoad && vm.genreAlbumRows.isEmpty {
+            if vm.isLoadingRecommendations && vm.genreAlbumRows.isEmpty {
                 albumSkeletonRow
             } else if vm.musicAuthorizationStatus != .authorized {
                 infoCard(
@@ -281,7 +254,7 @@ struct SongView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("나의 무드 찾기")
 
-            if !vm.hasCompletedInitialLoad && vm.moodPlaylists.isEmpty {
+            if vm.isLoadingRecommendations && vm.moodPlaylists.isEmpty {
                 recommendationSkeletonRow
             } else if vm.musicAuthorizationStatus != .authorized {
                 infoCard(
