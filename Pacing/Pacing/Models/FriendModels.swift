@@ -75,6 +75,16 @@ struct FriendRecentSongActivity: Identifiable, Equatable {
     }
 }
 
+struct FriendRecentRunActivity: Identifiable {
+    let friendUID: String
+    let friendNickname: String
+    let run: RunRecord
+
+    var id: String {
+        "\(friendUID)_\(run.id)"
+    }
+}
+
 enum FriendActivityText {
     static func runningStatus(lastRunDate: Date?) -> String {
         guard let lastRunDate else {

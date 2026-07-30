@@ -7,6 +7,7 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var friend: FriendUser
     @Published var relationship: FriendRelationship
     @Published var stats: FriendProfileStats = .empty
+    @Published var recentRuns: [RunRecord] = []
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var isLoading: Bool = false
     @Published var isUpdatingRelationship: Bool = false
@@ -26,11 +27,13 @@ final class FriendProfileViewModel: ObservableObject {
         do {
             async let profileTask = service.fetchFriendUserProfile(uid: friend.id, source: .friend)
             async let statsTask = service.fetchFriendProfileStats(uid: friend.id)
+            async let runsTask = service.fetchRunHistory(uid: friend.id, limit: 5)
             async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 5)
             async let relationshipTask = fetchRelationship()
 
             friend = try await profileTask
             stats = try await statsTask
+            recentRuns = try await runsTask
             recentSongs = try await songsTask
             relationship = try await relationshipTask
         } catch {
