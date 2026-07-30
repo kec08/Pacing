@@ -43,6 +43,7 @@ final class RunningMusicViewModel: ObservableObject {
     private var playbackClock: AnyCancellable?
     private var optimisticPlaybackBaseTime: TimeInterval?
     private var optimisticPlaybackStartedAt: Date?
+    private var pendingTrackPersistentID: MPMediaEntityPersistentID?
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -121,7 +122,7 @@ final class RunningMusicViewModel: ObservableObject {
             player.setQueue(with: collection)
             try? await player.prepareToPlay()
             player.play()
-            currentSongIndex = 0
+            presentTrack(at: 0, mediaItem: match.items.first)
             syncCurrentState()
         } else {
             cachedMediaItems = []
@@ -132,11 +133,12 @@ final class RunningMusicViewModel: ObservableObject {
     func play(at index: Int) async {
         guard index >= 0, index < cachedMediaItems.count else { return }
         isManualSeeking = true
-        // UI 애니메이션이 완료된 후 재생 시작
-        try? await Task.sleep(nanoseconds: 150_000_000)
         let targetItem = cachedMediaItems[index]
+        presentTrack(at: index, mediaItem: targetItem)
         player.nowPlayingItem = targetItem
         player.play()
+        syncCurrentState()
+        try? await Task.sleep(nanoseconds: 80_000_000)
         syncCurrentState()
         isManualSeeking = false
     }
@@ -158,6 +160,12 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     func currentSongSnapshot() -> PlayerSongSnapshot? {
+        // 시스템 플레이어의 전환 알림보다 UI 갱신이 먼저 일어나는 짧은 구간에는
+        // 사용자가 선택한 다음 곡 정보를 우선 표시해 커버·제목이 엇갈리지 않게 한다.
+        if pendingTrackPersistentID != nil, let nowPlayingSnapshot {
+            return nowPlayingSnapshot
+        }
+
         if let item = player.nowPlayingItem, !item.playbackStoreID.isEmpty {
             return PlayerSongSnapshot(
                 title: item.title ?? currentSong?.title ?? "",
@@ -263,18 +271,22 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 이전 곡
     func skipToPrevious() async {
-        let newIndex = max(0, currentSongIndex - 1)
+        guard currentSongIndex > 0 else { return }
+        let newIndex = currentSongIndex - 1
         isGoingForward = false
-        currentSongIndex = newIndex
-        await play(at: newIndex)
+        presentTrack(at: newIndex, mediaItem: cachedMediaItems[newIndex])
+        player.skipToPreviousItem()
+        await synchronizeTrackTransition(to: newIndex)
     }
 
     // MARK: - 다음 곡
     func skipToNext() async {
-        let newIndex = min(cachedMediaItems.count - 1, currentSongIndex + 1)
+        guard currentSongIndex + 1 < cachedMediaItems.count else { return }
+        let newIndex = currentSongIndex + 1
         isGoingForward = true
-        currentSongIndex = newIndex
-        await play(at: newIndex)
+        presentTrack(at: newIndex, mediaItem: cachedMediaItems[newIndex])
+        player.skipToNextItem()
+        await synchronizeTrackTransition(to: newIndex)
     }
 
     // MARK: - 현재 상태 동기화
@@ -296,7 +308,10 @@ final class RunningMusicViewModel: ObservableObject {
             artworkURL: nil,
             artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
         )
-        if let idx = cachedMediaItems.firstIndex(where: { $0.persistentID == item.persistentID }) {
+        if let idx = queueIndex(for: item) {
+            if pendingTrackPersistentID == item.persistentID {
+                pendingTrackPersistentID = nil
+            }
             if !isManualSeeking && idx != currentSongIndex {
                 isGoingForward = idx > currentSongIndex
                 currentSongIndex = idx
@@ -311,6 +326,56 @@ final class RunningMusicViewModel: ObservableObject {
                     artwork: item.artwork?.image(at: CGSize(width: 320, height: 320))
                 )
             }
+        }
+    }
+
+    private func presentTrack(at index: Int, mediaItem: MPMediaItem?) {
+        guard queueSongs.indices.contains(index) else { return }
+
+        currentSongIndex = index
+        currentSong = queueSongs[index]
+        pendingTrackPersistentID = mediaItem?.persistentID
+        nowPlayingSnapshot = PlayerSongSnapshot(
+            title: mediaItem?.title ?? currentSong?.title ?? "",
+            artistName: mediaItem?.artist ?? currentSong?.artistName ?? "Apple Music",
+            songStoreID: mediaItem?.playbackStoreID ?? "\(queueSongs[index].id)",
+            artworkURL: artworkURL(for: queueSongs[index]),
+            artwork: mediaItem?.artwork?.image(at: CGSize(width: 320, height: 320))
+        )
+        displayPlaybackTime = 0
+        stopOptimisticPlaybackClock()
+    }
+
+    private func synchronizeTrackTransition(to index: Int) async {
+        let targetItem = cachedMediaItems[index]
+
+        for delay: UInt64 in [80_000_000, 180_000_000] {
+            try? await Task.sleep(nanoseconds: delay)
+            if player.nowPlayingItem?.persistentID == targetItem.persistentID {
+                syncCurrentState()
+                return
+            }
+        }
+
+        // 시스템 플레이어가 항목 변경 알림을 놓친 경우에도 실제 재생 큐를 보정한다.
+        player.nowPlayingItem = targetItem
+        player.play()
+        syncCurrentState()
+    }
+
+    private func queueIndex(for item: MPMediaItem) -> Int? {
+        if let index = cachedMediaItems.firstIndex(where: { $0.persistentID == item.persistentID }) {
+            return index
+        }
+
+        let storeID = item.playbackStoreID
+        if !storeID.isEmpty,
+           let index = queueSongs.firstIndex(where: { "\($0.id)" == storeID }) {
+            return index
+        }
+
+        return queueSongs.firstIndex { song in
+            song.title == item.title && song.artistName == item.artist
         }
     }
 

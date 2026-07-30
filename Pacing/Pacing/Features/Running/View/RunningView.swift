@@ -406,12 +406,12 @@ struct RunningView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .frame(width: 44, height: 44)
-                    if let artworkURL = musicVM.artworkURL(for: playlist) {
+                    if let artwork = playlist.artwork {
+                        ArtworkImage(artwork, width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else if let artworkURL = musicVM.artworkURL(for: playlist) {
                         RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
                             .frame(width: 44, height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } else if let artwork = playlist.artwork {
-                        ArtworkImage(artwork, width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     } else {
                         Image(systemName: "music.note.list")
