@@ -406,7 +406,13 @@ struct RunningView: View {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color(.systemGray5))
                         .frame(width: 44, height: 44)
-                    if let artworkURL = musicVM.artworkURL(for: playlist) {
+                    if let artwork = musicVM.localArtwork(for: playlist) {
+                        Image(uiImage: artwork)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else if let artworkURL = musicVM.artworkURL(for: playlist) {
                         RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
                             .frame(width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -1106,7 +1112,13 @@ struct RunningView: View {
                             } label: {
                                 VStack(spacing: 8) {
                                     Group {
-                                        if let artwork = playlist.artwork {
+                                        if let artwork = musicVM.localArtwork(for: playlist) {
+                                            Image(uiImage: artwork)
+                                                .resizable()
+                                                .scaledToFill()
+                                                .frame(width: 88, height: 88)
+                                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                                        } else if let artwork = playlist.artwork {
                                             ArtworkImage(artwork, width: 88, height: 88)
                                                 .clipShape(RoundedRectangle(cornerRadius: 12))
                                         } else if let artworkURL = musicVM.artworkURL(for: playlist) {

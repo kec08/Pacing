@@ -34,6 +34,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published private(set) var currentPlaylistName: String? = nil
     @Published private(set) var queueArtworkURLsBySongID: [String: String] = [:]
     @Published private(set) var playlistArtworkURLsByPlaylistID: [String: String] = [:]
+    @Published private(set) var localPlaylistArtworkImagesByPlaylistID: [String: UIImage] = [:]
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private let musicService = AppleMusicRecommendationService.shared
@@ -82,11 +83,10 @@ final class RunningMusicViewModel: ObservableObject {
 
         for attempt in 0 ... playlistRetryDelays.count {
             do {
-                let fetchedPlaylists = try await musicService.fetchLibraryPlaylists(limit: 12)
+                let fetchedPlaylists = try await musicService.fetchLibraryPlaylists(limit: 8)
                 playlists = fetchedPlaylists
-                playlistArtworkURLsByPlaylistID = await musicService.resolvedLibraryPlaylistArtworkURLs(
-                    for: fetchedPlaylists
-                )
+                localPlaylistArtworkImagesByPlaylistID = localPlaylistArtworkImages(for: fetchedPlaylists)
+                loadPlaylistArtworkURLsInBackground(for: fetchedPlaylists)
                 return
             } catch {
                 guard attempt < playlistRetryDelays.count else { break }
@@ -95,6 +95,7 @@ final class RunningMusicViewModel: ObservableObject {
         }
 
         playlistArtworkURLsByPlaylistID = [:]
+        localPlaylistArtworkImagesByPlaylistID = [:]
     }
 
     // MARK: - 플레이리스트 재생
@@ -199,6 +200,38 @@ final class RunningMusicViewModel: ObservableObject {
         }
 
         return playlistArtworkURLsByPlaylistID["\(playlist.id)"]
+    }
+
+    func localArtwork(for playlist: Playlist) -> UIImage? {
+        localPlaylistArtworkImagesByPlaylistID["\(playlist.id)"]
+    }
+
+    private func loadPlaylistArtworkURLsInBackground(for playlists: [Playlist]) {
+        let playlistIDs = Set(playlists.map { "\($0.id)" })
+
+        Task { [weak self] in
+            guard let self else { return }
+            let artworkURLs = await self.musicService.resolvedLibraryPlaylistArtworkURLs(for: playlists)
+            guard Set(self.playlists.map({ "\($0.id)" })) == playlistIDs else { return }
+            self.playlistArtworkURLsByPlaylistID = artworkURLs
+        }
+    }
+
+    private func localPlaylistArtworkImages(for playlists: [Playlist]) -> [String: UIImage] {
+        let mediaPlaylists = MPMediaQuery.playlists().collections as? [MPMediaPlaylist] ?? []
+        var artworkImagesByPlaylistID: [String: UIImage] = [:]
+
+        for playlist in playlists {
+            guard let mediaPlaylist = mediaPlaylists.first(where: { $0.name == playlist.name }),
+                  let artwork = mediaPlaylist.representativeItem?.artwork?.image(at: CGSize(width: 180, height: 180))
+            else {
+                continue
+            }
+
+            artworkImagesByPlaylistID["\(playlist.id)"] = artwork
+        }
+
+        return artworkImagesByPlaylistID
     }
 
     func seek(to time: TimeInterval) {
