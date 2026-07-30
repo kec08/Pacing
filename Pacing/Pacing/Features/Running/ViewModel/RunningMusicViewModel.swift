@@ -44,6 +44,7 @@ final class RunningMusicViewModel: ObservableObject {
     private var optimisticPlaybackBaseTime: TimeInterval?
     private var optimisticPlaybackStartedAt: Date?
     private var pendingTrackPersistentID: MPMediaEntityPersistentID?
+    private var activePlaylistLoadID: UUID?
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -98,21 +99,16 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 플레이리스트 재생
     func play(playlist: Playlist) async {
+        let loadID = UUID()
+        activePlaylistLoadID = loadID
         currentPlaylistName = playlist.name
+        queueSongs = []
+        queueArtworkURLsBySongID = [:]
+        currentSong = nil
+        currentSongIndex = 0
 
-        // MusicKit에서 트랙 정보 로드
-        if let loaded = try? await playlist.with([.tracks]) {
-            queueSongs = loaded.tracks?.compactMap { track -> Song? in
-                if case .song(let song) = track { return song }
-                return nil
-            } ?? []
-        } else {
-            queueSongs = []
-        }
-
-        queueArtworkURLsBySongID = await musicService.resolvedArtworkURLs(for: queueSongs)
-
-        // MPMediaQuery로 플레이리스트 찾아서 재생
+        // 큐 전환은 네트워크 작업보다 먼저 처리한다. 수록곡/커버 보강을 기다리면
+        // 이전 곡이 수십 초 유지되는 문제가 생긴다.
         let query = MPMediaQuery.playlists()
         let mediaPlaylists = query.collections as? [MPMediaPlaylist] ?? []
 
@@ -120,12 +116,34 @@ final class RunningMusicViewModel: ObservableObject {
             cachedMediaItems = match.items
             let collection = MPMediaItemCollection(items: match.items)
             player.setQueue(with: collection)
-            try? await player.prepareToPlay()
+            if let firstItem = match.items.first {
+                presentTrack(at: 0, mediaItem: firstItem)
+                player.nowPlayingItem = firstItem
+            }
             player.play()
-            presentTrack(at: 0, mediaItem: match.items.first)
             syncCurrentState()
         } else {
             cachedMediaItems = []
+        }
+
+        Task { [weak self] in
+            guard let self,
+                  let loaded = try? await playlist.with([.tracks]),
+                  self.activePlaylistLoadID == loadID
+            else {
+                return
+            }
+
+            let loadedSongs = loaded.tracks?.compactMap { track -> Song? in
+                if case .song(let song) = track { return song }
+                return nil
+            } ?? []
+            self.queueSongs = loadedSongs
+            self.syncCurrentState()
+
+            let artworkURLs = await self.musicService.resolvedArtworkURLs(for: loadedSongs)
+            guard self.activePlaylistLoadID == loadID else { return }
+            self.queueArtworkURLsBySongID = artworkURLs
         }
     }
 
@@ -330,16 +348,15 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func presentTrack(at index: Int, mediaItem: MPMediaItem?) {
-        guard queueSongs.indices.contains(index) else { return }
-
         currentSongIndex = index
-        currentSong = queueSongs[index]
+        let song = queueSongs.indices.contains(index) ? queueSongs[index] : nil
+        currentSong = song
         pendingTrackPersistentID = mediaItem?.persistentID
         nowPlayingSnapshot = PlayerSongSnapshot(
-            title: mediaItem?.title ?? currentSong?.title ?? "",
-            artistName: mediaItem?.artist ?? currentSong?.artistName ?? "Apple Music",
-            songStoreID: mediaItem?.playbackStoreID ?? "\(queueSongs[index].id)",
-            artworkURL: artworkURL(for: queueSongs[index]),
+            title: mediaItem?.title ?? song?.title ?? "",
+            artistName: mediaItem?.artist ?? song?.artistName ?? "Apple Music",
+            songStoreID: mediaItem?.playbackStoreID ?? song.map { "\($0.id)" } ?? "",
+            artworkURL: artworkURL(for: song),
             artwork: mediaItem?.artwork?.image(at: CGSize(width: 320, height: 320))
         )
         displayPlaybackTime = 0
