@@ -21,7 +21,9 @@ final class SongViewModel: ObservableObject {
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
     private let recommendationRetryDelays: [UInt64] = [600_000_000, 1_200_000_000]
+    private let backgroundRecommendationRetryDelays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
     private var activeRecommendationLoadID: UUID?
+    private var backgroundRecommendationRetryCount = 0
 
     func load() async {
         errorMessage = nil
@@ -95,7 +97,7 @@ final class SongViewModel: ObservableObject {
         }
     }
 
-    private func loadRecommendations() async {
+    private func loadRecommendations(isBackgroundRetry: Bool = false) async {
         guard musicAuthorizationStatus == .authorized else {
             recentlyPlayedAlbums = []
             recommendedPlaylists = []
@@ -105,12 +107,17 @@ final class SongViewModel: ObservableObject {
             return
         }
 
+        if !isBackgroundRetry {
+            backgroundRecommendationRetryCount = 0
+        }
+
         let loadID = UUID()
         activeRecommendationLoadID = loadID
         isLoadingRecentlyPlayedAlbums = true
         isLoadingRecommendations = true
+        var keepsLoadingForBackgroundRetry = false
         defer {
-            if activeRecommendationLoadID == loadID {
+            if activeRecommendationLoadID == loadID && !keepsLoadingForBackgroundRetry {
                 isLoadingRecentlyPlayedAlbums = false
                 isLoadingRecommendations = false
             }
@@ -146,6 +153,11 @@ final class SongViewModel: ObservableObject {
             moodPlaylists = []
             hasCatalogAccess = false
 
+            if scheduleBackgroundRecommendationRetry(after: error, for: loadID) {
+                keepsLoadingForBackgroundRetry = true
+                return
+            }
+
             if shouldPresentRecommendationError(for: error) {
                 errorMessage = "Apple Music 추천을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
             }
@@ -176,6 +188,42 @@ final class SongViewModel: ObservableObject {
         }
 
         throw lastError ?? AppleMusicRecommendationError.subscriptionUnavailable
+    }
+
+    private func scheduleBackgroundRecommendationRetry(after error: Error, for loadID: UUID) -> Bool {
+        guard shouldRetryRecommendationLoading(after: error),
+              backgroundRecommendationRetryCount < backgroundRecommendationRetryDelays.count else {
+            return false
+        }
+
+        let delay = backgroundRecommendationRetryDelays[backgroundRecommendationRetryCount]
+        backgroundRecommendationRetryCount += 1
+
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled,
+                  let self,
+                  self.activeRecommendationLoadID == loadID else {
+                return
+            }
+
+            await self.loadRecommendations(isBackgroundRetry: true)
+        }
+
+        return true
+    }
+
+    private func shouldRetryRecommendationLoading(after error: Error) -> Bool {
+        guard let recommendationError = error as? AppleMusicRecommendationError else {
+            return true
+        }
+
+        switch recommendationError {
+        case .notAuthorized, .subscriptionUnavailable:
+            return false
+        case .catalogUnavailable, .noPlayableTracks:
+            return true
+        }
     }
 
     private func shouldPresentRecommendationError(for error: Error) -> Bool {
