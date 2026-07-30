@@ -10,6 +10,7 @@ final class SongViewModel: ObservableObject {
     @Published var recommendedPlaylists: [Playlist] = []
     @Published var genreAlbumRows: [GenreAlbumRow] = []
     @Published var moodPlaylists: [MoodPlaylistShelfItem] = []
+    @Published private(set) var recommendationArtworkURLsByPlaylistID: [String: String] = [:]
     @Published var musicAuthorizationStatus: MusicAuthorization.Status = MusicAuthorization.currentStatus
     @Published var hasCatalogAccess: Bool = false
     @Published var isLoadingFriends: Bool = false
@@ -103,6 +104,7 @@ final class SongViewModel: ObservableObject {
             recommendedPlaylists = []
             genreAlbumRows = []
             moodPlaylists = []
+            recommendationArtworkURLsByPlaylistID = [:]
             hasCatalogAccess = false
             return
         }
@@ -132,6 +134,9 @@ final class SongViewModel: ObservableObject {
             recommendedPlaylists = result.bundle.playlists
             genreAlbumRows = result.bundle.genreAlbumRows
             moodPlaylists = result.bundle.moodPlaylists
+            recommendationArtworkURLsByPlaylistID = await musicService.resolvedCatalogPlaylistArtworkURLs(
+                for: result.bundle.playlists
+            )
 
             let artworkURLs =
                 result.bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
@@ -151,6 +156,7 @@ final class SongViewModel: ObservableObject {
             recommendedPlaylists = []
             genreAlbumRows = []
             moodPlaylists = []
+            recommendationArtworkURLsByPlaylistID = [:]
             hasCatalogAccess = false
 
             if scheduleBackgroundRecommendationRetry(after: error, for: loadID) {
@@ -237,5 +243,10 @@ final class SongViewModel: ObservableObject {
         case .catalogUnavailable, .noPlayableTracks:
             return true
         }
+    }
+
+    func artworkURL(for recommendedPlaylist: Playlist) -> String? {
+        recommendationArtworkURLsByPlaylistID["\(recommendedPlaylist.id)"]
+            ?? recommendedPlaylist.artwork?.url(width: 900, height: 900)?.absoluteString
     }
 }

@@ -37,6 +37,7 @@ final class RunningMusicViewModel: ObservableObject {
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private let musicService = AppleMusicRecommendationService.shared
+    private let playlistRetryDelays: [UInt64] = [500_000_000, 1_200_000_000, 2_500_000_000]
     private var isManualSeeking: Bool = false
     private var seekSyncTask: Task<Void, Never>?
     private var playbackClock: AnyCancellable?
@@ -60,7 +61,7 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 권한 요청
     func requestAuthorization() async {
-        authStatus = await MusicAuthorization.request()
+        authStatus = await musicService.requestAuthorizationIfNeeded()
         if authStatus == .authorized {
             await fetchPlaylists()
             syncCurrentState()
@@ -69,18 +70,31 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 플레이리스트 fetch
     func fetchPlaylists() async {
-        guard authStatus == .authorized else { return }
-        isLoading = true
-        do {
-            let request = MusicLibraryRequest<Playlist>()
-            let response = try await request.response()
-            playlists = Array(response.items)
-            playlistArtworkURLsByPlaylistID = await musicService.resolvedLibraryPlaylistArtworkURLs(for: playlists)
-        } catch {
+        authStatus = await musicService.requestAuthorizationIfNeeded()
+        guard authStatus == .authorized else {
             playlists = []
             playlistArtworkURLsByPlaylistID = [:]
+            return
         }
-        isLoading = false
+
+        isLoading = true
+        defer { isLoading = false }
+
+        for attempt in 0 ... playlistRetryDelays.count {
+            do {
+                let fetchedPlaylists = try await musicService.fetchLibraryPlaylists(limit: 12)
+                playlists = fetchedPlaylists
+                playlistArtworkURLsByPlaylistID = await musicService.resolvedLibraryPlaylistArtworkURLs(
+                    for: fetchedPlaylists
+                )
+                return
+            } catch {
+                guard attempt < playlistRetryDelays.count else { break }
+                try? await Task.sleep(nanoseconds: playlistRetryDelays[attempt])
+            }
+        }
+
+        playlistArtworkURLsByPlaylistID = [:]
     }
 
     // MARK: - 플레이리스트 재생

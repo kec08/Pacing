@@ -463,6 +463,32 @@ final class AppleMusicRecommendationService {
         return artworkURLsByPlaylistID
     }
 
+    func resolvedCatalogPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
+        guard !playlists.isEmpty else { return [:] }
+
+        var artworkURLsByPlaylistID: [String: String] = [:]
+
+        for playlist in playlists {
+            let playlistID = "\(playlist.id)"
+
+            if let artworkURL = Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900) {
+                artworkURLsByPlaylistID[playlistID] = artworkURL
+                continue
+            }
+
+            guard let loadedPlaylist = try? await playlist.with([.tracks], preferredSource: .catalog),
+                  let sharedTracks = try? await enrichedSharedTracks(from: loadedPlaylist),
+                  let artworkURL = sharedTracks.first(where: { Self.isRemoteArtworkURL($0.artworkURL) })?.artworkURL
+            else {
+                continue
+            }
+
+            artworkURLsByPlaylistID[playlistID] = artworkURL
+        }
+
+        return artworkURLsByPlaylistID
+    }
+
     func addToLibrary(playlist: Playlist) async throws {
         try await MusicLibrary.shared.add(playlist)
     }
