@@ -14,11 +14,8 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let tracks: [SharedPlaylistTrack]
 
     var effectiveArtworkURL: String? {
-        if let artworkURL, !artworkURL.isEmpty {
-            return artworkURL
-        }
-
-        return tracks.lazy.compactMap(\.effectiveArtworkURL).first
+        guard let artworkURL, !artworkURL.isEmpty else { return nil }
+        return artworkURL
     }
 }
 

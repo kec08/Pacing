@@ -1,6 +1,6 @@
-import Foundation
 import Combine
 import FirebaseAuth
+import Foundation
 import MusicKit
 
 @MainActor
@@ -15,12 +15,15 @@ final class SongViewModel: ObservableObject {
     @Published var isLoadingFriends: Bool = false
     @Published var isLoadingRecentlyPlayedAlbums: Bool = false
     @Published var isLoadingRecommendations: Bool = false
-    @Published var isSyncingLibrary: Bool = false
     @Published var hasCompletedInitialLoad: Bool = false
     @Published var errorMessage: String?
 
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
+    private let recommendationRetryDelays: [UInt64] = [600_000_000, 1_200_000_000]
+    private let backgroundRecommendationRetryDelays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
+    private var activeRecommendationLoadID: UUID?
+    private var backgroundRecommendationRetryCount = 0
 
     func load() async {
         errorMessage = nil
@@ -45,16 +48,9 @@ final class SongViewModel: ObservableObject {
         await loadFriendPlaylists()
     }
 
-    func syncMyPlaylistsIfPossible() async {
-        await syncMyPlaylistsIfPossible(showError: true)
-    }
-
     func syncMyPlaylistsIfPossible(showError: Bool) async {
         guard musicAuthorizationStatus == .authorized else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
-
-        isSyncingLibrary = true
-        defer { isSyncingLibrary = false }
 
         let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
 
@@ -79,17 +75,11 @@ final class SongViewModel: ObservableObject {
 
         do {
             let fetchedPlaylists = try await firestoreService.fetchFriendSharedPlaylists(currentUID: uid)
-            var enrichedPlaylists: [SharedPlaylistSummary] = []
-            enrichedPlaylists.reserveCapacity(fetchedPlaylists.count)
+            // 저장된 수록곡과 플레이리스트 대표 커버를 즉시 표시한다. 화면 진입 시
+            // 카탈로그를 재검색하면 유사 제목의 다른 곡으로 매핑될 수 있다.
+            friendSharedPlaylists = fetchedPlaylists
 
-            for playlist in fetchedPlaylists {
-                let enrichedPlaylist = await musicService.enrichedSharedPlaylistSummary(playlist)
-                enrichedPlaylists.append(enrichedPlaylist)
-            }
-
-            friendSharedPlaylists = enrichedPlaylists
-
-            let artworkURLs = enrichedPlaylists.compactMap(\.effectiveArtworkURL)
+            let artworkURLs = fetchedPlaylists.compactMap(\.effectiveArtworkURL)
             Task {
                 await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
             }
@@ -101,7 +91,7 @@ final class SongViewModel: ObservableObject {
         }
     }
 
-    private func loadRecommendations() async {
+    private func loadRecommendations(isBackgroundRetry: Bool = false) async {
         guard musicAuthorizationStatus == .authorized else {
             recentlyPlayedAlbums = []
             recommendedPlaylists = []
@@ -111,41 +101,136 @@ final class SongViewModel: ObservableObject {
             return
         }
 
+        if !isBackgroundRetry {
+            backgroundRecommendationRetryCount = 0
+        }
+
+        let loadID = UUID()
+        activeRecommendationLoadID = loadID
         isLoadingRecentlyPlayedAlbums = true
         isLoadingRecommendations = true
+        var keepsLoadingForBackgroundRetry = false
         defer {
-            isLoadingRecentlyPlayedAlbums = false
-            isLoadingRecommendations = false
+            if activeRecommendationLoadID == loadID && !keepsLoadingForBackgroundRetry {
+                isLoadingRecentlyPlayedAlbums = false
+                isLoadingRecommendations = false
+            }
         }
 
         do {
-            let subscription = try await musicService.currentSubscription()
-            hasCatalogAccess = subscription.canPlayCatalogContent
+            let result = try await fetchRecommendationsWithRetry()
+            guard activeRecommendationLoadID == loadID else { return }
 
-            let bundle = try await musicService.fetchRecommendations()
-            recentlyPlayedAlbums = bundle.recentlyPlayedAlbums
-            recommendedPlaylists = bundle.playlists
-            genreAlbumRows = bundle.genreAlbumRows
-            moodPlaylists = bundle.moodPlaylists
+            hasCatalogAccess = result.subscription.canPlayCatalogContent
+            recentlyPlayedAlbums = result.bundle.recentlyPlayedAlbums
+            recommendedPlaylists = result.bundle.playlists
+            genreAlbumRows = result.bundle.genreAlbumRows
+            moodPlaylists = result.bundle.moodPlaylists
 
             let artworkURLs =
-                bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
-                bundle.playlists.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
-                bundle.genreAlbumRows
-                    .flatMap(\.albums)
-                    .compactMap { $0.album.artwork?.url(width: 900, height: 900)?.absoluteString } +
-                bundle.moodPlaylists.compactMap { $0.playlist.artwork?.url(width: 900, height: 900)?.absoluteString }
+                result.bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                result.bundle.playlists.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                result.bundle.genreAlbumRows
+                .flatMap(\.albums)
+                .compactMap { $0.album.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                result.bundle.moodPlaylists.compactMap { $0.playlist.artwork?.url(width: 900, height: 900)?.absoluteString }
 
             Task {
                 await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
             }
         } catch {
+            guard activeRecommendationLoadID == loadID else { return }
+
             recentlyPlayedAlbums = []
             recommendedPlaylists = []
             genreAlbumRows = []
             moodPlaylists = []
             hasCatalogAccess = false
-            errorMessage = "Apple Music 추천을 불러오지 못했어요."
+
+            if scheduleBackgroundRecommendationRetry(after: error, for: loadID) {
+                keepsLoadingForBackgroundRetry = true
+                return
+            }
+
+            if shouldPresentRecommendationError(for: error) {
+                errorMessage = "Apple Music 추천을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
+            }
         }
     }
+
+    private func fetchRecommendationsWithRetry() async throws -> (subscription: MusicSubscription, bundle: ShareRecommendationBundle) {
+        var lastError: Error?
+
+        for attempt in 0 ... recommendationRetryDelays.count {
+            do {
+                let subscription = try await musicService.currentSubscription()
+                let bundle = try await musicService.fetchRecommendations()
+                return (subscription, bundle)
+            } catch let error as AppleMusicRecommendationError {
+                switch error {
+                case .notAuthorized, .subscriptionUnavailable:
+                    throw error
+                case .catalogUnavailable, .noPlayableTracks:
+                    lastError = error
+                }
+            } catch {
+                lastError = error
+            }
+
+            guard attempt < recommendationRetryDelays.count else { break }
+            try? await Task.sleep(nanoseconds: recommendationRetryDelays[attempt])
+        }
+
+        throw lastError ?? AppleMusicRecommendationError.subscriptionUnavailable
+    }
+
+    private func scheduleBackgroundRecommendationRetry(after error: Error, for loadID: UUID) -> Bool {
+        guard shouldRetryRecommendationLoading(after: error),
+              backgroundRecommendationRetryCount < backgroundRecommendationRetryDelays.count else {
+            return false
+        }
+
+        let delay = backgroundRecommendationRetryDelays[backgroundRecommendationRetryCount]
+        backgroundRecommendationRetryCount += 1
+
+        Task { [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled,
+                  let self,
+                  self.activeRecommendationLoadID == loadID else {
+                return
+            }
+
+            await self.loadRecommendations(isBackgroundRetry: true)
+        }
+
+        return true
+    }
+
+    private func shouldRetryRecommendationLoading(after error: Error) -> Bool {
+        guard let recommendationError = error as? AppleMusicRecommendationError else {
+            return true
+        }
+
+        switch recommendationError {
+        case .notAuthorized, .subscriptionUnavailable:
+            return false
+        case .catalogUnavailable, .noPlayableTracks:
+            return true
+        }
+    }
+
+    private func shouldPresentRecommendationError(for error: Error) -> Bool {
+        guard let recommendationError = error as? AppleMusicRecommendationError else {
+            return true
+        }
+
+        switch recommendationError {
+        case .notAuthorized, .subscriptionUnavailable:
+            return false
+        case .catalogUnavailable, .noPlayableTracks:
+            return true
+        }
+    }
+
 }
