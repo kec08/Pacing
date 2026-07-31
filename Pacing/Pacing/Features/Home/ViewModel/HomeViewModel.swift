@@ -8,6 +8,7 @@ final class HomeViewModel: ObservableObject {
     @Published var recentRuns: [RunRecord] = []
     @Published var friendRecentRuns: [FriendRecentRunActivity] = []
     @Published var friendRecentSongs: [FriendRecentSongActivity] = []
+    @Published private(set) var friendSongArtworkURLs: [String: String] = [:]
     @Published private(set) var isLoadingRuns: Bool = false
     @Published private(set) var isLoadingFriendRuns: Bool = false
     @Published private(set) var isLoadingFriendMusic: Bool = false
@@ -21,6 +22,7 @@ final class HomeViewModel: ObservableObject {
     }
 
     private let cal = Calendar.current
+    private let musicService = AppleMusicRecommendationService.shared
 
     func loadHomeData() async {
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
@@ -30,6 +32,7 @@ final class HomeViewModel: ObservableObject {
             weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
             friendRecentRuns = []
             friendRecentSongs = []
+            friendSongArtworkURLs = [:]
             isLoadingRuns = false
             isLoadingFriendRuns = false
             isLoadingFriendMusic = false
@@ -88,11 +91,35 @@ final class HomeViewModel: ObservableObject {
         defer { isLoadingFriendMusic = false }
 
         do {
-            friendRecentSongs = try await FirestoreService.shared.fetchFriendsRecentSongs(currentUID: uid)
+            let activities = try await FirestoreService.shared.fetchFriendsRecentSongs(currentUID: uid)
+            friendRecentSongs = activities
+            friendSongArtworkURLs = await resolveMissingFriendSongArtworkURLs(for: activities)
         } catch {
             friendRecentSongs = []
+            friendSongArtworkURLs = [:]
             friendMusicLoadError = "친구가 최근에 들은 음악을 불러오지 못했어요."
         }
+    }
+
+    private func resolveMissingFriendSongArtworkURLs(
+        for activities: [FriendRecentSongActivity]
+    ) async -> [String: String] {
+        var artworkURLs: [String: String] = [:]
+
+        for activity in activities where activity.song.artworkData?.isEmpty != false && activity.song.artworkURL?.isEmpty != false {
+            guard let artworkURL = await musicService.resolvedRecentSongArtworkURL(
+                title: activity.song.title,
+                artistName: activity.song.artistName
+            ) else {
+                continue
+            }
+            artworkURLs[activity.id] = artworkURL
+        }
+
+        Task {
+            await ArtworkImageStore.shared.prefetch(urlStrings: Array(artworkURLs.values))
+        }
+        return artworkURLs
     }
 
     private func loadFriendRecentRuns(uid: String) async {

@@ -22,7 +22,8 @@ struct RunningView: View {
     @State private var showMusicSheet = false
     @State private var showNearbySheet = false
     @State private var countdown: Int? = nil
-    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    // `.userLocation`은 시스템 위치 표시를 함께 노출할 수 있어, 지도에는 커스텀 프로필 핀만 보이도록 한다.
+    @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil

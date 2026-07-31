@@ -388,6 +388,16 @@ final class AppleMusicRecommendationService {
         return artworkURLsBySongID
     }
 
+    /// Firestore에 저장된 최근 재생 이력은 오래된 데이터에 커버 URL이 없을 수 있어
+    /// 제목·아티스트로 카탈로그를 다시 찾아 대표 커버를 보완한다.
+    func resolvedRecentSongArtworkURL(title: String, artistName: String) async -> String? {
+        guard let song = try? await searchCatalogSong(title: title, artist: artistName) else {
+            return nil
+        }
+
+        return Self.remoteArtworkURL(from: song.artwork, width: 900, height: 900)
+    }
+
     func resolvedLibraryPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
         guard !playlists.isEmpty else { return [:] }
 

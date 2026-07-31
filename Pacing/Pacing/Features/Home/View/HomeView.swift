@@ -136,6 +136,7 @@ struct HomeView: View {
                         ForEach(vm.friendRecentSongs) { activity in
                             FriendRecentMusicCard(
                                 activity: activity,
+                                artworkURL: vm.friendSongArtworkURLs[activity.id],
                                 playingSongID: $playingFriendSongID
                             )
                         }
@@ -206,6 +207,7 @@ struct HomeView: View {
 
 private struct FriendRecentMusicCard: View {
     let activity: FriendRecentSongActivity
+    let artworkURL: String?
     @Binding var playingSongID: String?
     @State private var playbackError: String?
 
@@ -221,17 +223,16 @@ private struct FriendRecentMusicCard: View {
                 ZStack {
                     artwork
                         .frame(width: 112, height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     if isPlaying {
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(.black.opacity(0.42))
-                            .shadow(color: .black.opacity(0.32), radius: 14, y: 6)
 
                         PlayingWaveformView()
-                            .transition(.opacity.combined(with: .scale(scale: 0.84)))
                     }
                 }
+                .frame(width: 112, height: 112)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 Text("\(activity.friendNickname) 님")
                     .font(.system(size: 12, weight: .medium))
@@ -263,7 +264,7 @@ private struct FriendRecentMusicCard: View {
                 .resizable()
                 .scaledToFill()
         } else {
-            RemoteArtworkView(urlString: activity.song.artworkURL)
+            RemoteArtworkView(urlString: artworkURL ?? activity.song.artworkURL)
         }
     }
 
