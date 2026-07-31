@@ -388,6 +388,16 @@ final class AppleMusicRecommendationService {
         return artworkURLsBySongID
     }
 
+    /// Firestore에 저장된 최근 재생 이력은 오래된 데이터에 커버 URL이 없을 수 있어
+    /// 제목·아티스트로 카탈로그를 다시 찾아 대표 커버를 보완한다.
+    func resolvedRecentSongArtworkURL(title: String, artistName: String) async -> String? {
+        guard let song = try? await searchCatalogSong(title: title, artist: artistName) else {
+            return nil
+        }
+
+        return Self.remoteArtworkURL(from: song.artwork, width: 900, height: 900)
+    }
+
     func resolvedLibraryPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
         guard !playlists.isEmpty else { return [:] }
 
@@ -401,6 +411,43 @@ final class AppleMusicRecommendationService {
                 continue
             }
 
+        }
+
+        return artworkURLsByPlaylistID
+    }
+
+    /// 추천 응답에 대표 이미지가 누락된 경우, 카탈로그에서 같은 이름의 플레이리스트 커버를 보완한다.
+    func resolvedRecommendationPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
+        guard !playlists.isEmpty else { return [:] }
+
+        var artworkURLsByPlaylistID: [String: String] = [:]
+
+        for playlist in playlists {
+            let playlistID = "\(playlist.id)"
+
+            if let artworkURL = Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900) {
+                artworkURLsByPlaylistID[playlistID] = artworkURL
+                continue
+            }
+
+            guard !playlist.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+
+            do {
+                var request = MusicCatalogSearchRequest(term: playlist.name, types: [Playlist.self])
+                request.limit = 5
+                let response = try await request.response()
+
+                if let matchedPlaylist = response.playlists.first(where: {
+                    $0.name.caseInsensitiveCompare(playlist.name) == .orderedSame
+                }) ?? response.playlists.first,
+                   let artworkURL = Self.remoteArtworkURL(from: matchedPlaylist.artwork, width: 900, height: 900) {
+                    artworkURLsByPlaylistID[playlistID] = artworkURL
+                }
+            } catch {
+                continue
+            }
         }
 
         return artworkURLsByPlaylistID

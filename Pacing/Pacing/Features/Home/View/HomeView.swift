@@ -136,6 +136,7 @@ struct HomeView: View {
                         ForEach(vm.friendRecentSongs) { activity in
                             FriendRecentMusicCard(
                                 activity: activity,
+                                artworkURL: vm.friendSongArtworkURLs[activity.id],
                                 playingSongID: $playingFriendSongID
                             )
                         }
@@ -206,6 +207,7 @@ struct HomeView: View {
 
 private struct FriendRecentMusicCard: View {
     let activity: FriendRecentSongActivity
+    let artworkURL: String?
     @Binding var playingSongID: String?
     @State private var playbackError: String?
 
@@ -221,13 +223,16 @@ private struct FriendRecentMusicCard: View {
                 ZStack {
                     artwork
                         .frame(width: 112, height: 112)
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                     if isPlaying {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(.black.opacity(0.42))
+
                         PlayingWaveformView()
-                            .transition(.opacity.combined(with: .scale(scale: 0.84)))
                     }
                 }
+                .frame(width: 112, height: 112)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 Text("\(activity.friendNickname) 님")
                     .font(.system(size: 12, weight: .medium))
@@ -259,7 +264,7 @@ private struct FriendRecentMusicCard: View {
                 .resizable()
                 .scaledToFill()
         } else {
-            RemoteArtworkView(urlString: activity.song.artworkURL)
+            RemoteArtworkView(urlString: artworkURL ?? activity.song.artworkURL)
         }
     }
 
@@ -287,14 +292,14 @@ private struct PlayingWaveformView: View {
     @State private var isAnimating = false
 
     var body: some View {
-        HStack(spacing: 5) {
-            waveBar(height: 34, delay: 0.0)
-            waveBar(height: 22, delay: 0.12)
-            waveBar(height: 42, delay: 0.24)
-            waveBar(height: 28, delay: 0.36)
+        HStack(spacing: 4) {
+            waveBar(height: 26, delay: 0.0)
+            waveBar(height: 38, delay: 0.1)
+            waveBar(height: 22, delay: 0.2)
+            waveBar(height: 42, delay: 0.3)
+            waveBar(height: 30, delay: 0.4)
         }
-        .frame(width: 62, height: 58)
-        .background(.black.opacity(0.22), in: Circle())
+        .frame(width: 56, height: 52)
         .onAppear { isAnimating = true }
         .accessibilityLabel("재생 중")
     }
@@ -302,7 +307,7 @@ private struct PlayingWaveformView: View {
     private func waveBar(height: CGFloat, delay: Double) -> some View {
         Capsule()
             .fill(.white)
-            .frame(width: 7, height: height)
+            .frame(width: 4, height: height)
             .scaleEffect(y: isAnimating ? 0.52 : 1, anchor: .center)
             .animation(
                 .easeInOut(duration: 0.52)
