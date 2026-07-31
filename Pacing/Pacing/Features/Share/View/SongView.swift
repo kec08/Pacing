@@ -157,7 +157,10 @@ struct SongView: View {
                                 SharedPlaylistDetailView(viewModel: SharedPlaylistDetailViewModel(recommendedPlaylist: playlist))
                                     .environmentObject(nowPlayingController)
                             } label: {
-                                RecommendationPlaylistCard(playlist: playlist)
+                                RecommendationPlaylistCard(
+                                    playlist: playlist,
+                                    artworkURL: vm.recommendationArtworkURLs["\(playlist.id)"]
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -755,11 +758,12 @@ private struct FriendSharedPlaylistCard: View {
 
 private struct RecommendationPlaylistCard: View {
     let playlist: Playlist
+    let artworkURL: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteArtworkView(
-                urlString: playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
+                urlString: artworkURL ?? playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
                 contentMode: .fill
             )
             .frame(width: 188, height: 188)

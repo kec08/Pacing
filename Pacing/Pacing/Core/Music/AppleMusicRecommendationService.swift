@@ -406,6 +406,43 @@ final class AppleMusicRecommendationService {
         return artworkURLsByPlaylistID
     }
 
+    /// 추천 응답에 대표 이미지가 누락된 경우, 카탈로그에서 같은 이름의 플레이리스트 커버를 보완한다.
+    func resolvedRecommendationPlaylistArtworkURLs(for playlists: [Playlist]) async -> [String: String] {
+        guard !playlists.isEmpty else { return [:] }
+
+        var artworkURLsByPlaylistID: [String: String] = [:]
+
+        for playlist in playlists {
+            let playlistID = "\(playlist.id)"
+
+            if let artworkURL = Self.remoteArtworkURL(from: playlist.artwork, width: 900, height: 900) {
+                artworkURLsByPlaylistID[playlistID] = artworkURL
+                continue
+            }
+
+            guard !playlist.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+
+            do {
+                var request = MusicCatalogSearchRequest(term: playlist.name, types: [Playlist.self])
+                request.limit = 5
+                let response = try await request.response()
+
+                if let matchedPlaylist = response.playlists.first(where: {
+                    $0.name.caseInsensitiveCompare(playlist.name) == .orderedSame
+                }) ?? response.playlists.first,
+                   let artworkURL = Self.remoteArtworkURL(from: matchedPlaylist.artwork, width: 900, height: 900) {
+                    artworkURLsByPlaylistID[playlistID] = artworkURL
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return artworkURLsByPlaylistID
+    }
+
     func addToLibrary(playlist: Playlist) async throws {
         try await MusicLibrary.shared.add(playlist)
     }

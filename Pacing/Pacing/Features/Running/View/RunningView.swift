@@ -40,6 +40,7 @@ struct RunningView: View {
     @State private var shouldRunLocalPlaybackClock = false
     @State private var hasCenteredOnInitialLocation = false
     @State private var showAlwaysLocationPermissionAlert = false
+    @State private var myProfileImageBase64: String?
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -51,6 +52,22 @@ struct RunningView: View {
 
     private var displayRouteCoordinates: [CLLocationCoordinate2D] {
         smoothedRouteCoordinates(from: viewModel.locationManager.routeCoordinates)
+    }
+
+    private var myRunner: NearbyRunner? {
+        guard let coordinate = viewModel.locationManager.currentLocation?.coordinate else { return nil }
+        let snapshot = musicVM.currentSongSnapshot()
+
+        return NearbyRunner(
+            id: "me",
+            nickname: UserDefaults.standard.string(forKey: "nickname") ?? "나",
+            coordinate: coordinate,
+            songTitle: snapshot?.title ?? "",
+            artist: snapshot?.artistName ?? "",
+            profileImageBase64: myProfileImageBase64 ?? UserDefaults.standard.string(forKey: "profileImageBase64"),
+            distance: 0,
+            isMe: true
+        )
     }
 
     var body: some View {
@@ -67,6 +84,11 @@ struct RunningView: View {
                             ),
                             style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
                         )
+                }
+                if let myRunner {
+                    Annotation("", coordinate: myRunner.coordinate) {
+                        runnerMapPin(runner: myRunner)
+                    }
                 }
                 // 현재 러닝 중인 친구 핀
                 ForEach(nearbyVM.activeFriendRunners) { runner in
@@ -249,6 +271,7 @@ struct RunningView: View {
             viewModel.musicViewModel = musicVM
             viewModel.locationManager.requestPermission()
             viewModel.locationManager.startMonitoringCurrentLocation()
+            refreshMyProfileImage()
             startNearbyObservationIfNeeded()
             listenVM.startObservingRequests()
             if let coord = viewModel.locationManager.currentLocation?.coordinate {
@@ -1314,7 +1337,8 @@ struct RunningView: View {
     @ViewBuilder
     private func runnerMapPin(runner: NearbyRunner) -> some View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
-        let avatarColor: Color = runner.isMe ? Color.main500 : Color(.systemGray3)
+        // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
+        let avatarColor = Color(.systemGray3)
         let cardBg: Color = runner.isMe ? Color.main500.opacity(0.12) : Color.clear
         let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
 
@@ -1853,6 +1877,20 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func refreshMyProfileImage() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        Task {
+            guard let profile = try? await FirestoreService.shared.fetchUserProfile(uid: uid),
+                  let image = profile["profileImageBase64"] as? String,
+                  !image.isEmpty
+            else { return }
+
+            myProfileImageBase64 = image
+            UserDefaults.standard.set(image, forKey: "profileImageBase64")
+        }
     }
 
     private func recenterCamera(distance: Double) {

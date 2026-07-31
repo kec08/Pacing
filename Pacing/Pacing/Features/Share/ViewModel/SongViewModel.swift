@@ -8,6 +8,7 @@ final class SongViewModel: ObservableObject {
     @Published var friendSharedPlaylists: [SharedPlaylistSummary] = []
     @Published var recentlyPlayedAlbums: [Album] = []
     @Published var recommendedPlaylists: [Playlist] = []
+    @Published var recommendationArtworkURLs: [String: String] = [:]
     @Published var genreAlbumRows: [GenreAlbumRow] = []
     @Published var moodPlaylists: [MoodPlaylistShelfItem] = []
     @Published var musicAuthorizationStatus: MusicAuthorization.Status = MusicAuthorization.currentStatus
@@ -95,6 +96,7 @@ final class SongViewModel: ObservableObject {
         guard musicAuthorizationStatus == .authorized else {
             recentlyPlayedAlbums = []
             recommendedPlaylists = []
+            recommendationArtworkURLs = [:]
             genreAlbumRows = []
             moodPlaylists = []
             hasCatalogAccess = false
@@ -124,12 +126,15 @@ final class SongViewModel: ObservableObject {
             hasCatalogAccess = result.subscription.canPlayCatalogContent
             recentlyPlayedAlbums = result.bundle.recentlyPlayedAlbums
             recommendedPlaylists = result.bundle.playlists
+            recommendationArtworkURLs = await musicService.resolvedRecommendationPlaylistArtworkURLs(
+                for: result.bundle.playlists
+            )
             genreAlbumRows = result.bundle.genreAlbumRows
             moodPlaylists = result.bundle.moodPlaylists
 
             let artworkURLs =
                 result.bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
-                result.bundle.playlists.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
+                Array(recommendationArtworkURLs.values) +
                 result.bundle.genreAlbumRows
                 .flatMap(\.albums)
                 .compactMap { $0.album.artwork?.url(width: 900, height: 900)?.absoluteString } +
@@ -143,6 +148,7 @@ final class SongViewModel: ObservableObject {
 
             recentlyPlayedAlbums = []
             recommendedPlaylists = []
+            recommendationArtworkURLs = [:]
             genreAlbumRows = []
             moodPlaylists = []
             hasCatalogAccess = false
