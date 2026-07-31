@@ -403,7 +403,72 @@ struct MyView: View {
                 }
             }
             .frame(height: 160)
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .gesture(
+                            SpatialTapGesture().onEnded { value in
+                                let location = value.location
+                                guard let plotFrameAnchor = proxy.plotFrame else { return }
+                                let plotFrame = geometry[plotFrameAnchor]
+                                guard location.x >= plotFrame.minX, location.x <= plotFrame.maxX,
+                                      let label: String = proxy.value(atX: location.x - plotFrame.minX)
+                                else { return }
+                                withAnimation(.easeInOut(duration: 0.28)) {
+                                    vm.toggleChartSelection(label: label)
+                                }
+                            }
+                        )
+                }
+            }
+
+            if vm.selectedChartEntry != nil {
+                selectedChartRunsSection
+                    .id(vm.selectedChartEntryID)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            }
         }
+    }
+
+    private var selectedChartRunsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 4) {
+                if let date = vm.selectedChartDate {
+                    let calendar = Calendar.current
+                    let year = calendar.component(.year, from: date)
+                    let month = calendar.component(.month, from: date)
+                    let day = calendar.component(.day, from: date)
+
+                    HStack(spacing: 0) {
+                        Text("\(year)").foregroundStyle(Color.main500)
+                        Text("년 ").foregroundStyle(Color.textPrimary)
+                        Text("\(month)").foregroundStyle(Color.main500)
+                        Text("월 ").foregroundStyle(Color.textPrimary)
+                        Text("\(day)").foregroundStyle(Color.main500)
+                        Text("일").foregroundStyle(Color.textPrimary)
+                    }
+                }
+                Text(vm.selectedChartSuffixText)
+                    .foregroundStyle(Color.textPrimary)
+            }
+            .font(.system(size: 17, weight: .bold))
+
+            if vm.selectedChartRuns.isEmpty {
+                Text("선택한 날짜에 러닝 기록이 없어요")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            } else {
+                ForEach(vm.selectedChartRuns) { record in
+                    NavigationLink { RunActivityDetailView(record: record) } label: {
+                        RunHistoryCard(record: record, vm: vm)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - History Section

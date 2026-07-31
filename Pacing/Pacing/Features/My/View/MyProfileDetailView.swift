@@ -14,6 +14,7 @@ struct MyProfileDetailView: View {
                     profileHeader
                     editAction
                     statsSection
+                    recentRunsSection
                     recentSongsSection
                 }
                 .padding(.horizontal, 18)
@@ -188,9 +189,28 @@ struct MyProfileDetailView: View {
                 .padding(.vertical, 28)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(vm.recentSongs) { song in
-                        MyRecentSongRow(song: song)
+                    ForEach(vm.recentSongs.prefix(5)) { song in
+                        MyRecentSongRow(song: song, artworkURL: vm.recentSongArtworkURLs[song.id])
                     }
+                }
+            }
+        }
+    }
+
+    private var recentRunsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("최근 러닝")
+                .font(.system(size: 18, weight: .bold))
+            if vm.recentRuns.isEmpty && !vm.isLoading {
+                Text("최근 러닝이 없어요")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+            } else {
+                ForEach(vm.recentRuns.prefix(5)) { run in
+                    NavigationLink { RunActivityDetailView(record: run) } label: {
+                        MyProfileRecentRunRow(run: run)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -233,6 +253,7 @@ private struct ProfileStatItem: View {
 
 private struct MyRecentSongRow: View {
     let song: FriendRecentSong
+    let artworkURL: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -265,15 +286,15 @@ private struct MyRecentSongRow: View {
     }
 
     private var artwork: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.gray100)
-                .frame(width: 44, height: 44)
-
-            Image(systemName: "music.note")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(Color.gray500)
+        Group {
+            if let artworkData = song.artworkData, let data = Data(base64Encoded: artworkData), let image = UIImage(data: data) {
+                Image(uiImage: image).resizable().scaledToFill()
+            } else {
+                RemoteArtworkView(urlString: artworkURL ?? song.artworkURL)
+            }
         }
+        .frame(width: 44, height: 44)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private var playedAtText: String? {
@@ -282,5 +303,23 @@ private struct MyRecentSongRow: View {
         formatter.locale = Locale(identifier: "ko_KR")
         formatter.unitsStyle = .short
         return formatter.localizedString(for: playedAt, relativeTo: Date())
+    }
+}
+
+private struct MyProfileRecentRunRow: View {
+    let run: RunRecord
+    var body: some View {
+        HStack(spacing: 12) {
+            RunRouteThumbnailView(coordinates: run.routeCoordinates).frame(width: 56, height: 56)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(run.startedAt.formatted(.dateTime.month().day().weekday()))
+                    .font(.system(size: 13)).foregroundStyle(Color.textSecondary)
+                Text(String(format: "%.1f km · %d분", run.distance, run.duration / 60))
+                    .font(.system(size: 15, weight: .semibold)).foregroundStyle(Color.textPrimary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right").foregroundStyle(Color.gray400)
+        }
+        .padding(12).background(Color.white.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
