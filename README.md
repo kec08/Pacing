@@ -1,29 +1,22 @@
-# Pacing
-
-> 같은 음악, 같은 페이스. 음악으로 연결되는 러닝 경험
-
-[![Platform](https://img.shields.io/badge/platform-iOS-000000?logo=apple)](https://apps.apple.com/kr/app/pacing/id6784299290)
-[![SwiftUI](https://img.shields.io/badge/UI-SwiftUI-F05138?logo=swift)](https://developer.apple.com/xcode/swiftui/)
-[![Firebase](https://img.shields.io/badge/backend-Firebase-FFCA28?logo=firebase&logoColor=black)](https://firebase.google.com/)
-
-Pacing은 러닝을 기록하고, Apple Music과 함께 나만의 페이스를 만들며, 친구·주변 러너와 음악을 공유할 수 있는 iOS 러닝 앱입니다.
+# Pacing - 음악으로 연결되는 러닝
 
 <p align="center">
-  <a href="https://apps.apple.com/kr/app/pacing/id6784299290"><strong>App Store에서 Pacing 만나기</strong></a>
+  <img src="docs/images/readme/pacing-preview-01.jpg" alt="Pacing" width="260" />
 </p>
 
-## 핵심 기능
+<p align="center">
+  <strong>"같은 음악, 같은 페이스. 나만의 러닝을 기록하고 함께 달려보세요."</strong>
+</p>
 
-| 영역 | 기능 |
-| --- | --- |
-| 러닝 기록 | 위치 기반 경로와 거리, 시간, 페이스를 기록하고 활동 상세 화면에서 경로와 구간 페이스를 확인합니다. |
-| 러닝 분석 | 주·월·연·전체 단위 통계와 거리 차트로 기록의 변화를 살펴봅니다. 차트의 날짜를 선택하면 해당 날짜의 러닝 카드를 바로 확인할 수 있습니다. |
-| 음악 경험 | Apple Music 보관함 플레이리스트, 개인화 추천, 최근 재생 앨범을 탐색하고 앱 안에서 재생합니다. |
-| 함께 듣기 | 친구의 플레이리스트와 최근 재생 음악을 발견하고, 주변 러너와 실시간으로 같은 음악을 듣습니다. |
-| 소셜 | 친구 검색·추천·요청 관리, 친구 프로필, 친구의 최근 러닝 및 음악 활동을 제공합니다. |
-| 인증과 프로필 | 이메일, Apple, Google, Kakao, Naver 로그인과 프로필 편집을 지원합니다. |
+<p align="center">
+  <a href="https://apps.apple.com/kr/app/pacing/id6784299290">
+    <img src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg" alt="App Store에서 다운로드" height="40" />
+  </a>
+</p>
 
-## 미리보기
+---
+
+## 스크린샷
 
 <p align="center">
   <img src="docs/images/readme/pacing-preview-01.jpg" alt="Pacing 시작 화면" width="30%" />
@@ -41,17 +34,89 @@ Pacing은 러닝을 기록하고, Apple Music과 함께 나만의 페이스를 �
   <img src="docs/images/readme/pacing-preview-09.jpg" alt="러닝 통계 차트" width="30%" />
 </p>
 
+---
+
+## 소개
+
+**Pacing**은 음악과 함께 달리는 순간을 기록하고 공유하는 iOS 러닝 앱입니다.
+
+GPS 경로와 페이스를 남기고, Apple Music으로 나에게 맞는 음악을 고르며, 친구와 주변 러너의 음악을 발견할 수 있습니다. 기록을 혼자 쌓는 데서 끝나지 않고, 같은 음악으로 서로의 러닝을 연결하는 경험을 지향합니다.
+
+## 주요 기능
+
+### 1. 위치 기반 러닝 기록
+
+> 달린 경로와 페이스를 자동으로 남기고, 러닝이 끝난 뒤에도 한눈에 돌아보세요.
+
+- Core Location 기반 실시간 거리·시간·페이스 계산
+- 지도 위 러닝 경로와 시작 지점, 구간별 페이스 확인
+- 백그라운드 위치 업데이트를 고려한 러닝 추적
+- 러닝 종료 후 요약과 상세 활동 기록 저장
+
+### 2. 내 페이스 분석
+
+> 이번 주부터 전체 기록까지, 달라지는 나의 페이스를 직관적인 차트로 확인하세요.
+
+- 주·월·연·전체 단위의 거리, 러닝 횟수, 평균 페이스, 총 시간 집계
+- Swift Charts 기반 일자별 거리 추이 시각화
+- 차트 막대를 선택하면 해당 날짜의 러닝 카드가 자연스럽게 표시
+- 최근 활동 목록에서 개별 러닝 상세 화면으로 이동
+
+### 3. Apple Music과 함께 달리기
+
+> 러닝 분위기에 맞는 음악을 찾고, 앱 안에서 끊김 없이 재생하세요.
+
+- Apple Music 권한 및 구독 상태 확인
+- 내 보관함 플레이리스트와 최근 재생 앨범 탐색
+- 장르·무드 기반 추천 앨범 및 플레이리스트 제공
+- 재생 중인 곡의 앨범 아트워크와 재생 상태 표시
+
+### 4. 음악으로 만나는 친구
+
+> 친구가 최근에 들은 음악과 플레이리스트에서 다음 러닝의 사운드트랙을 발견하세요.
+
+- 친구의 최근 러닝과 최근 재생 음악을 홈에서 확인
+- 친구 프로필에서 러닝 기록과 최근 들은 노래 탐색
+- 친구의 공유 플레이리스트 상세 확인 및 내 보관함에 저장
+- 곡 정보에 맞는 Apple Music 아트워크 URL 보완 처리
+
+### 5. 주변 러너와 같이 듣기
+
+> 가까운 러너를 발견하고, 같은 트랙으로 함께 달려보세요.
+
+- Realtime Database 기반 활성 러너 위치 브로드캐스트
+- 지도에서 내 위치와 주변 러너를 구분해 표시
+- 함께 듣기 요청·수락·거절과 세션 종료 흐름 제공
+- 재생 위치와 재생 상태를 실시간 세션으로 동기화
+
+### 6. 친구 관리와 프로필
+
+> 함께 달릴 사람을 찾고, 나와 친구의 활동을 한곳에서 관리하세요.
+
+- 닉네임 검색과 추천 친구, 친구 요청 보내기·수락·거절·취소
+- 내 프로필 편집과 누적 거리·운동 시간·평균 페이스 확인
+- 친구 프로필의 최근 러닝과 음악 활동 확인
+
+### 7. 간편하고 안전한 시작
+
+> 익숙한 계정으로 빠르게 시작하고, 필요한 권한은 사용 맥락에 맞게 요청합니다.
+
+- 이메일, Sign in with Apple, Google, Kakao, Naver 로그인
+- 온보딩에서 프로필·위치·Apple Music 권한을 단계적으로 안내
+- Firebase Authentication으로 로그인 상태와 사용자 세션 관리
+
 ## 기술 스택
 
-| 구분 | 사용 기술 |
+| 구분 | 기술 |
 | --- | --- |
-| UI | SwiftUI, Swift Charts |
-| 비동기 처리 | Swift Concurrency (`async`/`await`) |
+| UI | Swift, SwiftUI, Swift Charts |
+| 아키텍처 | Feature-first MVVM, `@MainActor` 기반 화면 상태 관리 |
+| 비동기 | Swift Concurrency (`async` / `await`) |
 | 지도·위치 | MapKit, Core Location, 백그라운드 위치 업데이트 |
-| 음악 | MusicKit, Apple Music API |
-| 백엔드 | Firebase Authentication, Cloud Firestore, Realtime Database, Cloud Functions |
-| 로그인 | Sign in with Apple, Google Sign-In, Kakao SDK, Naver Third-Party Login |
-| 의존성 관리 | Swift Package Manager (Xcode 프로젝트) |
+| 음악 | MusicKit, Apple Music API, `ApplicationMusicPlayer` |
+| 데이터 | Firebase Authentication, Cloud Firestore, Realtime Database, Cloud Functions |
+| 인증 | Sign in with Apple, Google Sign-In, Kakao SDK, Naver Third-Party Login |
+| 의존성 | Swift Package Manager (Xcode 프로젝트) |
 
 ## 아키텍처
 
