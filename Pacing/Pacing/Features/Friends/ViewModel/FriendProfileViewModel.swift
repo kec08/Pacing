@@ -7,12 +7,15 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var friend: FriendUser
     @Published var relationship: FriendRelationship
     @Published var stats: FriendProfileStats = .empty
+    @Published var recentRuns: [RunRecord] = []
     @Published var recentSongs: [FriendRecentSong] = []
+    @Published var recentSongArtworkURLs: [String: String] = [:]
     @Published var isLoading: Bool = false
     @Published var isUpdatingRelationship: Bool = false
     @Published var errorMessage: String?
 
     private let service = FirestoreService.shared
+    private let musicService = AppleMusicRecommendationService.shared
 
     init(friend: FriendUser, initialRelationship: FriendRelationship) {
         self.friend = friend
@@ -26,18 +29,31 @@ final class FriendProfileViewModel: ObservableObject {
         do {
             async let profileTask = service.fetchFriendUserProfile(uid: friend.id, source: .friend)
             async let statsTask = service.fetchFriendProfileStats(uid: friend.id)
+            async let runsTask = service.fetchRunHistory(uid: friend.id, limit: 5)
             async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 5)
             async let relationshipTask = fetchRelationship()
 
             friend = try await profileTask
             stats = try await statsTask
+            recentRuns = try await runsTask
             recentSongs = try await songsTask
+            recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
             relationship = try await relationshipTask
         } catch {
             errorMessage = "친구 프로필을 불러오지 못했어요."
         }
 
         isLoading = false
+    }
+
+    private func resolveArtworkURLs(for songs: [FriendRecentSong]) async -> [String: String] {
+        var urls: [String: String] = [:]
+        for song in songs {
+            if let url = await musicService.resolvedRecentSongArtworkURL(title: song.title, artistName: song.artistName) {
+                urls[song.id] = url
+            }
+        }
+        return urls
     }
 
     func sendFriendRequest() async -> Bool {

@@ -14,7 +14,8 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let tracks: [SharedPlaylistTrack]
 
     var effectiveArtworkURL: String? {
-        artworkURL ?? tracks.first?.effectiveArtworkURL
+        guard let artworkURL, !artworkURL.isEmpty else { return nil }
+        return artworkURL
     }
 }
 
@@ -28,7 +29,8 @@ struct SharedPlaylistTrack: Identifiable, Equatable {
     let durationText: String
 
     var effectiveArtworkURL: String? {
-        artworkURL
+        guard let artworkURL, !artworkURL.isEmpty else { return nil }
+        return artworkURL
     }
 }
 

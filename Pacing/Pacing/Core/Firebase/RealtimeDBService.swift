@@ -127,6 +127,7 @@ final class RealtimeDBService {
         songStoreID: String, songTitle: String, artistName: String,
         artworkURL: String = "",
         artworkData: String = "",
+        playbackEventID: String = UUID().uuidString,
         position: Double
     ) -> String {
         guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
@@ -142,6 +143,7 @@ final class RealtimeDBService {
             "artistName": artistName,
             "artworkURL": artworkURL,
             "artworkData": artworkData,
+            "playbackEventID": playbackEventID,
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "status": "pending",
@@ -171,21 +173,25 @@ final class RealtimeDBService {
     func updateSessionPlayback(
         sessionID: String,
         songStoreID: String, songTitle: String, artistName: String,
-        artworkURL: String = "",
-        artworkData: String = "",
+        artworkURL: String? = nil,
+        artworkData: String? = nil,
+        playbackEventID: String,
         position: Double, isPlaying: Bool
     ) {
         guard !sessionID.isEmpty else { return }
-        db.child("listenSessions").child(sessionID).updateChildValues([
+        var update: [String: Any] = [
             "songStoreID": songStoreID,
             "songTitle": songTitle,
             "artistName": artistName,
-            "artworkURL": artworkURL,
-            "artworkData": artworkData,
+            "playbackEventID": playbackEventID,
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "isPlaying": isPlaying
-        ])
+        ]
+        // 앨범 이미지는 곡 전환에만 변경된다. 위치 보정마다 큰 Base64 문자열을 다시 전송하지 않는다.
+        if let artworkURL { update["artworkURL"] = artworkURL }
+        if let artworkData { update["artworkData"] = artworkData }
+        db.child("listenSessions").child(sessionID).updateChildValues(update)
     }
 
     // MARK: - 세션 구독
@@ -206,6 +212,7 @@ final class RealtimeDBService {
                 artistName: d["artistName"] as? String ?? "",
                 artworkURL: d["artworkURL"] as? String ?? "",
                 artworkData: d["artworkData"] as? String ?? "",
+                playbackEventID: d["playbackEventID"] as? String ?? "",
                 playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
                 serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
                 status: d["status"] as? String ?? "ended",
@@ -243,6 +250,7 @@ final class RealtimeDBService {
                     artistName: d["artistName"] as? String ?? "",
                     artworkURL: d["artworkURL"] as? String ?? "",
                     artworkData: d["artworkData"] as? String ?? "",
+                    playbackEventID: d["playbackEventID"] as? String ?? "",
                     playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
                     serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
                     status: d["status"] as? String ?? "pending",
@@ -288,11 +296,23 @@ final class RealtimeDBService {
 
     private func fetchListenSessions(where child: String, equals uid: String, limit: Int) async throws -> [ListenSession] {
         try await withCheckedThrowingContinuation { continuation in
-            db.child("listenSessions")
+            let lock = NSLock()
+            var didResume = false
+
+            func resumeOnce(with result: Result<[ListenSession], Error>) {
+                lock.lock()
+                defer { lock.unlock() }
+
+                guard !didResume else { return }
+                didResume = true
+                continuation.resume(with: result)
+            }
+
+            let query = db.child("listenSessions")
                 .queryOrdered(byChild: child)
                 .queryEqual(toValue: uid)
                 .queryLimited(toLast: UInt(limit))
-                .observeSingleEvent(of: .value) { snapshot in
+            query.observeSingleEvent(of: .value) { snapshot in
                     var sessions: [ListenSession] = []
 
                     for childSnapshot in snapshot.children {
@@ -313,6 +333,7 @@ final class RealtimeDBService {
                                 artistName: d["artistName"] as? String ?? "",
                                 artworkURL: d["artworkURL"] as? String ?? "",
                                 artworkData: d["artworkData"] as? String ?? "",
+                                playbackEventID: d["playbackEventID"] as? String ?? "",
                                 playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
                                 serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
                                 status: d["status"] as? String ?? "ended",
@@ -321,8 +342,22 @@ final class RealtimeDBService {
                         )
                     }
 
-                    continuation.resume(returning: sessions)
+                    resumeOnce(with: .success(sessions))
+                } withCancel: { error in
+                    resumeOnce(with: .failure(error))
                 }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+                resumeOnce(with: .failure(RealtimeDBRequestError.timedOut))
+            }
         }
+    }
+}
+
+private enum RealtimeDBRequestError: LocalizedError {
+    case timedOut
+
+    var errorDescription: String? {
+        "실시간 데이터 요청 시간이 초과되었어요."
     }
 }

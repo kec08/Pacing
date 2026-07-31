@@ -3,6 +3,7 @@ import MusicKit
 import MediaPlayer
 import UIKit
 import Combine
+import ImageIO
 
 struct SongView: View {
     @StateObject private var vm = SongViewModel()
@@ -37,32 +38,21 @@ struct SongView: View {
                     .navigationBarHidden(true)
                     .task {
                         viewportHeight = proxy.size.height
-                        await vm.loadInitialContent()
-                    }
-                    .onAppear {
-                        viewportHeight = proxy.size.height
-                        Task {
-                            await vm.handleTabAppear()
-                        }
+                        await vm.load()
                     }
                     .onChange(of: proxy.size.height) { _, newValue in
-                        guard nowPlayingController.hasActiveTrack else { return }
                         viewportHeight = newValue
                         updateOverlayProgress()
                     }
                     .onPreferenceChange(SongMainScrollOffsetKey.self) { value in
-                        guard nowPlayingController.hasActiveTrack else { return }
-                        guard abs(mainScrollOffset - value) > 1 else { return }
                         mainScrollOffset = value
                         updateOverlayProgress()
                     }
                     .onPreferenceChange(SongBottomScrollOffsetKey.self) { value in
-                        guard nowPlayingController.hasActiveTrack else { return }
-                        guard abs(bottomSentinelMinY - value) > 1 else { return }
                         bottomSentinelMinY = value
                         updateOverlayProgress()
                     }
-                    .refreshable { await vm.refreshAll() }
+                    .refreshable { await vm.load() }
                     .alert("노래 탭 오류", isPresented: errorBinding) {
                         Button("확인", role: .cancel) { dismissErrorMessage() }
                     } message: {
@@ -108,33 +98,6 @@ struct SongView: View {
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
             }
-
-            Spacer(minLength: 12)
-
-            Button {
-                Task { await vm.syncMyPlaylistsIfPossible() }
-            } label: {
-                HStack(spacing: 6) {
-                    if vm.isSyncingLibrary {
-                        ProgressView()
-                            .controlSize(.small)
-                            .tint(Color.main500)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-
-                    Text("내 플레이리스트 동기화")
-                        .font(.system(size: 12, weight: .semibold))
-                }
-                .foregroundStyle(Color.main500)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(Color.main500.opacity(0.12))
-                .clipShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            .disabled(vm.isSyncingLibrary)
         }
     }
 
@@ -194,7 +157,10 @@ struct SongView: View {
                                 SharedPlaylistDetailView(viewModel: SharedPlaylistDetailViewModel(recommendedPlaylist: playlist))
                                     .environmentObject(nowPlayingController)
                             } label: {
-                                RecommendationPlaylistCard(playlist: playlist)
+                                RecommendationPlaylistCard(
+                                    playlist: playlist,
+                                    artworkURL: vm.recommendationArtworkURLs["\(playlist.id)"]
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -246,7 +212,7 @@ struct SongView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("장르별 추천 앨범")
 
-            if !vm.hasCompletedInitialLoad && vm.genreAlbumRows.isEmpty {
+            if vm.isLoadingRecommendations && vm.genreAlbumRows.isEmpty {
                 albumSkeletonRow
             } else if vm.musicAuthorizationStatus != .authorized {
                 infoCard(
@@ -291,7 +257,7 @@ struct SongView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("나의 무드 찾기")
 
-            if !vm.hasCompletedInitialLoad && vm.moodPlaylists.isEmpty {
+            if vm.isLoadingRecommendations && vm.moodPlaylists.isEmpty {
                 recommendationSkeletonRow
             } else if vm.musicAuthorizationStatus != .authorized {
                 infoCard(
@@ -433,7 +399,6 @@ struct SongView: View {
     }
 
     private func updateOverlayProgress() {
-        guard nowPlayingController.hasActiveTrack else { return }
         guard !nowPlayingController.isAlbumDetailVisible else { return }
 
         let scrollDistance = max(0, -mainScrollOffset - 2)
@@ -455,7 +420,6 @@ final class SongNowPlayingController: ObservableObject {
     @Published private(set) var artist: String = ""
     @Published private(set) var artwork: UIImage?
     @Published private(set) var isPlaying: Bool = false
-    @Published private(set) var isLoadingTrack: Bool = false
     @Published var collapseProgress: CGFloat = 0
     @Published private(set) var restoreRequestID: Int = 0
     @Published private(set) var isTemporarilyExpanded: Bool = false
@@ -464,11 +428,9 @@ final class SongNowPlayingController: ObservableObject {
 
     private let player = MPMusicPlayerController.systemMusicPlayer
     private var notificationObservers: [NSObjectProtocol] = []
-    private var pendingClearTask: Task<Void, Never>?
-    private var loadingFallbackTask: Task<Void, Never>?
 
     var hasActiveTrack: Bool {
-        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || artwork != nil || isLoadingTrack
+        !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     init() {
@@ -478,8 +440,6 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     deinit {
-        pendingClearTask?.cancel()
-        loadingFallbackTask?.cancel()
         notificationObservers.forEach(NotificationCenter.default.removeObserver)
         player.endGeneratingPlaybackNotifications()
     }
@@ -494,26 +454,16 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func skipToNext() {
-        beginTrackTransition()
         player.skipToNextItem()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-            self.refresh()
-        }
+        refresh()
     }
 
     func updateCollapseProgress(_ progress: CGFloat) {
-        let normalizedProgress = min(max(progress, 0), 1)
-        let roundedProgress = (normalizedProgress * 100).rounded() / 100
-
         if isForceCollapsed {
-            if collapseProgress != 1 {
-                collapseProgress = 1
-            }
+            collapseProgress = 1
             return
         }
-
-        guard abs(collapseProgress - roundedProgress) > 0.01 else { return }
-        collapseProgress = roundedProgress
+        collapseProgress = min(max(progress, 0), 1)
     }
 
     func setAlbumDetailVisible(_ isVisible: Bool) {
@@ -521,36 +471,42 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func requestRestore() {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
-            isForceCollapsed = false
-            isTemporarilyExpanded = true
-            restoreRequestID += 1
-            collapseProgress = 0
-        }
+        isForceCollapsed = false
+        isTemporarilyExpanded = true
+        restoreRequestID += 1
+        collapseProgress = 0
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             self.isTemporarilyExpanded = false
         }
     }
 
     func requestCollapse() {
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
-            isForceCollapsed = true
-            collapseProgress = 1
-        }
+        isForceCollapsed = true
+        collapseProgress = 1
     }
 
-    private func beginTrackTransition() {
-        guard hasActiveTrack else { return }
-        pendingClearTask?.cancel()
-        loadingFallbackTask?.cancel()
-        withAnimation(.easeInOut(duration: 0.18)) {
-            isLoadingTrack = true
+    func prime(title: String, artist: String, artworkURL: String?) {
+        self.title = title
+        self.artist = artist
+        self.isPlaying = true
+
+        guard let artworkURL,
+              let url = URL(string: artworkURL) else {
+            return
         }
 
-        loadingFallbackTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 2_500_000_000)
-            guard let self, self.isLoadingTrack else { return }
-            self.refresh()
+        Task {
+            do {
+                let (data, _) = try await URLSession.shared.data(from: url)
+                guard let image = UIImage(data: data) else { return }
+                await MainActor.run {
+                    if self.title == title && self.artist == artist {
+                        self.artwork = image
+                    }
+                }
+            } catch {
+                // Keep the current artwork if fetching the next image fails.
+            }
         }
     }
 
@@ -579,30 +535,7 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     private func refresh() {
-        if let item = player.nowPlayingItem {
-            pendingClearTask?.cancel()
-            loadingFallbackTask?.cancel()
-            withAnimation(.easeInOut(duration: 0.22)) {
-                title = item.title ?? ""
-                artist = item.artist ?? "Apple Music"
-                artwork = item.artwork?.image(at: CGSize(width: 220, height: 220))
-                isPlaying = player.playbackState == .playing
-                isLoadingTrack = false
-            }
-            return
-        }
-
         if player.playbackState == .stopped {
-            if hasActiveTrack {
-                holdMiniPlayerWhileLoading()
-            } else {
-                isLoadingTrack = false
-            }
-            isPlaying = false
-            return
-        }
-
-        guard hasActiveTrack else {
             title = ""
             artist = ""
             artwork = nil
@@ -610,28 +543,18 @@ final class SongNowPlayingController: ObservableObject {
             return
         }
 
-        holdMiniPlayerWhileLoading()
-    }
-
-    private func holdMiniPlayerWhileLoading() {
-        guard hasActiveTrack else { return }
-
-        withAnimation(.easeInOut(duration: 0.18)) {
-            isLoadingTrack = true
+        guard let item = player.nowPlayingItem else {
+            title = ""
+            artist = ""
+            artwork = nil
+            isPlaying = false
+            return
         }
 
-        pendingClearTask?.cancel()
-        pendingClearTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 20_000_000_000)
-            guard let self, self.player.nowPlayingItem == nil else { return }
-            withAnimation(.easeInOut(duration: 0.22)) {
-                self.title = ""
-                self.artist = ""
-                self.artwork = nil
-                self.isPlaying = false
-                self.isLoadingTrack = false
-            }
-        }
+        title = item.title ?? ""
+        artist = item.artist ?? "Apple Music"
+        artwork = item.artwork?.image(at: CGSize(width: 220, height: 220))
+        isPlaying = player.playbackState == .playing
     }
 }
 
@@ -700,44 +623,20 @@ private struct SongNowPlayingOverlay: View {
                     .frame(width: 46, height: 46)
                     .scaleEffect(lerp(from: 1, to: 1.26, progress: progress))
                     .offset(x: lerp(from: 0, to: 2, progress: progress))
-                    .overlay {
-                        if controller.isLoadingTrack {
-                            Circle()
-                                .fill(.ultraThinMaterial)
-                                .overlay {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                        .tint(Color.main500)
-                                }
-                                .transition(.opacity)
-                        }
-                    }
 
                 VStack(alignment: .leading, spacing: 0) {
-                    if controller.isLoadingTrack {
-                        VStack(alignment: .leading, spacing: 7) {
-                            SkeletonBlock(width: 132, height: 12, cornerRadius: 6)
-                            SkeletonBlock(width: 76, height: 10, cornerRadius: 5)
-                        }
-                        .transition(.opacity)
-                    } else {
-                        Text(controller.title)
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color.textPrimary)
-                            .lineLimit(1)
-                            .contentTransition(.opacity)
+                    Text(controller.title)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
 
-                        Text(controller.artist)
-                            .font(.system(size: 11.5, weight: .medium))
-                            .foregroundStyle(Color.textSecondary)
-                            .lineLimit(1)
-                            .contentTransition(.opacity)
-                    }
+                    Text(controller.artist)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(Color.textSecondary)
+                        .lineLimit(1)
                 }
                 .opacity(barOpacity)
                 .blur(radius: progress * 1.2)
-                .animation(.easeInOut(duration: 0.2), value: controller.isLoadingTrack)
-                .animation(.easeInOut(duration: 0.22), value: controller.title)
 
                 Spacer(minLength: 8)
 
@@ -788,6 +687,7 @@ private struct SongNowPlayingOverlay: View {
         .onLongPressGesture(minimumDuration: 0.24) {
             controller.requestRestore()
         }
+        .animation(.spring(response: 0.38, dampingFraction: 0.88), value: progress)
     }
 
     private func artworkView(size: CGFloat) -> some View {
@@ -858,11 +758,12 @@ private struct FriendSharedPlaylistCard: View {
 
 private struct RecommendationPlaylistCard: View {
     let playlist: Playlist
+    let artworkURL: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             RemoteArtworkView(
-                urlString: playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
+                urlString: artworkURL ?? playlist.artwork?.url(width: 900, height: 900)?.absoluteString,
                 contentMode: .fill
             )
             .frame(width: 188, height: 188)
@@ -1048,41 +949,113 @@ final class ArtworkImageStore {
     static let shared = ArtworkImageStore()
 
     private let cache = NSCache<NSURL, UIImage>()
+    private let session: URLSession
+    private var inFlightTasks: [URL: Task<UIImage?, Never>] = [:]
 
     private init() {
         cache.countLimit = 180
+        cache.totalCostLimit = 80 * 1024 * 1024
+
+        let configuration = URLSessionConfiguration.default
+        configuration.requestCachePolicy = .returnCacheDataElseLoad
+        configuration.urlCache = URLCache(
+            memoryCapacity: 20 * 1024 * 1024,
+            diskCapacity: 120 * 1024 * 1024,
+            diskPath: "PacingArtworkCache"
+        )
+        session = URLSession(configuration: configuration)
     }
 
     func image(for url: URL) async -> UIImage? {
+        guard ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
+            return nil
+        }
+
         if let cachedImage = cache.object(forKey: url as NSURL) {
             return cachedImage
         }
 
+        let task: Task<UIImage?, Never>
+        if let inFlightTask = inFlightTasks[url] {
+            task = inFlightTask
+        } else {
+            task = Task { [session] in
+                await Self.downloadImage(from: url, session: session)
+            }
+            inFlightTasks[url] = task
+        }
+
+        let image = await task.value
+        inFlightTasks[url] = nil
+
+        if let image {
+            cache.setObject(image, forKey: url as NSURL, cost: image.memoryCost)
+        }
+
+        return image
+    }
+
+    func prefetch(urlStrings: [String]) async {
+        let uniqueURLs = Array(
+            Set(
+                urlStrings
+                    .compactMap(URL.init(string:))
+                .filter { ["https", "http"].contains($0.scheme?.lowercased() ?? "") }
+            )
+        )
+
+        for batchStartIndex in stride(from: 0, to: uniqueURLs.count, by: 4) {
+            let batch = uniqueURLs[batchStartIndex..<min(batchStartIndex + 4, uniqueURLs.count)]
+            await withTaskGroup(of: Void.self) { group in
+                for url in batch {
+                    group.addTask { [weak self] in
+                        _ = await self?.image(for: url)
+                    }
+                }
+            }
+        }
+    }
+
+    private static func downloadImage(from url: URL, session: URLSession) async -> UIImage? {
         var request = URLRequest(url: url)
         request.cachePolicy = .returnCacheDataElseLoad
-        request.timeoutInterval = 20
+        request.timeoutInterval = 15
 
         do {
-            let (data, response) = try await URLSession.shared.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse,
-                  200..<300 ~= httpResponse.statusCode,
-                  let image = UIImage(data: data)
+                  200..<300 ~= httpResponse.statusCode
             else {
                 return nil
             }
 
-            cache.setObject(image, forKey: url as NSURL)
-            return image
+            return downsampledImage(from: data)
         } catch {
             return nil
         }
     }
 
-    func prefetch(urlStrings: [String]) async {
-        let uniqueURLs = Array(Set(urlStrings.compactMap(URL.init(string:))))
-        for url in uniqueURLs {
-            _ = await image(for: url)
+    private static func downsampledImage(from data: Data, maximumPixelSize: CGFloat = 720) -> UIImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelSize
+        ]
+
+        guard let imageSource = CGImageSourceCreateWithData(data as CFData, nil),
+              let cgImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, options as CFDictionary)
+        else {
+            return nil
         }
+
+        return UIImage(cgImage: cgImage)
+    }
+}
+
+private extension UIImage {
+    var memoryCost: Int {
+        guard let cgImage else { return 1 }
+        return cgImage.bytesPerRow * cgImage.height
     }
 }
 
@@ -1091,13 +1064,17 @@ final class RemoteArtworkLoader: ObservableObject {
     @Published private(set) var image: UIImage?
 
     func load(urlString: String?) async {
+        image = nil
+
         guard let urlString,
-              let url = URL(string: urlString) else {
-            image = nil
+              let url = URL(string: urlString),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "") else {
             return
         }
 
-        image = await ArtworkImageStore.shared.image(for: url)
+        let loadedImage = await ArtworkImageStore.shared.image(for: url)
+        guard !Task.isCancelled else { return }
+        image = loadedImage
     }
 }
 

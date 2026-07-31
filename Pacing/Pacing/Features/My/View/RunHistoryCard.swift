@@ -20,15 +20,8 @@ struct RunHistoryCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            // 썸네일 placeholder
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.gray100)
+            RunRouteThumbnailView(coordinates: record.routeCoordinates)
                 .frame(width: 60, height: 60)
-                .overlay(
-                    Image(systemName: "map.fill")
-                        .font(.system(size: 22))
-                        .foregroundStyle(Color.gray300)
-                )
 
             VStack(alignment: .leading, spacing: 6) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -48,6 +41,10 @@ struct RunHistoryCard: View {
             }
 
             Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.gray300)
         }
         .padding(14)
         .background(Color.backgroundPrimary)

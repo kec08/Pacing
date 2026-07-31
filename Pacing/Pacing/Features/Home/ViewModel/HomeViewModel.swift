@@ -2,11 +2,19 @@ import SwiftUI
 import Combine
 import FirebaseAuth
 
+@MainActor
 final class HomeViewModel: ObservableObject {
     @Published var weeklyStats: WeeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
     @Published var recentRuns: [RunRecord] = []
-    @Published var recentListenSessions: [ListenSession] = []
-    @Published var isLoading: Bool = false
+    @Published var friendRecentRuns: [FriendRecentRunActivity] = []
+    @Published var friendRecentSongs: [FriendRecentSongActivity] = []
+    @Published private(set) var friendSongArtworkURLs: [String: String] = [:]
+    @Published private(set) var isLoadingRuns: Bool = false
+    @Published private(set) var isLoadingFriendRuns: Bool = false
+    @Published private(set) var isLoadingFriendMusic: Bool = false
+    @Published private(set) var runLoadError: String?
+    @Published private(set) var friendRunsLoadError: String?
+    @Published private(set) var friendMusicLoadError: String?
     @Published var nickname: String = "러너"
 
     var currentUID: String {
@@ -14,39 +22,121 @@ final class HomeViewModel: ObservableObject {
     }
 
     private let cal = Calendar.current
+    private let musicService = AppleMusicRecommendationService.shared
 
     func loadHomeData() async {
-        await MainActor.run {
-            isLoading = true
-            nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        }
+        nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
 
         guard let uid = Auth.auth().currentUser?.uid else {
-            await MainActor.run { isLoading = false }
+            recentRuns = []
+            weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            friendRecentRuns = []
+            friendRecentSongs = []
+            friendSongArtworkURLs = [:]
+            isLoadingRuns = false
+            isLoadingFriendRuns = false
+            isLoadingFriendMusic = false
             return
         }
 
-        async let recordsTask = FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
-        async let sessionsTask = RealtimeDBService.shared.fetchRecentListenSessions(uid: uid, limit: 10)
+        isLoadingRuns = true
+        isLoadingFriendRuns = true
+        isLoadingFriendMusic = true
+        runLoadError = nil
+        friendRunsLoadError = nil
+        friendMusicLoadError = nil
 
-        let records = (try? await recordsTask) ?? []
-        let sessions = (try? await sessionsTask) ?? []
+        async let runs: Void = loadRunData(uid: uid)
+        async let friendRuns: Void = loadFriendRecentRuns(uid: uid)
+        async let friendMusic: Void = loadFriendRecentMusic(uid: uid)
+        _ = await (runs, friendRuns, friendMusic)
+    }
 
-        await MainActor.run {
+    func retryRuns() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingRuns = true
+        runLoadError = nil
+        await loadRunData(uid: uid)
+    }
+
+    func retryFriendRecentMusic() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingFriendMusic = true
+        friendMusicLoadError = nil
+        await loadFriendRecentMusic(uid: uid)
+    }
+
+    func retryFriendRecentRuns() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        isLoadingFriendRuns = true
+        friendRunsLoadError = nil
+        await loadFriendRecentRuns(uid: uid)
+    }
+
+    private func loadRunData(uid: String) async {
+        defer { isLoadingRuns = false }
+
+        do {
+            let records = try await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
             recentRuns = Array(records.prefix(3))
             weeklyStats = calcWeeklyStats(from: records)
-            recentListenSessions = sessions
-            isLoading = false
+        } catch {
+            recentRuns = []
+            weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
+            runLoadError = "러닝 기록을 불러오지 못했어요."
+        }
+    }
+
+    private func loadFriendRecentMusic(uid: String) async {
+        defer { isLoadingFriendMusic = false }
+
+        do {
+            let activities = try await FirestoreService.shared.fetchFriendsRecentSongs(currentUID: uid)
+            friendRecentSongs = activities
+            friendSongArtworkURLs = await resolveMissingFriendSongArtworkURLs(for: activities)
+        } catch {
+            friendRecentSongs = []
+            friendSongArtworkURLs = [:]
+            friendMusicLoadError = "친구가 최근에 들은 음악을 불러오지 못했어요."
+        }
+    }
+
+    private func resolveMissingFriendSongArtworkURLs(
+        for activities: [FriendRecentSongActivity]
+    ) async -> [String: String] {
+        var artworkURLs: [String: String] = [:]
+
+        for activity in activities where activity.song.artworkData?.isEmpty != false && activity.song.artworkURL?.isEmpty != false {
+            guard let artworkURL = await musicService.resolvedRecentSongArtworkURL(
+                title: activity.song.title,
+                artistName: activity.song.artistName
+            ) else {
+                continue
+            }
+            artworkURLs[activity.id] = artworkURL
+        }
+
+        Task {
+            await ArtworkImageStore.shared.prefetch(urlStrings: Array(artworkURLs.values))
+        }
+        return artworkURLs
+    }
+
+    private func loadFriendRecentRuns(uid: String) async {
+        defer { isLoadingFriendRuns = false }
+
+        do {
+            friendRecentRuns = try await FirestoreService.shared.fetchFriendsRecentRuns(currentUID: uid)
+        } catch {
+            friendRecentRuns = []
+            friendRunsLoadError = "친구의 최근 러닝을 불러오지 못했어요."
         }
     }
 
     private func calcWeeklyStats(from records: [RunRecord]) -> WeeklyStats {
         let now = Date()
-        guard let weekStart = cal.date(from: cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: now)),
-              let weekEnd = cal.date(byAdding: .day, value: 7, to: weekStart) else {
-            return WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)
-        }
-        let weekly = records.filter { $0.startedAt >= weekStart && $0.startedAt < weekEnd }
+        let weekInterval = WeeklyDateRange.interval(containing: now, calendar: cal)
+        let weekly = records.filter { weekInterval.contains($0.startedAt) }
         let dist = weekly.reduce(0.0) { $0 + $1.distance }
         let dur  = weekly.reduce(0)   { $0 + $1.duration }
         let pace = weekly.isEmpty ? 0.0 : weekly.reduce(0.0) { $0 + $1.avgPace } / Double(weekly.count)
@@ -78,6 +168,7 @@ final class HomeViewModel: ObservableObject {
         return f.string(from: date)
     }
 
+    // ListenSessionRow는 다른 화면에서 재사용될 수 있어 표시 보조 메서드를 유지한다.
     func listenPartnerNickname(_ session: ListenSession) -> String {
         session.partnerNickname(for: currentUID)
     }
@@ -88,4 +179,5 @@ final class HomeViewModel: ObservableObject {
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
     }
+
 }

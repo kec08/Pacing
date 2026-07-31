@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    private let locationFocusDistance: Double = 1_000
+
     @StateObject private var viewModel = RunningViewModel()
     @StateObject private var musicVM = RunningMusicViewModel()
     @StateObject private var nearbyVM = NearbyRunnerViewModel()
@@ -20,7 +22,8 @@ struct RunningView: View {
     @State private var showMusicSheet = false
     @State private var showNearbySheet = false
     @State private var countdown: Int? = nil
-    @State private var cameraPosition: MapCameraPosition = .userLocation(fallback: .automatic)
+    // `.userLocation`은 시스템 위치 표시를 함께 노출할 수 있어, 지도에는 커스텀 프로필 핀만 보이도록 한다.
+    @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
@@ -37,6 +40,8 @@ struct RunningView: View {
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
     @State private var hasCenteredOnInitialLocation = false
+    @State private var showAlwaysLocationPermissionAlert = false
+    @State private var myProfileImageBase64: String?
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -53,15 +58,14 @@ struct RunningView: View {
     private var myRunner: NearbyRunner? {
         guard let coordinate = viewModel.locationManager.currentLocation?.coordinate else { return nil }
         let snapshot = musicVM.currentSongSnapshot()
-        let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "나"
 
         return NearbyRunner(
             id: "me",
-            nickname: nickname,
+            nickname: UserDefaults.standard.string(forKey: "nickname") ?? "나",
             coordinate: coordinate,
             songTitle: snapshot?.title ?? "",
             artist: snapshot?.artistName ?? "",
-            profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64"),
+            profileImageBase64: myProfileImageBase64 ?? UserDefaults.standard.string(forKey: "profileImageBase64"),
             distance: 0,
             isMe: true
         )
@@ -87,8 +91,8 @@ struct RunningView: View {
                         runnerMapPin(runner: myRunner)
                     }
                 }
-                // 주변 러너 핀
-                ForEach(nearbyVM.nearbyRunners) { runner in
+                // 현재 러닝 중인 친구 핀
+                ForEach(nearbyVM.activeFriendRunners) { runner in
                     Annotation("", coordinate: runner.coordinate) {
                         runnerMapPin(runner: runner)
                     }
@@ -105,7 +109,7 @@ struct RunningView: View {
                         if viewModel.state == .idle {
                             // idle: 줌 +/-  +  내 위치
                             Button {
-                                let newDist = max(100, mapZoomDistance / 1.5)
+                                let newDist = max(1, mapZoomDistance / 1.5)
                                 mapZoomDistance = newDist
                                 recenterCamera(distance: newDist)
                             } label: {
@@ -117,7 +121,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                let newDist = min(3000, mapZoomDistance * 1.5)
+                                let newDist = mapZoomDistance * 1.5
                                 mapZoomDistance = newDist
                                 recenterCamera(distance: newDist)
                             } label: {
@@ -129,8 +133,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                isFollowingUser = true
-                                recenterCamera(distance: mapZoomDistance)
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -142,8 +145,7 @@ struct RunningView: View {
                         } else {
                             // 러닝 중: 항상 내 위치 버튼 표시 (추적 중이면 파란색)
                             Button {
-                                isFollowingUser = true
-                                recenterCamera(distance: mapZoomDistance)
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -262,34 +264,15 @@ struct RunningView: View {
         }
         .onMapCameraChange(frequency: .continuous) { context in
             guard !isProgrammaticMove else { return }
-            mapZoomDistance = min(max(context.camera.distance, 100), 3000)
+            mapZoomDistance = context.camera.distance
             isFollowingUser = false
-        }
-        .onMapCameraChange(frequency: .onEnd) { context in
-            guard !isProgrammaticMove else { return }
-            let dist = context.camera.distance
-            mapZoomDistance = min(max(dist, 100), 3000)
-            guard dist > 3000 || dist < 100 else { return }
-            let clamped = min(max(dist, 100), 3000)
-            let center = viewModel.locationManager.currentLocation?.coordinate
-                ?? context.camera.centerCoordinate
-            // 관성 이동이 완전히 끝난 뒤 스냅백 (즉시 덮어쓰면 충돌)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                isProgrammaticMove = true
-                withAnimation(.spring(response: 0.45, dampingFraction: 0.9)) {
-                    cameraPosition = .camera(MapCamera(centerCoordinate: center, distance: clamped))
-                }
-                isFollowingUser = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    isProgrammaticMove = false
-                }
-            }
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
             viewModel.musicViewModel = musicVM
             viewModel.locationManager.requestPermission()
             viewModel.locationManager.startMonitoringCurrentLocation()
+            refreshMyProfileImage()
             startNearbyObservationIfNeeded()
             listenVM.startObservingRequests()
             if let coord = viewModel.locationManager.currentLocation?.coordinate {
@@ -309,6 +292,10 @@ struct RunningView: View {
                 nearbyVM.stopObserving()
             } else {
                 startNearbyObservationIfNeeded()
+                if newState == .running {
+                    isFollowingUser = true
+                    recenterCamera(distance: mapZoomDistance)
+                }
             }
         }
         .onChange(of: musicVM.currentSong) { _, _ in
@@ -325,7 +312,21 @@ struct RunningView: View {
             // 호스트면 세션에도 브로드캐스트
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
+        // 시스템 플레이어의 현재 곡 변경은 `currentSong` 갱신보다 먼저 도착할 수 있습니다.
+        // 호스트는 이 시점에 전환 이벤트를 즉시 전송해 게스트의 다음 1초 타이머 대기를 없앱니다.
+        .onChange(of: musicVM.nowPlayingSnapshot?.songStoreID) { _, _ in
+            listenVM.broadcastIfHost(musicVM: musicVM)
+        }
         .preferredColorScheme(.light)
+        .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
+            Button("설정으로 이동") {
+                guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
+                UIApplication.shared.open(settingsURL)
+            }
+            Button("취소", role: .cancel) { }
+        } message: {
+            Text("백그라운드에서도 거리, 페이스, 칼로리와 경로를 기록하려면 위치 접근을 ‘항상 허용’으로 변경해 주세요.")
+        }
         .sheet(isPresented: $showMusicSheet) { musicSheet }
         .sheet(isPresented: $showNearbySheet) { nearbySheet }
         .sheet(isPresented: $showListenSheet) { listenSheet }
@@ -342,12 +343,14 @@ struct RunningView: View {
                     let savedElapsedSeconds = viewModel.elapsedSeconds
                     let savedAveragePace = viewModel.avgPace
                     let savedRouteCoordinates = viewModel.locationManager.routeCoordinates
+                    let savedLapPaces = viewModel.completedLapPaces
                     Task {
                         await viewModel.saveRecord(
                             distance: savedDistance,
                             elapsedSeconds: savedElapsedSeconds,
                             avgPace: savedAveragePace,
-                            routeCoordinates: savedRouteCoordinates
+                            routeCoordinates: savedRouteCoordinates,
+                            lapPaces: savedLapPaces
                         )
                     }
                     showSummary = false
@@ -407,6 +410,10 @@ struct RunningView: View {
                         .frame(width: 44, height: 44)
                     if let artwork = playlist.artwork {
                         ArtworkImage(artwork, width: 44, height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else if let artworkURL = musicVM.artworkURL(for: playlist) {
+                        RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                            .frame(width: 44, height: 44)
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                     } else {
                         Image(systemName: "music.note.list")
@@ -570,7 +577,7 @@ struct RunningView: View {
 
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                startCountdown()
+                startRunIfAuthorized()
             } label: {
                 Text("시작")
                     .font(.system(size: 20, weight: .bold))
@@ -968,13 +975,23 @@ struct RunningView: View {
                 .scrollIndicators(.hidden)
 
                 if musicSheetPanel == .playlistPicker && !isActiveListenGuest {
+                    Color.black.opacity(0.12)
+                        .ignoresSafeArea()
+                        .transition(.opacity)
+                        .onTapGesture {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                musicSheetPanel = nil
+                            }
+                        }
+
                     VStack {
                         playlistPickerPanel
                             .padding(.horizontal, 12)
                             .padding(.top, 12)
-                            .transition(.move(edge: .top).combined(with: .opacity))
+                            .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .top)))
                         Spacer()
                     }
+                    .zIndex(1)
                 }
 
                 // MARK: 하단 리스트 패널 및 버튼
@@ -1321,7 +1338,8 @@ struct RunningView: View {
     @ViewBuilder
     private func runnerMapPin(runner: NearbyRunner) -> some View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
-        let avatarColor: Color = runner.isMe ? Color.main500 : Color(.systemGray3)
+        // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
+        let avatarColor = Color(.systemGray3)
         let cardBg: Color = runner.isMe ? Color.main500.opacity(0.12) : Color.clear
         let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
 
@@ -1856,19 +1874,49 @@ struct RunningView: View {
 
     // MARK: - 카메라
 
+    private func focusOnMyLocation() {
+        mapZoomDistance = locationFocusDistance
+        isFollowingUser = true
+        recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func refreshMyProfileImage() {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+
+        Task {
+            guard let profile = try? await FirestoreService.shared.fetchUserProfile(uid: uid),
+                  let image = profile["profileImageBase64"] as? String,
+                  !image.isEmpty
+            else { return }
+
+            myProfileImageBase64 = image
+            UserDefaults.standard.set(image, forKey: "profileImageBase64")
+        }
+    }
+
     private func recenterCamera(distance: Double) {
         guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
         isProgrammaticMove = true
-        withAnimation(.interpolatingSpring(stiffness: 40, damping: 12)) {
+        withAnimation(.easeInOut(duration: 0.65)) {
             cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: distance))
         }
-        // 애니메이션 완료 후 플래그 해제 (0.6초면 충분)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        // 카메라 애니메이션 중 발생하는 MapKit 콜백은 수동 조작으로 처리하지 않는다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
             isProgrammaticMove = false
         }
     }
 
     // MARK: - 카운트다운
+
+    private func startRunIfAuthorized() {
+        guard viewModel.locationManager.hasAlwaysAuthorization else {
+            viewModel.locationManager.requestPermission()
+            showAlwaysLocationPermissionAlert = true
+            return
+        }
+
+        startCountdown()
+    }
 
     private func startCountdown() {
 
@@ -1881,8 +1929,11 @@ struct RunningView: View {
             }
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
-                viewModel.start()
-                startNearbyObservationIfNeeded()
+                if viewModel.start() {
+                    startNearbyObservationIfNeeded()
+                } else {
+                    showAlwaysLocationPermissionAlert = true
+                }
             }
         }
     }

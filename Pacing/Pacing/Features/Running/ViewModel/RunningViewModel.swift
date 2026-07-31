@@ -12,13 +12,6 @@ enum RunningState {
     case finished
 }
 
-struct RunLapPace: Identifiable, Equatable {
-    let kilometer: Int
-    let pace: Double
-
-    var id: Int { kilometer }
-}
-
 final class RunningViewModel: ObservableObject {
     @Published var state: RunningState = .idle
     @Published var elapsedSeconds: Int = 0
@@ -54,8 +47,12 @@ final class RunningViewModel: ObservableObject {
 
     // MARK: - Controls
 
-    func start() {
-        locationManager.requestPermission()
+    @discardableResult
+    func start() -> Bool {
+        guard locationManager.hasAlwaysAuthorization else {
+            return false
+        }
+
         locationManager.resetRoute()
         elapsedSeconds = 0
         distance = 0
@@ -67,6 +64,7 @@ final class RunningViewModel: ObservableObject {
         locationManager.startTracking()
         state = .running
         startTimer()
+        return true
     }
 
     func pause() {
@@ -89,6 +87,7 @@ final class RunningViewModel: ObservableObject {
 
     func stop() {
         syncElapsedSeconds()
+        completePendingLapsIfNeeded()
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
         runningStartedAt = nil
         timer?.cancel()
@@ -201,12 +200,14 @@ final class RunningViewModel: ObservableObject {
         distance: Double? = nil,
         elapsedSeconds: Int? = nil,
         avgPace: Double? = nil,
-        routeCoordinates: [CLLocationCoordinate2D]? = nil
+        routeCoordinates: [CLLocationCoordinate2D]? = nil,
+        lapPaces: [RunLapPace]? = nil
     ) async {
         let savedDistance = distance ?? self.distance
         let savedElapsedSeconds = elapsedSeconds ?? self.elapsedSeconds
         let savedAveragePace = avgPace ?? self.avgPace
         let savedRouteCoordinates = routeCoordinates ?? locationManager.routeCoordinates
+        let savedLapPaces = lapPaces ?? completedLapPaces
 
         guard savedElapsedSeconds >= 60 else { return }  // 1분 미만은 저장하지 않음
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -216,7 +217,8 @@ final class RunningViewModel: ObservableObject {
             duration: savedElapsedSeconds,
             distance: savedDistance,
             avgPace: savedAveragePace,
-            routeCoordinates: savedRouteCoordinates
+            routeCoordinates: savedRouteCoordinates,
+            lapPaces: savedLapPaces
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
 

@@ -7,6 +7,8 @@ struct MyView: View {
     @State private var showPicker = false
     @State private var showAllHistory = false
     @State private var showLogoutAlert = false
+    @State private var showAccountDeletionAlert = false
+    @State private var showAccountDeletion = false
 
     var body: some View {
         NavigationStack {
@@ -21,7 +23,10 @@ struct MyView: View {
                 }
             }
             .background(Color.backgroundPrimary)
-            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showAccountDeletion) {
+                AccountDeletionView(viewModel: vm)
+            }
         }
         .refreshable { vm.loadData() }
         .sheet(isPresented: $showPicker) {
@@ -398,7 +403,72 @@ struct MyView: View {
                 }
             }
             .frame(height: 160)
+            .chartOverlay { proxy in
+                GeometryReader { geometry in
+                    Rectangle().fill(.clear).contentShape(Rectangle())
+                        .gesture(
+                            SpatialTapGesture().onEnded { value in
+                                let location = value.location
+                                guard let plotFrameAnchor = proxy.plotFrame else { return }
+                                let plotFrame = geometry[plotFrameAnchor]
+                                guard location.x >= plotFrame.minX, location.x <= plotFrame.maxX,
+                                      let label: String = proxy.value(atX: location.x - plotFrame.minX)
+                                else { return }
+                                withAnimation(.easeInOut(duration: 0.28)) {
+                                    vm.toggleChartSelection(label: label)
+                                }
+                            }
+                        )
+                }
+            }
+
+            if vm.selectedChartEntry != nil {
+                selectedChartRunsSection
+                    .id(vm.selectedChartEntryID)
+                    .transition(.opacity.combined(with: .offset(y: 8)))
+            }
         }
+    }
+
+    private var selectedChartRunsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 4) {
+                if let date = vm.selectedChartDate {
+                    let calendar = Calendar.current
+                    let year = calendar.component(.year, from: date)
+                    let month = calendar.component(.month, from: date)
+                    let day = calendar.component(.day, from: date)
+
+                    HStack(spacing: 0) {
+                        Text("\(year)").foregroundStyle(Color.main500)
+                        Text("년 ").foregroundStyle(Color.textPrimary)
+                        Text("\(month)").foregroundStyle(Color.main500)
+                        Text("월 ").foregroundStyle(Color.textPrimary)
+                        Text("\(day)").foregroundStyle(Color.main500)
+                        Text("일").foregroundStyle(Color.textPrimary)
+                    }
+                }
+                Text(vm.selectedChartSuffixText)
+                    .foregroundStyle(Color.textPrimary)
+            }
+            .font(.system(size: 17, weight: .bold))
+
+            if vm.selectedChartRuns.isEmpty {
+                Text("선택한 날짜에 러닝 기록이 없어요")
+                    .font(.system(size: 14))
+                    .foregroundStyle(Color.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 12)
+            } else {
+                ForEach(vm.selectedChartRuns) { record in
+                    NavigationLink { RunActivityDetailView(record: record) } label: {
+                        RunHistoryCard(record: record, vm: vm)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .padding(.top, 4)
     }
 
     // MARK: - History Section
@@ -430,8 +500,14 @@ struct MyView: View {
             } else {
                 let displayed = showAllHistory ? vm.runHistory : Array(vm.runHistory.prefix(5))
                 ForEach(displayed) { record in
-                    RunHistoryCard(record: record, vm: vm)
-                        .padding(.horizontal, 20)
+                    NavigationLink {
+                        RunActivityDetailView(record: record)
+                    } label: {
+                        RunHistoryCard(record: record, vm: vm)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("러닝 활동 상세를 엽니다")
+                    .padding(.horizontal, 20)
                 }
 
                 if vm.runHistory.count > 5 {
@@ -461,9 +537,17 @@ struct MyView: View {
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "rectangle.portrait.and.arrow.right", label: "로그아웃", tint: .accent500) {
+            Button {
                 showLogoutAlert = true
+            } label: {
+                Text("로그아웃")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.accent500)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
             }
+            .buttonStyle(.plain)
             .alert("로그아웃", isPresented: $showLogoutAlert) {
                 Button("취소", role: .cancel) {}
                 Button("로그아웃", role: .destructive) {
@@ -471,6 +555,27 @@ struct MyView: View {
                 }
             } message: {
                 Text("로그아웃 하시겠습니까?")
+            }
+
+            Button {
+                showAccountDeletionAlert = true
+            } label: {
+                Text("회원탈퇴")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.gray500)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .alert("회원탈퇴", isPresented: $showAccountDeletionAlert) {
+                Button("취소", role: .cancel) {}
+                Button("계속", role: .destructive) {
+                    showAccountDeletion = true
+                }
+            } message: {
+                Text("탈퇴 시 계정과 러닝 기록, 친구 관계, 같이 듣기 정보가 삭제되며 복구할 수 없습니다.")
             }
         }
         .background(Color.backgroundPrimary)

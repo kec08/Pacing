@@ -1,10 +1,12 @@
 import Foundation
 import FirebaseFirestore
+import FirebaseFunctions
 import CoreLocation
 
 final class FirestoreService {
     static let shared = FirestoreService()
     private let db = Firestore.firestore()
+    private let functions = Functions.functions(region: "asia-northeast3")
 
     private init() {}
 
@@ -51,6 +53,9 @@ final class FirestoreService {
             GeoPoint(latitude: $0.latitude, longitude: $0.longitude)
         }
         data["routeCoordinates"] = geoPoints
+        data["lapPaces"] = record.lapPaces.map {
+            ["kilometer": $0.kilometer, "pace": $0.pace]
+        }
 
         try await db.collection("users").document(uid)
             .collection("runHistory").document(record.id)
@@ -78,6 +83,15 @@ final class FirestoreService {
             let coords = geoPoints.map {
                 CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
             }
+            let lapPaces = ((d["lapPaces"] as? [[String: Any]]) ?? []).compactMap { lap -> RunLapPace? in
+                guard let kilometer = (lap["kilometer"] as? NSNumber)?.intValue,
+                      let pace = (lap["pace"] as? NSNumber)?.doubleValue,
+                      kilometer > 0,
+                      pace > 0 else {
+                    return nil
+                }
+                return RunLapPace(kilometer: kilometer, pace: pace)
+            }
 
             return RunRecord(
                 id: doc.documentID,
@@ -85,7 +99,8 @@ final class FirestoreService {
                 duration: duration,
                 distance: distance,
                 avgPace: avgPace,
-                routeCoordinates: coords
+                routeCoordinates: coords,
+                lapPaces: lapPaces
             )
         }
     }
@@ -175,6 +190,69 @@ final class FirestoreService {
                 artworkData: data["artworkData"] as? String
             )
         }
+    }
+
+    // MARK: - 친구 최근 재생 음악 조회
+    func fetchFriendsRecentSongs(
+        currentUID: String,
+        friendLimit: Int = 8,
+        songsPerFriend: Int = 3
+    ) async throws -> [FriendRecentSongActivity] {
+        let snapshot = try await db.collection("users").document(currentUID)
+            .collection("friends")
+            .order(by: "createdAt", descending: true)
+            .limit(to: friendLimit)
+            .getDocuments()
+
+        var activities: [FriendRecentSongActivity] = []
+        for friendDocument in snapshot.documents {
+            let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
+            let songs = try await fetchRecentSongs(
+                uid: friendDocument.documentID,
+                limit: max(1, songsPerFriend)
+            )
+
+            activities.append(
+                contentsOf: songs.map { song in
+                    FriendRecentSongActivity(
+                        friendUID: friendDocument.documentID,
+                        friendNickname: nickname,
+                        song: song
+                    )
+                }
+            )
+        }
+
+        return activities.sorted {
+            ($0.song.playedAt ?? .distantPast) > ($1.song.playedAt ?? .distantPast)
+        }
+    }
+
+    // MARK: - 친구 최근 러닝 조회
+    func fetchFriendsRecentRuns(currentUID: String, friendLimit: Int = 8) async throws -> [FriendRecentRunActivity] {
+        let snapshot = try await db.collection("users").document(currentUID)
+            .collection("friends")
+            .order(by: "createdAt", descending: true)
+            .limit(to: friendLimit)
+            .getDocuments()
+
+        var activities: [FriendRecentRunActivity] = []
+        for friendDocument in snapshot.documents {
+            guard let run = try await fetchRunHistory(uid: friendDocument.documentID, limit: 1).first else {
+                continue
+            }
+
+            let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
+            activities.append(
+                FriendRecentRunActivity(
+                    friendUID: friendDocument.documentID,
+                    friendNickname: nickname,
+                    run: run
+                )
+            )
+        }
+
+        return activities.sorted { $0.run.startedAt > $1.run.startedAt }
     }
 
     // MARK: - 친구 목록 조회
@@ -346,33 +424,10 @@ final class FirestoreService {
 
     // MARK: - 친구 요청 수락
     func acceptFriendRequest(_ request: FriendRequest, currentUserNickname: String) async throws {
-        let fromUser = request.sender
-        let currentUser = try await fetchFriendUser(uid: request.toUID, source: .friend)
-
-        let batch = db.batch()
-        let requestRef = db.collection("friendRequests").document(request.id)
-        let myFriendRef = db.collection("users").document(request.toUID)
-            .collection("friends").document(request.fromUID)
-        let senderFriendRef = db.collection("users").document(request.fromUID)
-            .collection("friends").document(request.toUID)
-
-        batch.setData(friendDocumentData(from: fromUser), forDocument: myFriendRef, merge: true)
-        batch.setData(
-            friendDocumentData(
-                from: FriendUser(
-                    id: currentUser.id,
-                    nickname: currentUser.nickname.isEmpty ? currentUserNickname : currentUser.nickname,
-                    profileImageBase64: currentUser.profileImageBase64,
-                    statusText: currentUser.statusText,
-                    source: .friend
-                )
-            ),
-            forDocument: senderFriendRef,
-            merge: true
-        )
-        batch.updateData(["status": FriendRequestStatus.accepted.rawValue], forDocument: requestRef)
-
-        try await batch.commit()
+        _ = currentUserNickname
+        _ = try await functions
+            .httpsCallable("acceptFriendRequest")
+            .call(["requestID": request.id])
     }
 
     // MARK: - 친구 요청 거절
@@ -519,19 +574,6 @@ final class FirestoreService {
             statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
             source: source
         )
-    }
-
-    private func friendDocumentData(from user: FriendUser) -> [String: Any] {
-        var data: [String: Any] = [
-            "uid": user.id,
-            "nickname": user.nickname,
-            "statusText": user.statusText,
-            "createdAt": FieldValue.serverTimestamp()
-        ]
-        if let profileImageBase64 = user.profileImageBase64 {
-            data["profileImageBase64"] = profileImageBase64
-        }
-        return data
     }
 
     private func makeSharedPlaylistSummary(from doc: DocumentSnapshot) -> SharedPlaylistSummary? {

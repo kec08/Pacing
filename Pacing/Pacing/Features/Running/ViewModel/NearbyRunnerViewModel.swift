@@ -21,6 +21,7 @@ struct NearbyRunner: Identifiable {
 @MainActor
 final class NearbyRunnerViewModel: ObservableObject {
     @Published var nearbyRunners: [NearbyRunner] = []
+    @Published private(set) var activeFriendRunners: [NearbyRunner] = []
     @Published var selectedFilter: RunnerFilter = .nearby
     @Published var isObserving: Bool = false
 
@@ -28,6 +29,7 @@ final class NearbyRunnerViewModel: ObservableObject {
     private var myUID: String = ""
     private var allRunners: [ActiveRunner] = []
     private var friendIDs: Set<String> = []
+    private var friendProfileImages: [String: String] = [:]
     private var myLocation: CLLocationCoordinate2D?
 
     func startObserving(uid: String) {
@@ -46,6 +48,7 @@ final class NearbyRunnerViewModel: ObservableObject {
         RealtimeDBService.shared.stopObserving()
         isObserving = false
         nearbyRunners = []
+        activeFriendRunners = []
     }
 
     func updateMyLocation(_ coord: CLLocationCoordinate2D) {
@@ -61,31 +64,41 @@ final class NearbyRunnerViewModel: ObservableObject {
     private func filterRunners() {
         guard let myLoc = myLocation else {
             nearbyRunners = []
+            activeFriendRunners = []
             return
         }
         let myPoint = CLLocation(latitude: myLoc.latitude, longitude: myLoc.longitude)
 
-        nearbyRunners = allRunners
-            .compactMap { runner in
+        let activeRunners: [NearbyRunner] = allRunners
+            .compactMap { runner -> NearbyRunner? in
                 guard runner.id != myUID else { return nil }
-                if selectedFilter == .friends, !friendIDs.contains(runner.id) {
-                    return nil
-                }
                 let point = CLLocation(latitude: runner.coordinate.latitude, longitude: runner.coordinate.longitude)
                 let dist = myPoint.distance(from: point)
-                if selectedFilter == .nearby, dist > radiusMeters {
-                    return nil
-                }
                 return NearbyRunner(
                     id: runner.id,
                     nickname: runner.nickname,
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
-                    profileImageBase64: runner.profileImageBase64,
+                    profileImageBase64: friendProfileImages[runner.id] ?? runner.profileImageBase64,
                     distance: dist,
                     isMe: false
                 )
+            }
+
+        // 지도에는 거리와 무관하게 현재 러닝 중인 친구만 표시한다.
+        activeFriendRunners = activeRunners
+            .filter { friendIDs.contains($0.id) }
+            .sorted { $0.distance < $1.distance }
+
+        nearbyRunners = activeRunners
+            .filter { runner in
+                switch selectedFilter {
+                case .friends:
+                    return friendIDs.contains(runner.id)
+                case .nearby:
+                    return runner.distance <= radiusMeters
+                }
             }
             .sorted { $0.distance < $1.distance }
     }
@@ -95,9 +108,16 @@ final class NearbyRunnerViewModel: ObservableObject {
         do {
             let friends = try await FirestoreService.shared.fetchFriends(uid: uid)
             friendIDs = Set(friends.map(\.id))
+            friendProfileImages = Dictionary(
+                uniqueKeysWithValues: friends.compactMap { friend in
+                    guard let image = friend.profileImageBase64, !image.isEmpty else { return nil }
+                    return (friend.id, image)
+                }
+            )
             filterRunners()
         } catch {
             friendIDs = []
+            friendProfileImages = [:]
             filterRunners()
         }
     }

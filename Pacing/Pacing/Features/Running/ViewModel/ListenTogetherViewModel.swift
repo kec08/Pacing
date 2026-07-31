@@ -17,6 +17,11 @@ final class ListenTogetherViewModel: ObservableObject {
     private var lastIncomingRequestID: String?
     private var hostBroadcastTimer: AnyCancellable?
     private weak var hostMusicViewModel: RunningMusicViewModel?
+    private var hostPlaybackEventID = UUID().uuidString
+    private var lastHostedTrackKey = ""
+    private var lastAppliedPlaybackEventID = ""
+    private var inFlightPlaybackEventID: String?
+    private var activePlaybackSyncToken: UUID?
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -55,6 +60,7 @@ final class ListenTogetherViewModel: ObservableObject {
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",
+            playbackEventID: UUID().uuidString,
             playbackPosition: 0,
             serverTimestamp: Date().timeIntervalSince1970,
             status: "pending", isPlaying: true
@@ -72,6 +78,18 @@ final class ListenTogetherViewModel: ObservableObject {
         let song = currentSongSnapshot(from: musicVM, player: player)
         let position = player.currentPlaybackTime
 
+        var sourceSession = session
+        sourceSession.songStoreID = song.storeID
+        sourceSession.songTitle = song.title
+        sourceSession.artistName = song.artist
+        sourceSession.artworkURL = song.artworkURL
+        sourceSession.artworkData = song.artworkData
+        sourceSession.playbackEventID = UUID().uuidString
+        sourceSession.playbackPosition = position
+        sourceSession.serverTimestamp = Date().timeIntervalSince1970 * 1000
+        sourceSession.status = "active"
+        sourceSession.isPlaying = player.playbackState == .playing
+
         RealtimeDBService.shared.updateSessionPlayback(
             sessionID: session.id,
             songStoreID: song.storeID,
@@ -79,24 +97,16 @@ final class ListenTogetherViewModel: ObservableObject {
             artistName: song.artist,
             artworkURL: song.artworkURL,
             artworkData: song.artworkData,
+            playbackEventID: sourceSession.playbackEventID,
             position: position,
             isPlaying: player.playbackState == .playing
         )
         RealtimeDBService.shared.acceptSession(sessionID: session.id, guestUID: myUID)
 
-        var sourceSession = session
-        sourceSession.songStoreID = song.storeID
-        sourceSession.songTitle = song.title
-        sourceSession.artistName = song.artist
-        sourceSession.artworkURL = song.artworkURL
-        sourceSession.artworkData = song.artworkData
-        sourceSession.playbackPosition = position
-        sourceSession.serverTimestamp = Date().timeIntervalSince1970 * 1000
-        sourceSession.status = "active"
-        sourceSession.isPlaying = player.playbackState == .playing
-
         activeSession = sourceSession
         isHost = true
+        hostPlaybackEventID = sourceSession.playbackEventID
+        lastHostedTrackKey = [song.storeID, song.title, song.artist].joined(separator: "|")
         incomingRequest = nil
         lastIncomingRequestID = nil
         sessionStartDate = Date()
@@ -124,14 +134,27 @@ final class ListenTogetherViewModel: ObservableObject {
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
-        let song = currentSongSnapshot(from: musicVM, player: player)
+        let metadata = currentSongSnapshot(from: musicVM, player: player, includesArtworkData: false)
+        let trackKey = [metadata.storeID, metadata.title, metadata.artist].joined(separator: "|")
+        let isTrackTransition = !trackKey.isEmpty && trackKey != lastHostedTrackKey
+
+        // 타이머에 의한 위치 갱신은 같은 이벤트 ID를 유지합니다. 실제 곡 전환만 새 이벤트로
+        // 기록해 게스트가 매초 큐를 재구성하지 않도록 합니다.
+        if isTrackTransition {
+            lastHostedTrackKey = trackKey
+            hostPlaybackEventID = UUID().uuidString
+        }
+        let song = isTrackTransition
+            ? currentSongSnapshot(from: musicVM, player: player)
+            : metadata
         RealtimeDBService.shared.updateSessionPlayback(
             sessionID: session.id,
             songStoreID: song.storeID,
             songTitle: song.title,
             artistName: song.artist,
-            artworkURL: song.artworkURL,
-            artworkData: song.artworkData,
+            artworkURL: isTrackTransition ? song.artworkURL : nil,
+            artworkData: isTrackTransition ? song.artworkData : nil,
+            playbackEventID: hostPlaybackEventID,
             position: player.currentPlaybackTime,
             isPlaying: player.playbackState == .playing
         )
@@ -151,9 +174,14 @@ final class ListenTogetherViewModel: ObservableObject {
                         self.startHostBroadcasting(with: musicVM)
                     }
                     if !self.isHost {
+                        // 이후의 위치 갱신이 같은 전환 이벤트를 중복 처리하지 않도록 먼저 반영합니다.
+                        self.activeSession = session
                         // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
                         if self.shouldSyncMusic(with: session) {
                             await self.syncMusic(session: session)
+                        }
+                        guard self.activeSession?.playbackEventID == session.playbackEventID else {
+                            return
                         }
                         // 재생/일시정지 동기화
                         let player = MPMusicPlayerController.systemMusicPlayer
@@ -175,6 +203,19 @@ final class ListenTogetherViewModel: ObservableObject {
     private func syncMusic(session: ListenSession) async {
         guard !session.songStoreID.isEmpty || !session.songTitle.isEmpty else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
+        let eventID = effectivePlaybackEventID(for: session)
+
+        // Firebase의 위치 보정 값은 매초 바뀐다. 동일한 곡 전환을 준비 중이면 새 작업을 시작하지 않는다.
+        guard inFlightPlaybackEventID != eventID else { return }
+
+        let syncToken = UUID()
+        inFlightPlaybackEventID = eventID
+        activePlaybackSyncToken = syncToken
+        defer {
+            if activePlaybackSyncToken == syncToken {
+                inFlightPlaybackEventID = nil
+            }
+        }
 
         let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
         let targetPosition = max(0, session.playbackPosition + latency)
@@ -185,25 +226,41 @@ final class ListenTogetherViewModel: ObservableObject {
                 isPlaying: session.isPlaying,
                 player: player
             )
+            lastAppliedPlaybackEventID = eventID
             return
         }
 
-        if await syncByStoreID(session: session, targetPosition: targetPosition, player: player) {
+        if await syncByStoreID(
+            session: session,
+            targetPosition: targetPosition,
+            player: player,
+            syncToken: syncToken
+        ) {
+            lastAppliedPlaybackEventID = eventID
             return
         }
 
-        await syncByLibrarySearch(session: session, targetPosition: targetPosition, player: player)
+        if await syncByLibrarySearch(
+            session: session,
+            targetPosition: targetPosition,
+            player: player,
+            syncToken: syncToken
+        ) {
+            lastAppliedPlaybackEventID = eventID
+        }
     }
 
     private func syncByStoreID(
         session: ListenSession,
         targetPosition: TimeInterval,
-        player: MPMusicPlayerController
+        player: MPMusicPlayerController,
+        syncToken: UUID
     ) async -> Bool {
         guard !session.songStoreID.isEmpty else { return false }
         player.setQueue(with: [session.songStoreID])
         do {
             try await player.prepareToPlay()
+            guard isCurrentPlaybackSync(syncToken) else { return false }
             player.currentPlaybackTime = targetPosition
             if session.isPlaying {
                 player.play()
@@ -220,9 +277,10 @@ final class ListenTogetherViewModel: ObservableObject {
     private func syncByLibrarySearch(
         session: ListenSession,
         targetPosition: TimeInterval,
-        player: MPMusicPlayerController
-    ) async {
-        guard !session.songTitle.isEmpty else { return }
+        player: MPMusicPlayerController,
+        syncToken: UUID
+    ) async -> Bool {
+        guard !session.songTitle.isEmpty else { return false }
         let titlePredicate = MPMediaPropertyPredicate(
             value: session.songTitle,
             forProperty: MPMediaItemPropertyTitle,
@@ -235,14 +293,17 @@ final class ListenTogetherViewModel: ObservableObject {
             let collection = MPMediaItemCollection(items: [item])
             player.setQueue(with: collection)
             try? await player.prepareToPlay()
+            guard isCurrentPlaybackSync(syncToken) else { return false }
             player.currentPlaybackTime = targetPosition
             if session.isPlaying {
                 player.play()
             } else {
                 player.pause()
             }
+            return true
         } else {
             print("[ListenTogether] library fallback failed: \(session.songTitle) - \(session.artistName)")
+            return false
         }
     }
 
@@ -251,6 +312,10 @@ final class ListenTogetherViewModel: ObservableObject {
             return true
         }
         let player = MPMusicPlayerController.systemMusicPlayer
+        let eventID = effectivePlaybackEventID(for: session)
+        if inFlightPlaybackEventID == eventID {
+            return false
+        }
         let currentStoreID = player.nowPlayingItem?.playbackStoreID ?? ""
         if !session.songStoreID.isEmpty, currentStoreID != session.songStoreID {
             return true
@@ -264,7 +329,8 @@ final class ListenTogetherViewModel: ObservableObject {
         if session.isPlaying != (player.playbackState == .playing) {
             return true
         }
-        return activeSession?.songStoreID != session.songStoreID
+        return lastAppliedPlaybackEventID != eventID
+            || activeSession?.songStoreID != session.songStoreID
             || activeSession?.songTitle != session.songTitle
             || activeSession?.artistName != session.artistName
             || activeSession?.artworkURL != session.artworkURL
@@ -273,7 +339,8 @@ final class ListenTogetherViewModel: ObservableObject {
 
     private func currentSongSnapshot(
         from musicVM: RunningMusicViewModel,
-        player: MPMusicPlayerController
+        player: MPMusicPlayerController,
+        includesArtworkData: Bool = true
     ) -> (storeID: String, title: String, artist: String, artworkURL: String, artworkData: String) {
         let musicSnapshot = musicVM.currentSongSnapshot()
         let mediaItem = player.nowPlayingItem
@@ -287,7 +354,9 @@ final class ListenTogetherViewModel: ObservableObject {
             ?? mediaItem?.artist?.nonEmpty
             ?? ""
         let artworkURL = musicSnapshot?.artworkURL ?? ""
-        let artworkData = encodedArtworkData(from: musicSnapshot?.artwork)
+        let artworkData = includesArtworkData
+            ? encodedArtworkData(from: musicSnapshot?.artwork)
+            : ""
         return (storeID, title, artist, artworkURL, artworkData)
     }
 
@@ -333,6 +402,18 @@ final class ListenTogetherViewModel: ObservableObject {
         }
     }
 
+    private func effectivePlaybackEventID(for session: ListenSession) -> String {
+        if !session.playbackEventID.isEmpty {
+            return session.playbackEventID
+        }
+        // 이전 세션 데이터와의 호환을 위해 이벤트 ID가 없는 경우에만 기존 스냅샷을 사용합니다.
+        return "legacy-\(session.songStoreID)-\(session.songTitle)-\(Int(session.serverTimestamp))"
+    }
+
+    private func isCurrentPlaybackSync(_ token: UUID) -> Bool {
+        activePlaybackSyncToken == token && activeSession?.status == "active"
+    }
+
     private func startHostBroadcasting(with musicVM: RunningMusicViewModel) {
         hostMusicViewModel = musicVM
         guard hostBroadcastTimer == nil else { return }
@@ -359,6 +440,10 @@ final class ListenTogetherViewModel: ObservableObject {
         isHost = false
         sessionStartDate = nil
         lastIncomingRequestID = nil
+        activePlaybackSyncToken = nil
+        inFlightPlaybackEventID = nil
+        lastAppliedPlaybackEventID = ""
+        lastHostedTrackKey = ""
     }
 }
 

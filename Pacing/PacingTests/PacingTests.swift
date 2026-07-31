@@ -7,29 +7,99 @@
 
 import XCTest
 @testable import Pacing
+import CoreLocation
 
 final class PacingTests: XCTestCase {
-    override func setUpWithError() throws {
-        // Put setup code here. This method is called before the invocation of each test method in the class.
+    func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        let formatter = ISO8601DateFormatter()
+        formatter.timeZone = calendar.timeZone
+
+        let thursday = formatter.date(from: "2026-07-30T12:00:00+09:00")!
+        let sunday = formatter.date(from: "2026-07-26T12:00:00+09:00")!
+        let monday = formatter.date(from: "2026-07-27T00:00:00+09:00")!
+
+        let interval = WeeklyDateRange.interval(containing: thursday, calendar: calendar)
+
+        XCTAssertFalse(interval.contains(sunday))
+        XCTAssertTrue(interval.contains(monday))
     }
 
-    override func tearDownWithError() throws {
-        // Put teardown code here. This method is called after the invocation of each test method in the class.
+    func testLocationModeSupportsPlistArrayAndString() throws {
+        XCTAssertTrue(LocationBackgroundConfiguration.supportsLocationMode(["location", "audio"]))
+        XCTAssertTrue(LocationBackgroundConfiguration.supportsLocationMode("location audio"))
+        XCTAssertTrue(LocationBackgroundConfiguration.supportsLocationMode("audio, location"))
+        XCTAssertFalse(LocationBackgroundConfiguration.supportsLocationMode(["audio"]))
+        XCTAssertFalse(LocationBackgroundConfiguration.supportsLocationMode(nil))
     }
 
-    func testExample() throws {
-        // This is an example of a functional test case.
-        // Use XCTAssert and related functions to verify your tests produce the correct results.
-        // Any test you write for XCTest can be annotated as throws and async.
-        // Mark your test throws to produce an unexpected failure when your test encounters an uncaught error.
-        // Mark your test async to allow awaiting for asynchronous code to complete. Check the results with assertions afterwards.
+    func testBackgroundUpdatesRequireAlwaysPermissionAndActiveRecording() throws {
+        XCTAssertTrue(
+            LocationBackgroundConfiguration.shouldEnableBackgroundUpdates(
+                supportsLocationMode: true,
+                authorizationStatus: .authorizedAlways,
+                isRecordingRoute: true
+            )
+        )
+        XCTAssertFalse(
+            LocationBackgroundConfiguration.shouldEnableBackgroundUpdates(
+                supportsLocationMode: true,
+                authorizationStatus: .authorizedWhenInUse,
+                isRecordingRoute: true
+            )
+        )
+        XCTAssertFalse(
+            LocationBackgroundConfiguration.shouldEnableBackgroundUpdates(
+                supportsLocationMode: true,
+                authorizationStatus: .authorizedAlways,
+                isRecordingRoute: false
+            )
+        )
+    }
+    func testEmailValidatorRejectsInvalidEmail() {
+        XCTAssertEqual(
+            AuthInputValidator.emailError(for: "pacing.example.com"),
+            "올바른 이메일 주소를 입력해주세요."
+        )
     }
 
-    func testPerformanceExample() throws {
-        // This is an example of a performance test case.
-        self.measure {
-            // Put the code you want to measure the time of here.
-        }
+    func testSignUpValidatorRequiresMatchingSecurePassword() {
+        XCTAssertEqual(
+            AuthInputValidator.signUpError(
+                email: "reviewer@pacing.app",
+                password: "pacing123",
+                confirmation: "different123"
+            ),
+            "비밀번호가 일치하지 않아요."
+        )
+    }
+
+    func testSignUpValidatorAcceptsValidCredentials() {
+        XCTAssertNil(
+            AuthInputValidator.signUpError(
+                email: "reviewer@pacing.app",
+                password: "pacing123",
+                confirmation: "pacing123"
+            )
+        )
+    }
+
+    func testAppleNonceStoreUsesNonceClaimToResolveMatchingRawNonce() {
+        var nonceStore = AppleNonceStore()
+        let rawNonce = "raw-nonce-for-apple"
+        let nonceHash = nonceStore.register(rawNonce: rawNonce)
+        let idToken = "header.eyJub25jZSI6XCIi.signature"
+
+        let payload = "{\"nonce\":\"\(nonceHash)\"}"
+            .data(using: .utf8)!
+            .base64EncodedString()
+            .replacingOccurrences(of: "=", with: "")
+        let tokenWithNonce = "header.\(payload).signature"
+
+        XCTAssertEqual(AppleNonceStore.nonceHash(fromIDToken: tokenWithNonce), nonceHash)
+        XCTAssertEqual(nonceStore.consume(rawNonceHash: nonceHash), rawNonce)
+        XCTAssertNil(AppleNonceStore.nonceHash(fromIDToken: idToken))
     }
 
 }

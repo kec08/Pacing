@@ -7,6 +7,18 @@ import UIKit
 
 @MainActor
 final class SharedPlaylistDetailViewModel: ObservableObject {
+    private struct DetailCacheEntry {
+        let summary: SharedPlaylistSummary
+        let tracks: [SharedPlaylistTrack]
+        let appSaveState: SharedPlaylistSaveState
+        let didSaveToAppleMusic: Bool
+        let canSaveToAppleMusic: Bool
+        let cachedAt: Date
+    }
+
+    private static var detailCache: [String: DetailCacheEntry] = [:]
+    private static let cacheLifetime: TimeInterval = 10 * 60
+
     enum Source {
         case shared(SharedPlaylistSummary)
         case recommendation(Playlist)
@@ -112,30 +124,25 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func load() async {
+        guard !isLoading else { return }
+
+        if applyCachedDetailIfAvailable() {
+            return
+        }
+
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            cacheCurrentDetail()
+        }
 
         do {
             switch source {
             case .shared:
-                let preparedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
-                tracks = preparedTracks
-                summary = SharedPlaylistSummary(
-                    id: summary.id,
-                    ownerUID: summary.ownerUID,
-                    ownerNickname: summary.ownerNickname,
-                    title: summary.title,
-                    subtitle: summary.subtitle,
-                    artworkURL: summary.artworkURL ?? preparedTracks.first(where: { ($0.artworkURL ?? "").isEmpty == false })?.artworkURL,
-                    sourcePlaylistID: summary.sourcePlaylistID,
-                    sourcePlaylistURL: summary.sourcePlaylistURL,
-                    trackCount: preparedTracks.count,
-                    updatedAt: summary.updatedAt,
-                    tracks: preparedTracks
-                )
+                // 전달받은 스냅샷을 먼저 표시한다. 상세 진입 시 제목 검색을 하면
+                // 유사 제목의 다른 곡으로 바뀌고 목록이 늦게 나타날 수 있다.
+                tracks = summary.tracks
 
-                let subscription = try await musicService.currentSubscription()
-                canSaveToAppleMusic = subscription.canPlayCatalogContent
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
                     appSaveState = isSaved ? .saved : .idle
@@ -196,6 +203,40 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         }
     }
 
+    private var detailCacheKey: String {
+        let version = summary.updatedAt?.timeIntervalSinceReferenceDate ?? 0
+        let userID = Auth.auth().currentUser?.uid ?? "anonymous"
+        return "\(userID)_\(summary.id)_\(version)"
+    }
+
+    private func applyCachedDetailIfAvailable() -> Bool {
+        guard let cachedDetail = Self.detailCache[detailCacheKey],
+              Date().timeIntervalSince(cachedDetail.cachedAt) < Self.cacheLifetime
+        else {
+            return false
+        }
+
+        summary = cachedDetail.summary
+        tracks = cachedDetail.tracks
+        appSaveState = cachedDetail.appSaveState
+        didSaveToAppleMusic = cachedDetail.didSaveToAppleMusic
+        canSaveToAppleMusic = cachedDetail.canSaveToAppleMusic
+        return true
+    }
+
+    private func cacheCurrentDetail() {
+        guard !tracks.isEmpty else { return }
+
+        Self.detailCache[detailCacheKey] = DetailCacheEntry(
+            summary: summary,
+            tracks: tracks,
+            appSaveState: appSaveState,
+            didSaveToAppleMusic: didSaveToAppleMusic,
+            canSaveToAppleMusic: canSaveToAppleMusic,
+            cachedAt: Date()
+        )
+    }
+
     func playAll() async {
         if let firstTrack = tracks.first {
             playingTrackID = firstTrack.id
@@ -205,16 +246,15 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                try await musicService.play(sharedTracks: tracks, requiresFirstTrack: false)
-            case .recommendation:
-                try await musicService.playTracks(with: tracks.compactMap(\.songStoreID))
-            case .album:
-                try await musicService.playTracks(with: tracks.compactMap(\.songStoreID))
+                try await musicService.play(sharedTracks: tracks)
+            case .recommendation(let playlist):
+                try await musicService.play(playlist: playlist)
+            case .album(let album):
+                try await musicService.play(album: album)
             case .station(let station):
                 try await musicService.play(station: station)
                 playingTrackID = nil
             }
-            syncCurrentTrack()
         } catch {
             isPlaying = false
             playingTrackID = nil
@@ -226,49 +266,21 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         playingTrackID = track.id
 
         do {
-            let queuedTracks = tracksFromSelectedTrack(track)
-
             switch source {
             case .shared:
-                try await musicService.play(sharedTracks: queuedTracks, requiresFirstTrack: true)
+                try await musicService.play(sharedTrack: track)
             default:
-                let songStoreIDs = queuedTracks.compactMap(\.songStoreID)
-                guard !songStoreIDs.isEmpty else {
+                guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
                     errorMessage = "이 곡은 바로 재생할 수 없어요."
                     playingTrackID = nil
                     return
                 }
-                try await musicService.playTracks(with: songStoreIDs)
+                try await musicService.playTracks(with: [songStoreID])
             }
-            syncCurrentTrack()
         } catch {
             playingTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
         }
-    }
-
-    private func tracksFromSelectedTrack(_ track: SharedPlaylistTrack) -> [SharedPlaylistTrack] {
-        guard let selectedIndex = tracks.firstIndex(where: { $0.id == track.id }) else {
-            return [track]
-        }
-
-        return Array(tracks[selectedIndex...])
-    }
-
-    private func currentSummaryForPersistence() -> SharedPlaylistSummary {
-        SharedPlaylistSummary(
-            id: summary.id,
-            ownerUID: summary.ownerUID,
-            ownerNickname: summary.ownerNickname,
-            title: summary.title,
-            subtitle: summary.subtitle,
-            artworkURL: summary.artworkURL,
-            sourcePlaylistID: summary.sourcePlaylistID,
-            sourcePlaylistURL: summary.sourcePlaylistURL,
-            trackCount: tracks.count,
-            updatedAt: summary.updatedAt,
-            tracks: tracks
-        )
     }
 
     func savePrimaryPlaylist() async {
@@ -287,35 +299,13 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func savePlaylist() async {
-        guard appSaveState != .saving else { return }
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        guard appSaveState != .saving && appSaveState != .saved else { return }
 
         appSaveState = .saving
 
         do {
-            let currentSummary = currentSummaryForPersistence()
-            var didSaveAnywhere = false
-
-            if let uid = Auth.auth().currentUser?.uid {
-                try await firestoreService.saveSharedPlaylistToLibrary(uid: uid, summary: currentSummary)
-                didSaveAnywhere = true
-            }
-
-            if canSaveToAppleMusic {
-                do {
-                    try await musicService.addSharedPlaylistToLibrary(currentSummary)
-                    didSaveToAppleMusic = true
-                    didSaveAnywhere = true
-                } catch {
-                    if !didSaveAnywhere {
-                        throw error
-                    }
-                }
-            }
-
-            guard didSaveAnywhere else {
-                throw AppleMusicRecommendationError.subscriptionUnavailable
-            }
-
+            try await firestoreService.saveSharedPlaylistToLibrary(uid: uid, summary: summary)
             appSaveState = .saved
         } catch {
             appSaveState = .idle
@@ -407,9 +397,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             return "앨범 저장"
         case .station:
             return "저장 불가"
-        case .shared:
-            return "내 플레이리스트 저장"
-        case .recommendation:
+        case .shared, .recommendation:
             return "플레이리스트 저장"
         }
     }
@@ -417,9 +405,6 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     var isSaveButtonDisabled: Bool {
         if case .station = source {
             return true
-        }
-        if case .shared = source {
-            return appSaveState == .saving || appSaveState == .saved || didSaveToAppleMusic
         }
         return appSaveState == .saving || appSaveState == .saved
     }
@@ -430,13 +415,6 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     var isPlaybackActive: Bool {
         isPlaying || playingTrackID != nil
-    }
-
-    var canStartPlayback: Bool {
-        if isStationSource {
-            return !isLoading
-        }
-        return !isLoading && !tracks.isEmpty
     }
 
     var hasMiniPlayerContent: Bool {

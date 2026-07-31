@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import FirebaseAuth
+import FirebaseFunctions
 
 enum StatsPeriod: String, CaseIterable {
     case week = "주"
@@ -22,6 +23,8 @@ struct BarChartEntry: Identifiable {
     var id: String { label }
     var label: String
     var value: Double
+    var startDate: Date
+    var endDate: Date
 }
 
 final class MyViewModel: ObservableObject {
@@ -42,8 +45,11 @@ final class MyViewModel: ObservableObject {
 
     @Published var stats: MyStats = .empty
     @Published var chartEntries: [BarChartEntry] = []
+    @Published var selectedChartEntryID: String?
     @Published var runHistory: [RunRecord] = []
     @Published var isLoading: Bool = true
+    @Published var isDeletingAccount: Bool = false
+    @Published var accountDeletionError: String?
 
     private let cal = Calendar.current
 
@@ -86,6 +92,7 @@ final class MyViewModel: ObservableObject {
         weekOffset = 0
         selectedMonth = cal.component(.month, from: Date())
         selectedYear = cal.component(.year, from: Date())
+        selectedChartEntryID = nil
         loadData()
     }
 
@@ -126,12 +133,44 @@ final class MyViewModel: ObservableObject {
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
     }
 
+    func toggleChartSelection(label: String) {
+        selectedChartEntryID = selectedChartEntryID == label ? nil : label
+    }
+
+    var selectedChartEntry: BarChartEntry? {
+        chartEntries.first { $0.id == selectedChartEntryID }
+    }
+
+    var selectedChartRuns: [RunRecord] {
+        guard let entry = selectedChartEntry else { return [] }
+        return runHistory.filter { $0.startedAt >= entry.startDate && $0.startedAt < entry.endDate }
+    }
+
+    var selectedChartDateText: String {
+        guard let entry = selectedChartEntry else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = selectedPeriod == .week ? "yyyy년 M월 d일" : "yyyy년 M월"
+        return formatter.string(from: entry.startDate)
+    }
+
+    var selectedChartDate: Date? {
+        selectedChartEntry?.startDate
+    }
+
+    var selectedChartSuffixText: String {
+        guard let entry = selectedChartEntry else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = selectedPeriod == .week ? "EEEE 러닝" : "러닝"
+        return formatter.string(from: entry.startDate)
+    }
+
     private func filter(records: [RunRecord]) -> [RunRecord] {
         let now = Date()
         switch selectedPeriod {
         case .week:
-            // 이번 주 시작 = 월요일 기준
-            let thisMonday = mondayOfWeek(containing: now)
+            let thisMonday = WeeklyDateRange.start(containing: now, calendar: cal)
             let start = cal.date(byAdding: .day, value: weekOffset * 7, to: thisMonday)!
             let end   = cal.date(byAdding: .day, value: 7, to: start)!
             return records.filter { $0.startedAt >= start && $0.startedAt < end }
@@ -151,24 +190,18 @@ final class MyViewModel: ObservableObject {
         }
     }
 
-    private func mondayOfWeek(containing date: Date) -> Date {
-        var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: date)
-        comps.weekday = 2 // 월요일
-        return cal.date(from: comps) ?? cal.startOfDay(for: date)
-    }
-
     private func buildChartEntries(from records: [RunRecord]) -> [BarChartEntry] {
         let now = Date()
 
         switch selectedPeriod {
         case .week:
             let labels = ["월", "화", "수", "목", "금", "토", "일"]
-            let monday = cal.date(byAdding: .day, value: weekOffset * 7, to: mondayOfWeek(containing: now))!
+            let monday = cal.date(byAdding: .day, value: weekOffset * 7, to: WeeklyDateRange.start(containing: now, calendar: cal))!
             return (0..<7).map { i in
                 let date = cal.date(byAdding: .day, value: i, to: monday)!
                 let next = cal.date(byAdding: .day, value: 1, to: date)!
                 let km = records.filter { $0.startedAt >= date && $0.startedAt < next }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: labels[i], value: km)
+                return BarChartEntry(label: labels[i], value: km, startDate: date, endDate: next)
             }
 
         case .month:
@@ -180,7 +213,7 @@ final class MyViewModel: ObservableObject {
                 let start = cal.date(byAdding: .weekOfMonth, value: week, to: monthStart)!
                 let end   = cal.date(byAdding: .weekOfMonth, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: "\(week + 1)주", value: km)
+                return BarChartEntry(label: "\(week + 1)주", value: km, startDate: start, endDate: end)
             }
 
         case .year:
@@ -190,7 +223,7 @@ final class MyViewModel: ObservableObject {
                 let start = cal.date(from: c)!
                 let end   = cal.date(byAdding: .month, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: monthLabels[month - 1], value: km)
+                return BarChartEntry(label: monthLabels[month - 1], value: km, startDate: start, endDate: end)
             }
 
         case .all:
@@ -201,7 +234,7 @@ final class MyViewModel: ObservableObject {
                 let end   = cal.date(byAdding: .month, value: 1, to: start)!
                 comps.day = nil
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: "\(cal.component(.month, from: date))월", value: km)
+                return BarChartEntry(label: "\(cal.component(.month, from: date))월", value: km, startDate: start, endDate: end)
             }
         }
     }
@@ -246,6 +279,27 @@ final class MyViewModel: ObservableObject {
 
     func logout(appState: AppState) {
         try? Auth.auth().signOut()
+        clearLocalSession(appState: appState)
+    }
+
+    func deleteAccount(appState: AppState) async {
+        guard !isDeletingAccount else { return }
+
+        isDeletingAccount = true
+        accountDeletionError = nil
+        defer { isDeletingAccount = false }
+
+        do {
+            let functions = Functions.functions(region: "asia-northeast3")
+            _ = try await functions.httpsCallable("deleteAccount").call()
+            try? Auth.auth().signOut()
+            clearLocalSession(appState: appState)
+        } catch {
+            accountDeletionError = "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
+        }
+    }
+
+    private func clearLocalSession(appState: AppState) {
         appState.isLoggedIn = false
         appState.isProfileComplete = false
         // 계정 전환 시 이전 프로필 잔상 방지
