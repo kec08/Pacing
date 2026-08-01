@@ -7,7 +7,6 @@ struct ProfileEditView: View {
     @ObservedObject var vm: MyViewModel
 
     @State private var nickname: String
-    @State private var ageText: String
     @State private var heightText: String
     @State private var weightText: String
     @State private var profileImage: UIImage?
@@ -18,7 +17,6 @@ struct ProfileEditView: View {
     init(vm: MyViewModel) {
         self.vm = vm
         _nickname = State(initialValue: vm.nickname)
-        _ageText = State(initialValue: vm.age > 0 ? String(vm.age) : "")
         _heightText = State(initialValue: vm.height > 0 ? String(vm.height) : "")
         _weightText = State(initialValue: vm.weight > 0 ? String(vm.weight) : "")
         _profileImage = State(initialValue: vm.profileImage)
@@ -165,13 +163,6 @@ struct ProfileEditView: View {
             )
             divider
             fieldRow(
-                title: "나이",
-                value: $ageText,
-                keyboardType: .numberPad,
-                trailingText: "세"
-            )
-            divider
-            fieldRow(
                 title: "키",
                 value: $heightText,
                 keyboardType: .numberPad,
@@ -239,11 +230,6 @@ struct ProfileEditView: View {
             return
         }
 
-        guard let age = Int(ageText), (1...100).contains(age) else {
-            errorMessage = "나이는 1세부터 100세 사이로 입력해주세요."
-            return
-        }
-
         guard let height = Int(heightText), (100...250).contains(height) else {
             errorMessage = "키는 100cm부터 250cm 사이로 입력해주세요."
             return
@@ -260,7 +246,6 @@ struct ProfileEditView: View {
         do {
             try await vm.saveProfile(
                 nickname: trimmedNickname,
-                age: age,
                 height: height,
                 weight: weight,
                 profileImage: profileImage

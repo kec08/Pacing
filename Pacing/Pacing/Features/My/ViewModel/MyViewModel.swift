@@ -23,13 +23,14 @@ struct BarChartEntry: Identifiable {
     var id: String { label }
     var label: String
     var value: Double
+    var startDate: Date
+    var endDate: Date
 }
 
 final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
     @Published var weight: Int = 0
-    @Published var age: Int = 0
     @Published var profileImage: UIImage? = nil
     @Published var activityStatusText: String = "러닝 기록 없음"
     @Published var selectedPeriod: StatsPeriod = .week
@@ -43,6 +44,7 @@ final class MyViewModel: ObservableObject {
 
     @Published var stats: MyStats = .empty
     @Published var chartEntries: [BarChartEntry] = []
+    @Published var selectedChartEntryID: String?
     @Published var runHistory: [RunRecord] = []
     @Published var isLoading: Bool = true
     @Published var isDeletingAccount: Bool = false
@@ -60,7 +62,7 @@ final class MyViewModel: ObservableObject {
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
         height   = UserDefaults.standard.integer(forKey: "height")
         weight   = UserDefaults.standard.integer(forKey: "weight")
-        age      = UserDefaults.standard.integer(forKey: "age")
+        UserDefaults.standard.removeObject(forKey: "age")
         profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -69,7 +71,6 @@ final class MyViewModel: ObservableObject {
                 nickname = data["nickname"] as? String ?? nickname
                 height   = data["height"]   as? Int    ?? height
                 weight   = data["weight"]   as? Int    ?? weight
-                age      = data["age"]      as? Int    ?? age
                 if let img = data["profileImageBase64"] as? String {
                     UserDefaults.standard.set(img, forKey: "profileImageBase64")
                     profileImage = Self.decodeImage(img)
@@ -89,6 +90,7 @@ final class MyViewModel: ObservableObject {
         weekOffset = 0
         selectedMonth = cal.component(.month, from: Date())
         selectedYear = cal.component(.year, from: Date())
+        selectedChartEntryID = nil
         loadData()
     }
 
@@ -129,6 +131,39 @@ final class MyViewModel: ObservableObject {
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
     }
 
+    func toggleChartSelection(label: String) {
+        selectedChartEntryID = selectedChartEntryID == label ? nil : label
+    }
+
+    var selectedChartEntry: BarChartEntry? {
+        chartEntries.first { $0.id == selectedChartEntryID }
+    }
+
+    var selectedChartRuns: [RunRecord] {
+        guard let entry = selectedChartEntry else { return [] }
+        return runHistory.filter { $0.startedAt >= entry.startDate && $0.startedAt < entry.endDate }
+    }
+
+    var selectedChartDateText: String {
+        guard let entry = selectedChartEntry else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = selectedPeriod == .week ? "yyyy년 M월 d일" : "yyyy년 M월"
+        return formatter.string(from: entry.startDate)
+    }
+
+    var selectedChartDate: Date? {
+        selectedChartEntry?.startDate
+    }
+
+    var selectedChartSuffixText: String {
+        guard let entry = selectedChartEntry else { return "" }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = selectedPeriod == .week ? "EEEE 러닝" : "러닝"
+        return formatter.string(from: entry.startDate)
+    }
+
     private func filter(records: [RunRecord]) -> [RunRecord] {
         let now = Date()
         switch selectedPeriod {
@@ -164,7 +199,7 @@ final class MyViewModel: ObservableObject {
                 let date = cal.date(byAdding: .day, value: i, to: monday)!
                 let next = cal.date(byAdding: .day, value: 1, to: date)!
                 let km = records.filter { $0.startedAt >= date && $0.startedAt < next }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: labels[i], value: km)
+                return BarChartEntry(label: labels[i], value: km, startDate: date, endDate: next)
             }
 
         case .month:
@@ -176,7 +211,7 @@ final class MyViewModel: ObservableObject {
                 let start = cal.date(byAdding: .weekOfMonth, value: week, to: monthStart)!
                 let end   = cal.date(byAdding: .weekOfMonth, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: "\(week + 1)주", value: km)
+                return BarChartEntry(label: "\(week + 1)주", value: km, startDate: start, endDate: end)
             }
 
         case .year:
@@ -186,7 +221,7 @@ final class MyViewModel: ObservableObject {
                 let start = cal.date(from: c)!
                 let end   = cal.date(byAdding: .month, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: monthLabels[month - 1], value: km)
+                return BarChartEntry(label: monthLabels[month - 1], value: km, startDate: start, endDate: end)
             }
 
         case .all:
@@ -197,7 +232,7 @@ final class MyViewModel: ObservableObject {
                 let end   = cal.date(byAdding: .month, value: 1, to: start)!
                 comps.day = nil
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: "\(cal.component(.month, from: date))월", value: km)
+                return BarChartEntry(label: "\(cal.component(.month, from: date))월", value: km, startDate: start, endDate: end)
             }
         }
     }
@@ -287,7 +322,6 @@ final class MyViewModel: ObservableObject {
 
     func saveProfile(
         nickname: String,
-        age: Int,
         height: Int,
         weight: Int,
         profileImage: UIImage?
@@ -303,7 +337,7 @@ final class MyViewModel: ObservableObject {
         defaults.set(trimmedNickname, forKey: "nickname")
         defaults.set(height, forKey: "height")
         defaults.set(weight, forKey: "weight")
-        defaults.set(age, forKey: "age")
+        defaults.removeObject(forKey: "age")
         if let imageBase64 {
             defaults.set(imageBase64, forKey: "profileImageBase64")
         }
@@ -314,13 +348,11 @@ final class MyViewModel: ObservableObject {
             nickname: trimmedNickname,
             height: height,
             weight: weight,
-            age: age,
             profileImageBase64: imageBase64
         )
 
         await MainActor.run {
             self.nickname = trimmedNickname
-            self.age = age
             self.height = height
             self.weight = weight
             self.profileImage = profileImage

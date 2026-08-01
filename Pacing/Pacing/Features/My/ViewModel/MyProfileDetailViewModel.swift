@@ -6,15 +6,20 @@ import FirebaseAuth
 final class MyProfileDetailViewModel: ObservableObject {
     @Published var stats: FriendProfileStats = .empty
     @Published var recentSongs: [FriendRecentSong] = []
+    @Published var recentRuns: [RunRecord] = []
+    @Published var recentSongArtworkURLs: [String: String] = [:]
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
     private let service = FirestoreService.shared
+    private let musicService = AppleMusicRecommendationService.shared
 
     func load() async {
         guard let uid = Auth.auth().currentUser?.uid else {
             stats = .empty
             recentSongs = []
+            recentRuns = []
+            recentSongArtworkURLs = [:]
             isLoading = false
             return
         }
@@ -25,14 +30,27 @@ final class MyProfileDetailViewModel: ObservableObject {
         do {
             async let statsTask = service.fetchFriendProfileStats(uid: uid)
             async let songsTask = service.fetchRecentSongs(uid: uid, limit: 5)
+            async let runsTask = service.fetchRunHistory(uid: uid, limit: 5)
 
             stats = try await statsTask
             recentSongs = try await songsTask
+            recentRuns = try await runsTask
+            recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
         } catch {
             errorMessage = "내 프로필 정보를 불러오지 못했어요."
         }
 
         isLoading = false
+    }
+
+    private func resolveArtworkURLs(for songs: [FriendRecentSong]) async -> [String: String] {
+        var urls: [String: String] = [:]
+        for song in songs {
+            if let url = await musicService.resolvedRecentSongArtworkURL(title: song.title, artistName: song.artistName) {
+                urls[song.id] = url
+            }
+        }
+        return urls
     }
 
     var formattedAveragePace: String {

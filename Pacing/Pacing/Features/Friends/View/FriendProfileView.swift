@@ -250,8 +250,8 @@ struct FriendProfileView: View {
                 .padding(.vertical, 28)
             } else {
                 VStack(spacing: 0) {
-                    ForEach(vm.recentSongs) { song in
-                        FriendRecentSongRow(song: song)
+                    ForEach(vm.recentSongs.prefix(5)) { song in
+                        FriendRecentSongRow(song: song, artworkURL: vm.recentSongArtworkURLs[song.id])
                     }
                 }
             }
@@ -323,6 +323,7 @@ private struct FriendProfileStatItem: View {
 
 private struct FriendRecentSongRow: View {
     let song: FriendRecentSong
+    let artworkURL: String?
 
     var body: some View {
         HStack(spacing: 12) {
@@ -364,17 +365,8 @@ private struct FriendRecentSongRow: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-            } else if let artworkURL = song.artworkURL, let url = URL(string: artworkURL) {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    default:
-                        artworkPlaceholder
-                    }
-                }
+            } else if artworkURL != nil || song.artworkURL != nil {
+                RemoteArtworkView(urlString: artworkURL ?? song.artworkURL)
             } else {
                 artworkPlaceholder
             }

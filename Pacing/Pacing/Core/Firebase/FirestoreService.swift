@@ -11,18 +11,25 @@ final class FirestoreService {
     private init() {}
 
     // MARK: - 프로필 저장
-    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, age: Int, profileImageBase64: String? = nil) async throws {
+    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, profileImageBase64: String? = nil) async throws {
         var data: [String: Any] = [
             "nickname": nickname,
             "height": height,
             "weight": weight,
-            "age": age,
+            // 심사 대응: 더 이상 수집하지 않는 기존 나이 필드를 함께 정리한다.
+            "age": FieldValue.delete(),
             "createdAt": FieldValue.serverTimestamp()
         ]
         if let img = profileImageBase64 {
             data["profileImageBase64"] = img
         }
         try await db.collection("users").document(uid).setData(data, merge: true)
+    }
+
+    func removeLegacyAge(uid: String) async throws {
+        try await db.collection("users").document(uid).updateData([
+            "age": FieldValue.delete()
+        ])
     }
 
     // MARK: - 프로필 조회
