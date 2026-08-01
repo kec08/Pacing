@@ -31,7 +31,6 @@ final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
     @Published var weight: Int = 0
-    @Published var age: Int = 0
     @Published var profileImage: UIImage? = nil
     @Published var activityStatusText: String = "러닝 기록 없음"
     @Published var selectedPeriod: StatsPeriod = .week
@@ -63,7 +62,7 @@ final class MyViewModel: ObservableObject {
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
         height   = UserDefaults.standard.integer(forKey: "height")
         weight   = UserDefaults.standard.integer(forKey: "weight")
-        age      = UserDefaults.standard.integer(forKey: "age")
+        UserDefaults.standard.removeObject(forKey: "age")
         profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -72,7 +71,6 @@ final class MyViewModel: ObservableObject {
                 nickname = data["nickname"] as? String ?? nickname
                 height   = data["height"]   as? Int    ?? height
                 weight   = data["weight"]   as? Int    ?? weight
-                age      = data["age"]      as? Int    ?? age
                 if let img = data["profileImageBase64"] as? String {
                     UserDefaults.standard.set(img, forKey: "profileImageBase64")
                     profileImage = Self.decodeImage(img)
@@ -324,7 +322,6 @@ final class MyViewModel: ObservableObject {
 
     func saveProfile(
         nickname: String,
-        age: Int,
         height: Int,
         weight: Int,
         profileImage: UIImage?
@@ -340,7 +337,7 @@ final class MyViewModel: ObservableObject {
         defaults.set(trimmedNickname, forKey: "nickname")
         defaults.set(height, forKey: "height")
         defaults.set(weight, forKey: "weight")
-        defaults.set(age, forKey: "age")
+        defaults.removeObject(forKey: "age")
         if let imageBase64 {
             defaults.set(imageBase64, forKey: "profileImageBase64")
         }
@@ -351,13 +348,11 @@ final class MyViewModel: ObservableObject {
             nickname: trimmedNickname,
             height: height,
             weight: weight,
-            age: age,
             profileImageBase64: imageBase64
         )
 
         await MainActor.run {
             self.nickname = trimmedNickname
-            self.age = age
             self.height = height
             self.weight = weight
             self.profileImage = profileImage

@@ -8,7 +8,6 @@ struct ProfileSetupView: View {
 
     @State private var nickname: String = ""
     @State private var gender: String = "선택 안 함"
-    @State private var age: Int = 25
     @State private var height: Int = 170
     @State private var weight: Int = 65
     @State private var isSaving = false
@@ -81,10 +80,10 @@ struct ProfileSetupView: View {
         }
     }
 
-    // MARK: - Step 2: 성별 / 나이
+    // MARK: - Step 2: 성별
     private var step2: some View {
         VStack(alignment: .leading, spacing: 0) {
-            stepHeader(title: "기본 정보를 알려주세요", subtitle: "성별과 나이를 선택해주세요")
+            stepHeader(title: "기본 정보를 알려주세요", subtitle: "성별을 선택해주세요")
 
             VStack(alignment: .leading, spacing: 24) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -95,19 +94,6 @@ struct ProfileSetupView: View {
                         ForEach(genders, id: \.self) { Text($0) }
                     }
                     .pickerStyle(.segmented)
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("나이")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.textSecondary)
-                    Picker("나이", selection: $age) {
-                        ForEach(1...100, id: \.self) { Text("\($0) 세") }
-                    }
-                    .pickerStyle(.wheel)
-                    .frame(height: 120)
-                    .background(Color.gray100)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
             }
             .padding(.horizontal, 24)
@@ -269,12 +255,11 @@ struct ProfileSetupView: View {
         d.set(nickname, forKey: "nickname")
         d.set(height,   forKey: "height")
         d.set(weight,   forKey: "weight")
-        d.set(age,      forKey: "age")
         if let img = imageBase64 { d.set(img, forKey: "profileImageBase64") }
 
         if let uid = Auth.auth().currentUser?.uid {
             try? await FirestoreService.shared.saveUserProfile(
-                uid: uid, nickname: nickname, height: height, weight: weight, age: age,
+                uid: uid, nickname: nickname, height: height, weight: weight,
                 profileImageBase64: imageBase64
             )
         }
