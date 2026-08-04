@@ -465,6 +465,11 @@ final class FirestoreService {
         } else {
             data["artworkURL"] = FieldValue.delete()
         }
+        if let artworkData = summary.artworkData, !artworkData.isEmpty {
+            data["artworkData"] = artworkData
+        } else {
+            data["artworkData"] = FieldValue.delete()
+        }
         if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
             data["sourcePlaylistID"] = sourcePlaylistID
         }
@@ -530,6 +535,9 @@ final class FirestoreService {
 
         if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
             data["artworkURL"] = artworkURL
+        }
+        if let artworkData = summary.artworkData, !artworkData.isEmpty {
+            data["artworkData"] = artworkData
         }
         if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
             data["sourcePlaylistID"] = sourcePlaylistID
@@ -603,6 +611,7 @@ final class FirestoreService {
             title: title,
             subtitle: data["subtitle"] as? String ?? "",
             artworkURL: data["artworkURL"] as? String,
+            artworkData: data["artworkData"] as? String,
             sourcePlaylistID: data["sourcePlaylistID"] as? String,
             sourcePlaylistURL: data["sourcePlaylistURL"] as? String,
             trackCount: (data["trackCount"] as? NSNumber)?.intValue ?? tracks.count,

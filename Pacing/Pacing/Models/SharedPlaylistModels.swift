@@ -7,6 +7,7 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let title: String
     let subtitle: String
     let artworkURL: String?
+    let artworkData: String?
     let sourcePlaylistID: String?
     let sourcePlaylistURL: String?
     let trackCount: Int

@@ -60,12 +60,15 @@ final class FriendProfileViewModel: ObservableObject {
 
             await withTaskGroup(of: (String, String?).self) { group in
                 for song in batch {
+                    let songID = song.id
+                    let title = song.title
+                    let artistName = song.artistName
                     group.addTask { [musicService] in
                         let artworkURL = await musicService.resolvedRecentSongArtworkURL(
-                            title: song.title,
-                            artistName: song.artistName
+                            title: title,
+                            artistName: artistName
                         )
-                        return (song.id, artworkURL)
+                        return (songID, artworkURL)
                     }
                 }
 

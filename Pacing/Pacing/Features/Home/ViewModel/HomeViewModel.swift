@@ -117,12 +117,15 @@ final class HomeViewModel: ObservableObject {
 
             await withTaskGroup(of: (String, String?).self) { group in
                 for activity in batch {
+                    let activityID = activity.id
+                    let title = activity.song.title
+                    let artistName = activity.song.artistName
                     group.addTask { [musicService] in
                         let artworkURL = await musicService.resolvedRecentSongArtworkURL(
-                            title: activity.song.title,
-                            artistName: activity.song.artistName
+                            title: title,
+                            artistName: artistName
                         )
-                        return (activity.id, artworkURL)
+                        return (activityID, artworkURL)
                     }
                 }
 

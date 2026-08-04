@@ -734,7 +734,7 @@ private struct FriendSharedPlaylistCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
+            artwork
                 .frame(width: 212, height: 212)
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
 
@@ -753,6 +753,19 @@ private struct FriendSharedPlaylistCard: View {
         .background(Color.backgroundPrimary)
         .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
         .shadow(color: Color.main500.opacity(0.08), radius: 12, y: 6)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let artworkData = playlist.artworkData,
+           let data = Data(base64Encoded: artworkData),
+           let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
+        }
     }
 }
 

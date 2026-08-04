@@ -1,5 +1,6 @@
 import Foundation
 import MusicKit
+import UIKit
 
 struct ShareRecommendationBundle {
     let recentlyPlayedAlbums: [Album]
@@ -89,6 +90,7 @@ final class AppleMusicRecommendationService {
         for playlist in playlists {
             let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .library)
             let sharedTracks = try await enrichedSharedTracks(from: loadedPlaylist)
+            let artworkURL = Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800)
             let summary = SharedPlaylistSummary(
                 id: Self.makeSharedPlaylistDocumentID(ownerUID: uid, sourcePlaylistID: "\(playlist.id)"),
                 ownerUID: uid,
@@ -97,7 +99,8 @@ final class AppleMusicRecommendationService {
                 subtitle: loadedPlaylist.curatorName ?? loadedPlaylist.shortDescription ?? "내 플레이리스트",
                 // 플레이리스트 대표 커버만 저장한다. 수록곡 앨범 커버를 대신 쓰면
                 // 다른 기기에서 대표 이미지와 곡 매핑이 달라질 수 있다.
-                artworkURL: Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800),
+                artworkURL: artworkURL,
+                artworkData: await Self.encodedArtworkData(from: artworkURL),
                 sourcePlaylistID: "\(loadedPlaylist.id)",
                 sourcePlaylistURL: loadedPlaylist.url?.absoluteString,
                 trackCount: loadedPlaylist.tracks?.count ?? 0,
@@ -529,6 +532,34 @@ final class AppleMusicRecommendationService {
         }
 
         return urlString
+    }
+
+    private static func encodedArtworkData(from urlString: String?) async -> String? {
+        guard let urlString,
+              let url = URL(string: urlString),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "")
+        else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let response = response as? HTTPURLResponse,
+                  200..<300 ~= response.statusCode,
+                  let image = UIImage(data: data)
+            else {
+                return nil
+            }
+
+            let targetSize = CGSize(width: 400, height: 400)
+            let renderer = UIGraphicsImageRenderer(size: targetSize)
+            let resizedImage = renderer.image { _ in
+                image.draw(in: CGRect(origin: .zero, size: targetSize))
+            }
+            return resizedImage.jpegData(compressionQuality: 0.72)?.base64EncodedString()
+        } catch {
+            return nil
+        }
     }
 
     private func resolveCatalogSongs(for tracks: [SharedPlaylistTrack]) async throws -> [Song] {
