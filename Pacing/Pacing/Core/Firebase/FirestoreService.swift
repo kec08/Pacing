@@ -458,8 +458,12 @@ final class FirestoreService {
             "tracks": summary.tracks.map(sharedTrackData(from:))
         ]
 
-        if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
+        // 대표 커버는 플레이리스트 자체의 값만 사용한다. 값이 사라진 경우에도
+        // 과거 문서의 첫 수록곡 커버가 남지 않도록 기존 필드를 제거한다.
+        if let artworkURL = summary.effectiveArtworkURL {
             data["artworkURL"] = artworkURL
+        } else {
+            data["artworkURL"] = FieldValue.delete()
         }
         if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
             data["sourcePlaylistID"] = sourcePlaylistID

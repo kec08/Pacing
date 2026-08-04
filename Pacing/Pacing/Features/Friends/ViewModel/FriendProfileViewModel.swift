@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import FirebaseAuth
+import UIKit
 
 @MainActor
 final class FriendProfileViewModel: ObservableObject {
@@ -47,13 +48,46 @@ final class FriendProfileViewModel: ObservableObject {
     }
 
     private func resolveArtworkURLs(for songs: [FriendRecentSong]) async -> [String: String] {
-        var urls: [String: String] = [:]
-        for song in songs {
-            if let url = await musicService.resolvedRecentSongArtworkURL(title: song.title, artistName: song.artistName) {
-                urls[song.id] = url
+        let songsNeedingRemoteArtwork = songs.filter {
+            !hasDecodableArtworkData($0.artworkData)
+        }
+
+        var artworkURLs: [String: String] = [:]
+        for batchStartIndex in stride(from: 0, to: songsNeedingRemoteArtwork.count, by: 4) {
+            let batch = songsNeedingRemoteArtwork[
+                batchStartIndex..<min(batchStartIndex + 4, songsNeedingRemoteArtwork.count)
+            ]
+
+            await withTaskGroup(of: (String, String?).self) { group in
+                for song in batch {
+                    group.addTask { [musicService] in
+                        let artworkURL = await musicService.resolvedRecentSongArtworkURL(
+                            title: song.title,
+                            artistName: song.artistName
+                        )
+                        return (song.id, artworkURL)
+                    }
+                }
+
+                for await (songID, artworkURL) in group {
+                    if let artworkURL, !artworkURL.isEmpty {
+                        artworkURLs[songID] = artworkURL
+                    }
+                }
             }
         }
-        return urls
+
+        await ArtworkImageStore.shared.prefetch(urlStrings: Array(artworkURLs.values))
+        return artworkURLs
+    }
+
+    private func hasDecodableArtworkData(_ encodedArtwork: String?) -> Bool {
+        guard let encodedArtwork,
+              let data = Data(base64Encoded: encodedArtwork)
+        else {
+            return false
+        }
+        return UIImage(data: data) != nil
     }
 
     func sendFriendRequest() async -> Bool {
