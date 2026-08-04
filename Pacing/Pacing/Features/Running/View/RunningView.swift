@@ -28,7 +28,8 @@ struct RunningView: View {
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
     @State private var collapsedPinIDs: Set<String> = []
-    @State private var mapZoomDistance: Double = 400
+    // 최초 진입은 주변 맥락을 함께 볼 수 있도록 기존 400m보다 소폭 넓게 시작한다.
+    @State private var mapZoomDistance: Double = 550
     @State private var isFollowingUser: Bool = true      // 내 위치 자동 추적
     @State private var isProgrammaticMove: Bool = false  // 코드 카메라 이동 플래그
     @State private var showListenSheet = false

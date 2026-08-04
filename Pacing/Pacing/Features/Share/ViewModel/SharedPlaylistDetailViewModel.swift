@@ -285,6 +285,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     func savePrimaryPlaylist() async {
         guard !isSaveButtonDisabled else { return }
+        errorMessage = nil
 
         switch source {
         case .shared:
@@ -359,14 +360,14 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     private func saveRecommendationPlaylist() async {
         guard appSaveState != .saving else { return }
-        guard canSaveToAppleMusic || Auth.auth().currentUser?.uid != nil else {
-            errorMessage = "플레이리스트를 저장할 수 없는 상태예요."
+        guard canSaveToAppleMusic else {
+            errorMessage = "Apple Music 보관함에 저장할 수 없는 상태예요."
             return
         }
 
         appSaveState = .saving
 
-        if canSaveToAppleMusic, !didSaveToAppleMusic {
+        if !didSaveToAppleMusic {
             await saveToAppleMusic()
             guard errorMessage == nil else {
                 appSaveState = .idle
