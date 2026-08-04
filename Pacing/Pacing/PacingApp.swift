@@ -41,9 +41,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     private func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetoothHFP])
-        try? session.setActive(true)
+        // `.allowBluetoothHFP`는 `.playback` 카테고리와 함께 사용할 수 없어
+        // `paramErr(-50)`로 오디오 세션 설정이 실패한다. 활성화는 메인 스레드를
+        // 점유하지 않도록 백그라운드 큐에서 처리한다.
+        DispatchQueue.global(qos: .userInitiated).async {
+            let session = AVAudioSession.sharedInstance()
+            do {
+                try session.setCategory(.playback, mode: .default, options: [.allowAirPlay])
+                try session.setActive(true)
+            } catch {
+                assertionFailure("오디오 세션을 설정하지 못했습니다: \(error.localizedDescription)")
+            }
+        }
     }
 }
 
