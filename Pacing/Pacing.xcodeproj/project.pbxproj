@@ -729,6 +729,7 @@
 		};
 		BC5793782FF26808006C925A /* FirebaseFunctions */ = {
 			isa = XCSwiftPackageProductDependency;
+			package = BC5791DD2FED131F006C925A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFunctions;
 		};
 		BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */ = {
