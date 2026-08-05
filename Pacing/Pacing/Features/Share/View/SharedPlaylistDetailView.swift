@@ -67,17 +67,7 @@ struct SharedPlaylistDetailView: View {
     }
 
     private var artworkSection: some View {
-        Group {
-            if let artworkData = viewModel.summary.artworkData,
-               let data = Data(base64Encoded: artworkData),
-               let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                RemoteArtworkView(urlString: viewModel.summary.effectiveArtworkURL, contentMode: .fill)
-            }
-        }
+        RemoteArtworkView(urlString: viewModel.summary.effectiveArtworkURL, contentMode: .fill)
             .frame(width: 264, height: 264)
             .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .overlay(

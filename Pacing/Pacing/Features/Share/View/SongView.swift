@@ -759,15 +759,7 @@ private struct FriendSharedPlaylistCard: View {
 
     @ViewBuilder
     private var artwork: some View {
-        if let artworkData = playlist.artworkData,
-           let data = Data(base64Encoded: artworkData),
-           let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-        } else {
-            RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
-        }
+        RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
     }
 }
 

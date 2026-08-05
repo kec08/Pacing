@@ -147,7 +147,22 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 tracks = summary.tracks
                 // 과거 공유 문서에는 곡 커버가 비어 있을 수 있다. 대표 커버는
                 // 소유자 설정값을 유지하고, 수록곡 커버만 현재 기기에서 보강한다.
-                tracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
+                let enrichedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
+                tracks = enrichedTracks
+                summary = SharedPlaylistSummary(
+                    id: summary.id,
+                    ownerUID: summary.ownerUID,
+                    ownerNickname: summary.ownerNickname,
+                    title: summary.title,
+                    subtitle: summary.subtitle,
+                    artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
+                    sourcePlaylistID: summary.sourcePlaylistID,
+                    sourcePlaylistURL: summary.sourcePlaylistURL,
+                    trackCount: summary.trackCount,
+                    updatedAt: summary.updatedAt,
+                    tracks: enrichedTracks
+                )
 
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)

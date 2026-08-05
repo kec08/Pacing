@@ -343,8 +343,11 @@ final class AppleMusicRecommendationService {
     func prepareSharedTracksForPlayback(_ tracks: [SharedPlaylistTrack]) async -> [SharedPlaylistTrack] {
         guard !tracks.isEmpty else { return [] }
 
-        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: tracks) else {
-            return tracks
+        let resolvedSongsByTrackID: [String: Song]
+        if let resolvedSongs = try? await resolveCatalogSongMatches(for: tracks) {
+            resolvedSongsByTrackID = resolvedSongs
+        } else {
+            resolvedSongsByTrackID = await resolveFallbackCatalogSongMatches(for: tracks)
         }
 
         return tracks.map { track in
