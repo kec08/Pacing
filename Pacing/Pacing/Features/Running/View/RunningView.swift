@@ -28,8 +28,8 @@ struct RunningView: View {
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
     @State private var collapsedPinIDs: Set<String> = []
-    // 최초 진입은 내 위치 버튼보다 넓은 주변 맥락을 보여준다.
-    @State private var mapZoomDistance: Double = 2_000
+    // 최초 진입도 내 위치 버튼과 같은 거리로 맞춰 내 위치가 너무 작게 보이지 않게 한다.
+    @State private var mapZoomDistance: Double = 1_000
     @State private var isFollowingUser: Bool = true      // 내 위치 자동 추적
     @State private var isProgrammaticMove: Bool = false  // 코드 카메라 이동 플래그
     @State private var showListenSheet = false
