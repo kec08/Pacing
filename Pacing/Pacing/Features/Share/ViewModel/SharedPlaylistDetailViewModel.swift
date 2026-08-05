@@ -63,6 +63,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             title: recommendedPlaylist.name,
             subtitle: recommendedPlaylist.curatorName ?? recommendedPlaylist.shortDescription ?? "추천 플레이리스트",
             artworkURL: recommendedPlaylist.artwork?.url(width: 800, height: 800)?.absoluteString,
+            artworkData: nil,
             sourcePlaylistID: "\(recommendedPlaylist.id)",
             sourcePlaylistURL: recommendedPlaylist.url?.absoluteString,
             trackCount: 0,
@@ -84,6 +85,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             title: recentAlbum.title,
             subtitle: recentAlbum.artistName,
             artworkURL: recentAlbum.artwork?.url(width: 800, height: 800)?.absoluteString,
+            artworkData: nil,
             sourcePlaylistID: "\(recentAlbum.id)",
             sourcePlaylistURL: recentAlbum.url?.absoluteString,
             trackCount: recentAlbum.trackCount,
@@ -105,6 +107,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             title: recommendedStation.name,
             subtitle: "Apple Music 스테이션",
             artworkURL: recommendedStation.artwork?.url(width: 800, height: 800)?.absoluteString,
+            artworkData: nil,
             sourcePlaylistID: "\(recommendedStation.id)",
             sourcePlaylistURL: recommendedStation.url?.absoluteString,
             trackCount: 0,
@@ -142,6 +145,24 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 // 전달받은 스냅샷을 먼저 표시한다. 상세 진입 시 제목 검색을 하면
                 // 유사 제목의 다른 곡으로 바뀌고 목록이 늦게 나타날 수 있다.
                 tracks = summary.tracks
+                // 과거 공유 문서에는 곡 커버가 비어 있을 수 있다. 대표 커버는
+                // 소유자 설정값을 유지하고, 수록곡 커버만 현재 기기에서 보강한다.
+                let enrichedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
+                tracks = enrichedTracks
+                summary = SharedPlaylistSummary(
+                    id: summary.id,
+                    ownerUID: summary.ownerUID,
+                    ownerNickname: summary.ownerNickname,
+                    title: summary.title,
+                    subtitle: summary.subtitle,
+                    artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
+                    sourcePlaylistID: summary.sourcePlaylistID,
+                    sourcePlaylistURL: summary.sourcePlaylistURL,
+                    trackCount: summary.trackCount,
+                    updatedAt: summary.updatedAt,
+                    tracks: enrichedTracks
+                )
 
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
@@ -157,6 +178,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     title: summary.title,
                     subtitle: summary.subtitle,
                     artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
                     sourcePlaylistID: summary.sourcePlaylistID,
                     sourcePlaylistURL: summary.sourcePlaylistURL,
                     trackCount: loadedTracks.count,
@@ -181,6 +203,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     title: summary.title,
                     subtitle: summary.subtitle,
                     artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
                     sourcePlaylistID: summary.sourcePlaylistID,
                     sourcePlaylistURL: summary.sourcePlaylistURL,
                     trackCount: loadedTracks.count,
@@ -285,6 +308,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     func savePrimaryPlaylist() async {
         guard !isSaveButtonDisabled else { return }
+        errorMessage = nil
 
         switch source {
         case .shared:
@@ -359,14 +383,14 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     private func saveRecommendationPlaylist() async {
         guard appSaveState != .saving else { return }
-        guard canSaveToAppleMusic || Auth.auth().currentUser?.uid != nil else {
-            errorMessage = "플레이리스트를 저장할 수 없는 상태예요."
+        guard canSaveToAppleMusic else {
+            errorMessage = "Apple Music 보관함에 저장할 수 없는 상태예요."
             return
         }
 
         appSaveState = .saving
 
-        if canSaveToAppleMusic, !didSaveToAppleMusic {
+        if !didSaveToAppleMusic {
             await saveToAppleMusic()
             guard errorMessage == nil else {
                 appSaveState = .idle

@@ -8,7 +8,6 @@
 import SwiftUI
 import FirebaseCore
 import NaverThirdPartyLogin
-import AVFoundation
 #if canImport(GoogleSignIn)
 import GoogleSignIn
 #endif
@@ -22,7 +21,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         FirebaseApp.configure()
-        configureAudioSession()
 
         #if canImport(KakaoSDKCommon)
         KakaoSDK.initSDK(appKey: "73e4e7c46ea882a0d78a306b29553c17")
@@ -38,12 +36,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         naver?.delegate = naverDelegate
 
         return true
-    }
-
-    private func configureAudioSession() {
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .default, options: [.allowAirPlay, .allowBluetoothHFP])
-        try? session.setActive(true)
     }
 }
 

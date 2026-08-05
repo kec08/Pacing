@@ -78,9 +78,9 @@ final class SongViewModel: ObservableObject {
             let fetchedPlaylists = try await firestoreService.fetchFriendSharedPlaylists(currentUID: uid)
             // 저장된 수록곡과 플레이리스트 대표 커버를 즉시 표시한다. 화면 진입 시
             // 카탈로그를 재검색하면 유사 제목의 다른 곡으로 매핑될 수 있다.
-            friendSharedPlaylists = fetchedPlaylists
+            friendSharedPlaylists = await enrichFirstTrackArtwork(for: fetchedPlaylists)
 
-            let artworkURLs = fetchedPlaylists.compactMap(\.effectiveArtworkURL)
+            let artworkURLs = friendSharedPlaylists.compactMap(\.effectiveArtworkURL)
             Task {
                 await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
             }
@@ -90,6 +90,43 @@ final class SongViewModel: ObservableObject {
                 errorMessage = "친구 플레이리스트를 불러오지 못했어요."
             }
         }
+    }
+
+    private func enrichFirstTrackArtwork(
+        for playlists: [SharedPlaylistSummary]
+    ) async -> [SharedPlaylistSummary] {
+        var enrichedPlaylists: [SharedPlaylistSummary] = []
+
+        for playlist in playlists {
+            guard let firstTrack = playlist.tracks.first else {
+                enrichedPlaylists.append(playlist)
+                continue
+            }
+
+            let enrichedFirstTrack = await musicService
+                .prepareSharedTracksForPlayback([firstTrack])
+                .first ?? firstTrack
+            let tracks = [enrichedFirstTrack] + Array(playlist.tracks.dropFirst())
+
+            enrichedPlaylists.append(
+                SharedPlaylistSummary(
+                    id: playlist.id,
+                    ownerUID: playlist.ownerUID,
+                    ownerNickname: playlist.ownerNickname,
+                    title: playlist.title,
+                    subtitle: playlist.subtitle,
+                    artworkURL: playlist.artworkURL,
+                    artworkData: playlist.artworkData,
+                    sourcePlaylistID: playlist.sourcePlaylistID,
+                    sourcePlaylistURL: playlist.sourcePlaylistURL,
+                    trackCount: playlist.trackCount,
+                    updatedAt: playlist.updatedAt,
+                    tracks: tracks
+                )
+            )
+        }
+
+        return enrichedPlaylists
     }
 
     private func loadRecommendations(isBackgroundRetry: Bool = false) async {
