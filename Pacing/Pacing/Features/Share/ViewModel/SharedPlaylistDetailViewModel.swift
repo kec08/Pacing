@@ -145,6 +145,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 // 전달받은 스냅샷을 먼저 표시한다. 상세 진입 시 제목 검색을 하면
                 // 유사 제목의 다른 곡으로 바뀌고 목록이 늦게 나타날 수 있다.
                 tracks = summary.tracks
+                // 과거 공유 문서에는 곡 커버가 비어 있을 수 있다. 대표 커버는
+                // 소유자 설정값을 유지하고, 수록곡 커버만 현재 기기에서 보강한다.
+                tracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
 
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)

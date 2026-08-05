@@ -489,6 +489,8 @@ final class SongNowPlayingController: ObservableObject {
         self.title = title
         self.artist = artist
         self.isPlaying = true
+        // 다음 곡의 이미지를 못 받아도 이전 곡 커버가 남지 않게 즉시 초기화한다.
+        self.artwork = nil
 
         guard let artworkURL,
               let url = URL(string: artworkURL) else {
@@ -505,7 +507,7 @@ final class SongNowPlayingController: ObservableObject {
                     }
                 }
             } catch {
-                // Keep the current artwork if fetching the next image fails.
+                // 현재 곡의 이미지를 못 받으면 플레이스홀더를 표시한다.
             }
         }
     }

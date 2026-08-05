@@ -84,12 +84,13 @@ final class AppleMusicRecommendationService {
         return Array(response.items.prefix(limit))
     }
 
-    func syncCurrentUserPlaylists(uid: String, nickname: String, limit: Int = 6) async throws {
+    func syncCurrentUserPlaylists(uid: String, nickname: String, limit: Int = 30) async throws {
         let playlists = try await fetchLibraryPlaylists(limit: limit)
 
         for playlist in playlists {
             let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .library)
-            let sharedTracks = try await enrichedSharedTracks(from: loadedPlaylist)
+            // 개별 곡의 카탈로그 보강 실패가 대표 커버 동기화 전체를 막지 않도록 한다.
+            let sharedTracks = await enrichedSharedTracks(from: loadedPlaylist)
             let artworkURL = Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800)
             let summary = SharedPlaylistSummary(
                 id: Self.makeSharedPlaylistDocumentID(ownerUID: uid, sourcePlaylistID: "\(playlist.id)"),
@@ -717,10 +718,12 @@ final class AppleMusicRecommendationService {
         return resolvedSongsByTrackID
     }
 
-    private func enrichedSharedTracks(from playlist: Playlist) async throws -> [SharedPlaylistTrack] {
+    private func enrichedSharedTracks(from playlist: Playlist) async -> [SharedPlaylistTrack] {
         let baseTracks = Self.makeSharedTracks(from: playlist)
         guard !baseTracks.isEmpty else { return [] }
-        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: baseTracks)
+        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: baseTracks) else {
+            return baseTracks
+        }
 
         return baseTracks.map { track in
             guard !Self.isRemoteArtworkURL(track.artworkURL),
