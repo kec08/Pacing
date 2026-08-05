@@ -427,15 +427,28 @@ final class SongNowPlayingController: ObservableObject {
     @Published private(set) var isForceCollapsed: Bool = false
 
     private let player = MPMusicPlayerController.systemMusicPlayer
+    private let applicationPlayer = ApplicationMusicPlayer.shared
     private var notificationObservers: [NSObjectProtocol] = []
+    private var applicationQueueObserver: AnyCancellable?
+    private var applicationStateObserver: AnyCancellable?
+    private var applicationPlaybackPoller: AnyCancellable?
 
     var hasActiveTrack: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var trackIdentity: String {
+        "\(title)\u{1F}|\(artist)"
+    }
+
+    var artworkIdentity: String {
+        "\(trackIdentity)|\(artwork == nil ? "placeholder" : "artwork")"
+    }
+
     init() {
         player.beginGeneratingPlaybackNotifications()
         observePlayer()
+        observeApplicationPlayer()
         refresh()
     }
 
@@ -489,6 +502,10 @@ final class SongNowPlayingController: ObservableObject {
         self.title = title
         self.artist = artist
         self.isPlaying = true
+        loadArtwork(from: artworkURL)
+    }
+
+    private func loadArtwork(from artworkURL: String?) {
         // 다음 곡의 이미지를 못 받아도 이전 곡 커버가 남지 않게 즉시 초기화한다.
         self.artwork = nil
 
@@ -536,7 +553,57 @@ final class SongNowPlayingController: ObservableObject {
         notificationObservers = [stateObserver, itemObserver]
     }
 
+    private func observeApplicationPlayer() {
+        applicationStateObserver = applicationPlayer.state.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.refresh()
+            }
+
+        let queueObserver = NotificationCenter.default.addObserver(
+            forName: .applicationMusicPlayerQueueDidChange,
+            object: applicationPlayer,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.bindApplicationQueue()
+                self?.refresh()
+            }
+        }
+        notificationObservers.append(queueObserver)
+        bindApplicationQueue()
+
+        applicationPlaybackPoller = Timer.publish(every: 0.5, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
+                self?.refresh()
+            }
+    }
+
+    private func bindApplicationQueue() {
+        applicationQueueObserver = applicationPlayer.queue.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.refresh()
+            }
+    }
+
     private func refresh() {
+        if let entry = applicationPlayer.queue.currentEntry,
+           applicationPlayer.state.playbackStatus != .stopped {
+            let nextTitle = entry.title
+            let nextArtist = entry.subtitle ?? "Apple Music"
+            let didTrackChange = title != nextTitle || artist != nextArtist
+            title = nextTitle
+            artist = nextArtist
+            isPlaying = applicationPlayer.state.playbackStatus == .playing
+            if didTrackChange {
+                loadArtwork(from: entry.artwork?.url(width: 220, height: 220)?.absoluteString)
+            }
+            return
+        }
+
         if player.playbackState == .stopped {
             title = ""
             artist = ""
@@ -626,17 +693,25 @@ private struct SongNowPlayingOverlay: View {
                     .scaleEffect(lerp(from: 1, to: 1.26, progress: progress))
                     .offset(x: lerp(from: 0, to: 2, progress: progress))
 
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(controller.title)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(1)
+                ZStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(controller.title)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                            .lineLimit(1)
 
-                    Text(controller.artist)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
+                        Text(controller.artist)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                    .id(controller.trackIdentity)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
                 }
+                .clipped()
                 .opacity(barOpacity)
                 .blur(radius: progress * 1.2)
 
@@ -689,24 +764,33 @@ private struct SongNowPlayingOverlay: View {
         .onLongPressGesture(minimumDuration: 0.24) {
             controller.requestRestore()
         }
+        .animation(.easeInOut(duration: 0.30), value: controller.trackIdentity)
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: progress)
     }
 
     private func artworkView(size: CGFloat) -> some View {
-        Group {
-            if let artwork = controller.artwork {
-                Image(uiImage: artwork)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: [Color.main500.opacity(0.85), Color.main300.opacity(0.45)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+        ZStack {
+            Group {
+                if let artwork = controller.artwork {
+                    Image(uiImage: artwork)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [Color.main500.opacity(0.85), Color.main300.opacity(0.45)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
             }
+            .id(controller.artworkIdentity)
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            ))
         }
         .frame(width: size, height: size)
+        .clipped()
         .clipShape(Circle())
     }
 

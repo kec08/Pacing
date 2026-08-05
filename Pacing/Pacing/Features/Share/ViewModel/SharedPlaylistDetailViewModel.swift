@@ -43,10 +43,14 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
     private let systemPlayer = MPMusicPlayerController.systemMusicPlayer
+    private let applicationPlayer = ApplicationMusicPlayer.shared
     private var recommendationPlaylist: Playlist?
     private var recentAlbum: Album?
     private var recommendedStation: Station?
     private var notificationObservers: [NSObjectProtocol] = []
+    private var applicationQueueObserver: AnyCancellable?
+    private var applicationStateObserver: AnyCancellable?
+    private var applicationPlaybackPoller: AnyCancellable?
 
     init(sharedPlaylist: SharedPlaylistSummary) {
         self.source = .shared(sharedPlaylist)
@@ -289,17 +293,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         playingTrackID = track.id
 
         do {
-            switch source {
-            case .shared:
-                try await musicService.play(sharedTrack: track)
-            default:
-                guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
-                    errorMessage = "이 곡은 바로 재생할 수 없어요."
-                    playingTrackID = nil
-                    return
-                }
-                try await musicService.playTracks(with: [songStoreID])
-            }
+            try await musicService.play(sharedTracks: tracks, startingAt: track.id)
         } catch {
             playingTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
@@ -501,11 +495,54 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         }
 
         notificationObservers = [stateObserver, itemObserver]
+        observeApplicationPlayer()
         syncPlaybackState()
         syncCurrentTrack()
     }
 
+    private func observeApplicationPlayer() {
+        applicationStateObserver = applicationPlayer.state.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.syncCurrentTrack()
+            }
+
+        let queueObserver = NotificationCenter.default.addObserver(
+            forName: .applicationMusicPlayerQueueDidChange,
+            object: applicationPlayer,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.bindApplicationQueue()
+                self?.syncCurrentTrack()
+            }
+        }
+        notificationObservers.append(queueObserver)
+        bindApplicationQueue()
+
+        applicationPlaybackPoller = Timer.publish(every: 0.5, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
+                self?.syncCurrentTrack()
+            }
+    }
+
+    private func bindApplicationQueue() {
+        applicationQueueObserver = applicationPlayer.queue.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.syncCurrentTrack()
+            }
+    }
+
     private func syncPlaybackState() {
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            isPlaying = applicationPlayer.state.playbackStatus == .playing
+            return
+        }
+
         isPlaying = systemPlayer.playbackState == .playing
         if !isPlaying && systemPlayer.nowPlayingItem == nil {
             playingTrackID = nil
@@ -514,6 +551,23 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     private func syncCurrentTrack() {
         syncPlaybackState()
+
+        if let entry = applicationPlayer.queue.currentEntry,
+           applicationPlayer.state.playbackStatus != .stopped {
+            nowPlayingTitle = entry.title
+            nowPlayingArtist = entry.subtitle ?? summary.ownerNickname
+            nowPlayingArtwork = nil
+
+            let currentTitle = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let currentArtist = (entry.subtitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let matchedTrack = tracks.first(where: {
+                $0.title.caseInsensitiveCompare(currentTitle) == .orderedSame &&
+                ($0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame || currentArtist.isEmpty)
+            }) {
+                playingTrackID = matchedTrack.id
+            }
+            return
+        }
 
         guard let item = systemPlayer.nowPlayingItem else {
             nowPlayingTitle = ""

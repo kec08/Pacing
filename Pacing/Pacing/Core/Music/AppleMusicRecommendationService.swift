@@ -2,6 +2,10 @@ import Foundation
 import MusicKit
 import UIKit
 
+extension Notification.Name {
+    static let applicationMusicPlayerQueueDidChange = Notification.Name("applicationMusicPlayerQueueDidChange")
+}
+
 struct ShareRecommendationBundle {
     let recentlyPlayedAlbums: [Album]
     let playlists: [Playlist]
@@ -277,21 +281,15 @@ final class AppleMusicRecommendationService {
     }
 
     func play(playlist: Playlist) async throws {
-        player.queue = .init(for: [playlist])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: [playlist]))
     }
 
     func play(album: Album) async throws {
-        player.queue = .init(for: [album])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: [album]))
     }
 
     func play(station: Station) async throws {
-        player.queue = .init(for: [station])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: [station]))
     }
 
     func playTracks(with ids: [String]) async throws {
@@ -313,9 +311,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: songs)
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: songs))
     }
 
     func play(sharedTracks: [SharedPlaylistTrack]) async throws {
@@ -324,9 +320,29 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: songs)
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: songs))
+    }
+
+    /// 선택한 곡부터 목록의 마지막 곡까지 순서대로 재생한다.
+    /// 선택 곡이 재생 불가한 경우 다음 곡으로 건너뛰지 않고 오류를 반환한다.
+    func play(sharedTracks: [SharedPlaylistTrack], startingAt trackID: String) async throws {
+        guard let startIndex = sharedTracks.firstIndex(where: { $0.id == trackID }) else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let queuedTracks = Array(sharedTracks[startIndex...])
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: queuedTracks)
+
+        guard resolvedSongsByTrackID[trackID] != nil else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let songs = queuedTracks.compactMap { resolvedSongsByTrackID[$0.id] }
+        guard !songs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        try await startPlayback(with: .init(for: songs))
     }
 
     func play(sharedTrack: SharedPlaylistTrack) async throws {
@@ -335,7 +351,12 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: [song])
+        try await startPlayback(with: .init(for: [song]))
+    }
+
+    private func startPlayback(with queue: ApplicationMusicPlayer.Queue) async throws {
+        player.queue = queue
+        NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()
         try await player.play()
     }
