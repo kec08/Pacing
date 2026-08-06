@@ -489,6 +489,26 @@ final class AppleMusicRecommendationService {
         try await MusicLibrary.shared.add(album)
     }
 
+    /// 친구가 공유한 수록곡으로 사용자의 Apple Music 보관함에 새 플레이리스트를 만든다.
+    func createLibraryPlaylist(
+        name: String,
+        authorDisplayName: String,
+        sharedTracks: [SharedPlaylistTrack]
+    ) async throws -> String {
+        let songs = try await resolveCatalogSongs(for: sharedTracks)
+        guard !songs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let playlist = try await MusicLibrary.shared.createPlaylist(
+            name: name,
+            description: nil,
+            authorDisplayName: authorDisplayName,
+            items: songs
+        )
+        return "\(playlist.id)"
+    }
+
     static func makeSharedPlaylistDocumentID(ownerUID: String, sourcePlaylistID: String) -> String {
         "\(ownerUID)_\(sourcePlaylistID.replacingOccurrences(of: "/", with: "_"))"
     }

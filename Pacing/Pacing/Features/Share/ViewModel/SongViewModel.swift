@@ -24,6 +24,8 @@ final class SongViewModel: ObservableObject {
     private let recommendationRetryDelays: [UInt64] = [600_000_000, 1_200_000_000]
     private let backgroundRecommendationRetryDelays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
     private var activeRecommendationLoadID: UUID?
+    private var activeFriendLoadID: UUID?
+    private var friendArtworkEnrichmentTask: Task<Void, Never>?
     private var backgroundRecommendationRetryCount = 0
 
     func load() async {
@@ -71,20 +73,33 @@ final class SongViewModel: ObservableObject {
             return
         }
 
+        let loadID = UUID()
+        activeFriendLoadID = loadID
+        friendArtworkEnrichmentTask?.cancel()
         isLoadingFriends = true
         defer { isLoadingFriends = false }
 
         do {
             let fetchedPlaylists = try await firestoreService.fetchFriendSharedPlaylists(currentUID: uid)
-            // 저장된 수록곡과 플레이리스트 대표 커버를 즉시 표시한다. 화면 진입 시
-            // 카탈로그를 재검색하면 유사 제목의 다른 곡으로 매핑될 수 있다.
-            friendSharedPlaylists = await enrichFirstTrackArtwork(for: fetchedPlaylists)
+            guard activeFriendLoadID == loadID else { return }
+
+            // Firestore 결과를 먼저 노출한다. 대표 커버 보강은 목록 최초 표시를
+            // 막지 않는 후속 작업으로 처리한다.
+            friendSharedPlaylists = fetchedPlaylists
 
             let artworkURLs = friendSharedPlaylists.compactMap(\.effectiveArtworkURL)
             Task {
                 await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs)
             }
+
+            friendArtworkEnrichmentTask = Task { [weak self] in
+                guard let self else { return }
+                let enrichedPlaylists = await self.enrichFirstTrackArtwork(for: fetchedPlaylists)
+                guard !Task.isCancelled, self.activeFriendLoadID == loadID else { return }
+                self.friendSharedPlaylists = enrichedPlaylists
+            }
         } catch {
+            guard activeFriendLoadID == loadID else { return }
             friendSharedPlaylists = []
             if showError {
                 errorMessage = "친구 플레이리스트를 불러오지 못했어요."
@@ -95,38 +110,46 @@ final class SongViewModel: ObservableObject {
     private func enrichFirstTrackArtwork(
         for playlists: [SharedPlaylistSummary]
     ) async -> [SharedPlaylistSummary] {
-        var enrichedPlaylists: [SharedPlaylistSummary] = []
+        await withTaskGroup(of: (Int, SharedPlaylistSummary).self) { group in
+            for (index, playlist) in playlists.enumerated() {
+                group.addTask { @MainActor [musicService] in
+                    guard let firstTrack = playlist.tracks.first,
+                          firstTrack.effectiveArtworkURL == nil
+                    else {
+                        return (index, playlist)
+                    }
 
-        for playlist in playlists {
-            guard let firstTrack = playlist.tracks.first else {
-                enrichedPlaylists.append(playlist)
-                continue
+                    let enrichedFirstTrack = await musicService
+                        .prepareSharedTracksForPlayback([firstTrack])
+                        .first ?? firstTrack
+                    let tracks = [enrichedFirstTrack] + Array(playlist.tracks.dropFirst())
+
+                    return (
+                        index,
+                        SharedPlaylistSummary(
+                            id: playlist.id,
+                            ownerUID: playlist.ownerUID,
+                            ownerNickname: playlist.ownerNickname,
+                            title: playlist.title,
+                            subtitle: playlist.subtitle,
+                            artworkURL: playlist.artworkURL,
+                            artworkData: playlist.artworkData,
+                            sourcePlaylistID: playlist.sourcePlaylistID,
+                            sourcePlaylistURL: playlist.sourcePlaylistURL,
+                            trackCount: playlist.trackCount,
+                            updatedAt: playlist.updatedAt,
+                            tracks: tracks
+                        )
+                    )
+                }
             }
 
-            let enrichedFirstTrack = await musicService
-                .prepareSharedTracksForPlayback([firstTrack])
-                .first ?? firstTrack
-            let tracks = [enrichedFirstTrack] + Array(playlist.tracks.dropFirst())
-
-            enrichedPlaylists.append(
-                SharedPlaylistSummary(
-                    id: playlist.id,
-                    ownerUID: playlist.ownerUID,
-                    ownerNickname: playlist.ownerNickname,
-                    title: playlist.title,
-                    subtitle: playlist.subtitle,
-                    artworkURL: playlist.artworkURL,
-                    artworkData: playlist.artworkData,
-                    sourcePlaylistID: playlist.sourcePlaylistID,
-                    sourcePlaylistURL: playlist.sourcePlaylistURL,
-                    trackCount: playlist.trackCount,
-                    updatedAt: playlist.updatedAt,
-                    tracks: tracks
-                )
-            )
+            var enrichedPlaylists = playlists
+            for await (index, playlist) in group {
+                enrichedPlaylists[index] = playlist
+            }
+            return enrichedPlaylists
         }
-
-        return enrichedPlaylists
     }
 
     private func loadRecommendations(isBackgroundRetry: Bool = false) async {
