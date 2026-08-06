@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-08-06
 > **관련 이슈**: [#93](https://github.com/kec08/Pacing/issues/93)
-> **PR**: Draft PR 생성 후 갱신
+> **PR**: [#94](https://github.com/kec08/Pacing/pull/94)
 > **브랜치**: `fix/93-friend-music-playback-save`
 
 ---
