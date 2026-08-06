@@ -15,12 +15,25 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let tracks: [SharedPlaylistTrack]
 
     var effectiveArtworkURL: String? {
-        // 플레이리스트 대표 이미지는 첫 수록곡의 앨범 커버를 사용한다.
-        if let firstTrackArtworkURL = tracks.first?.effectiveArtworkURL {
-            return firstTrackArtworkURL
+        // 목록 미리보기에서는 첫 곡의 오래된 musicKit:// URL 때문에 대표 커버가
+        // 가려지지 않도록, 실제로 표시 가능한 수록곡 커버를 순서대로 찾는다.
+        if let trackArtworkURL = tracks.lazy
+            .compactMap(\.effectiveArtworkURL)
+            .first {
+            return trackArtworkURL
         }
-        guard let artworkURL, !artworkURL.isEmpty else { return nil }
+        guard Self.isDisplayableArtworkURL(artworkURL) else { return nil }
         return artworkURL
+    }
+
+    private static func isDisplayableArtworkURL(_ value: String?) -> Bool {
+        guard let value,
+              let url = URL(string: value),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+        else {
+            return false
+        }
+        return true
     }
 }
 
@@ -34,7 +47,12 @@ struct SharedPlaylistTrack: Identifiable, Equatable {
     let durationText: String
 
     var effectiveArtworkURL: String? {
-        guard let artworkURL, !artworkURL.isEmpty else { return nil }
+        guard let artworkURL,
+              let url = URL(string: artworkURL),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+        else {
+            return nil
+        }
         return artworkURL
     }
 }

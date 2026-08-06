@@ -114,7 +114,7 @@ final class SongViewModel: ObservableObject {
             for (index, playlist) in playlists.enumerated() {
                 group.addTask { @MainActor [musicService] in
                     guard let firstTrack = playlist.tracks.first,
-                          firstTrack.effectiveArtworkURL == nil
+                          playlist.effectiveArtworkURL == nil
                     else {
                         return (index, playlist)
                     }
