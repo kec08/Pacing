@@ -319,14 +319,11 @@ struct SongView: View {
             HStack(spacing: 16) {
                 ForEach(0..<2, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: 10) {
-                        SkeletonBlock(width: 212, height: 212, cornerRadius: 24)
+                        SkeletonBlock(width: 188, height: 188, cornerRadius: 18)
                         SkeletonBlock(width: 132, height: 16, cornerRadius: 8)
                         SkeletonBlock(width: 76, height: 13, cornerRadius: 7)
                     }
-                    .frame(width: 212, alignment: .leading)
-                    .padding(14)
-                    .background(Color.backgroundPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .frame(width: 188, alignment: .leading)
                 }
             }
         }
