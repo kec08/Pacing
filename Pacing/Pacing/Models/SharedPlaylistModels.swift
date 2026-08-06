@@ -15,12 +15,10 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let tracks: [SharedPlaylistTrack]
 
     var effectiveArtworkURL: String? {
-        // 목록 미리보기에서는 첫 곡의 오래된 musicKit:// URL 때문에 대표 커버가
-        // 가려지지 않도록, 실제로 표시 가능한 수록곡 커버를 순서대로 찾는다.
-        if let trackArtworkURL = tracks.lazy
-            .compactMap(\.effectiveArtworkURL)
-            .first {
-            return trackArtworkURL
+        // 친구 플레이리스트의 목록·상세 대표 이미지는 항상 첫 번째 수록곡의
+        // 앨범 커버를 사용한다. 다른 수록곡 커버로 대체하면 두 화면이 달라진다.
+        if let firstTrack = tracks.first {
+            return firstTrack.effectiveArtworkURL
         }
         guard Self.isDisplayableArtworkURL(artworkURL) else { return nil }
         return artworkURL
