@@ -319,14 +319,11 @@ struct SongView: View {
             HStack(spacing: 16) {
                 ForEach(0..<2, id: \.self) { _ in
                     VStack(alignment: .leading, spacing: 10) {
-                        SkeletonBlock(width: 212, height: 212, cornerRadius: 24)
+                        SkeletonBlock(width: 188, height: 188, cornerRadius: 18)
                         SkeletonBlock(width: 132, height: 16, cornerRadius: 8)
                         SkeletonBlock(width: 76, height: 13, cornerRadius: 7)
                     }
-                    .frame(width: 212, alignment: .leading)
-                    .padding(14)
-                    .background(Color.backgroundPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .frame(width: 188, alignment: .leading)
                 }
             }
         }
@@ -821,8 +818,12 @@ private struct FriendSharedPlaylistCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             artwork
-                .frame(width: 212, height: 212)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                .frame(width: 188, height: 188)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
+                )
 
             Text(playlist.title)
                 .font(.system(size: 16, weight: .semibold))
@@ -834,11 +835,7 @@ private struct FriendSharedPlaylistCard: View {
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
         }
-        .frame(width: 212, alignment: .leading)
-        .padding(14)
-        .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: Color.main500.opacity(0.08), radius: 12, y: 6)
+        .frame(width: 188, alignment: .leading)
     }
 
     @ViewBuilder

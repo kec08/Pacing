@@ -487,18 +487,36 @@ final class FirestoreService {
         let friends = try await fetchFriends(uid: currentUID)
         guard !friends.isEmpty else { return [] }
 
+        let friendIDs = friends.prefix(8).map(\.id)
         var summaries: [SharedPlaylistSummary] = []
-        for friend in friends.prefix(8) {
-            let snapshot = try await db.collection("sharedPlaylists")
-                .whereField("ownerUID", isEqualTo: friend.id)
-                .limit(to: 10)
-                .getDocuments()
 
-            let friendPlaylists = snapshot.documents
-                .compactMap(makeSharedPlaylistSummary(from:))
-                .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+        // 한 번에 너무 많은 Firestore 요청을 보내지 않되, 친구별 조회를 순차
+        // 실행하지 않아 첫 화면 대기 시간을 줄인다.
+        for batchStartIndex in stride(from: 0, to: friendIDs.count, by: 4) {
+            let batch = friendIDs[batchStartIndex..<min(batchStartIndex + 4, friendIDs.count)]
+            let batchSummaries = try await withThrowingTaskGroup(of: [SharedPlaylistSummary].self) { group in
+                for friendID in batch {
+                    group.addTask { @MainActor [db] in
+                        let snapshot = try await db.collection("sharedPlaylists")
+                            .whereField("ownerUID", isEqualTo: friendID)
+                            .limit(to: 10)
+                            .getDocuments()
 
-            summaries.append(contentsOf: friendPlaylists.prefix(3))
+                        return snapshot.documents
+                            .compactMap(self.makeSharedPlaylistSummary(from:))
+                            .sorted { ($0.updatedAt ?? .distantPast) > ($1.updatedAt ?? .distantPast) }
+                            .prefix(3)
+                            .map { $0 }
+                    }
+                }
+
+                var results: [SharedPlaylistSummary] = []
+                for try await playlists in group {
+                    results.append(contentsOf: playlists)
+                }
+                return results
+            }
+            summaries.append(contentsOf: batchSummaries)
         }
 
         return Array(
@@ -516,11 +534,19 @@ final class FirestoreService {
             .collection("savedSharedPlaylists")
             .document(playlistID)
             .getDocument()
-        return doc.exists
+        // 과거 버전은 Firestore 문서만 만들고 Apple Music에는 저장하지 않았으므로,
+        // 실제 보관함 생성 식별자가 있는 경우만 저장 완료로 간주한다.
+        return !(doc.data()?["appleMusicLibraryPlaylistID"] as? String ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
     }
 
     // MARK: - 공유 플레이리스트 저장
-    func saveSharedPlaylistToLibrary(uid: String, summary: SharedPlaylistSummary) async throws {
+    func saveSharedPlaylistToLibrary(
+        uid: String,
+        summary: SharedPlaylistSummary,
+        appleMusicLibraryPlaylistID: String? = nil
+    ) async throws {
         guard !uid.isEmpty else { return }
 
         var data: [String: Any] = [
@@ -544,6 +570,10 @@ final class FirestoreService {
         }
         if let sourcePlaylistURL = summary.sourcePlaylistURL, !sourcePlaylistURL.isEmpty {
             data["sourcePlaylistURL"] = sourcePlaylistURL
+        }
+        if let appleMusicLibraryPlaylistID,
+           !appleMusicLibraryPlaylistID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            data["appleMusicLibraryPlaylistID"] = appleMusicLibraryPlaylistID
         }
 
         try await db.collection("users")

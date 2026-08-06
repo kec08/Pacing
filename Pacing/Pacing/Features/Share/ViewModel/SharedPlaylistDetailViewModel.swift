@@ -51,6 +51,8 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private var applicationQueueObserver: AnyCancellable?
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
+    private var isStartingPlayback = false
+    private var pendingPlaybackTrackID: String?
 
     init(sharedPlaylist: SharedPlaylistSummary) {
         self.source = .shared(sharedPlaylist)
@@ -172,6 +174,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
                     appSaveState = isSaved ? .saved : .idle
                 }
+                canSaveToAppleMusic = (try? await musicService.currentSubscription())?.canPlayCatalogContent ?? false
             case .recommendation(let playlist):
                 let loadedTracks = try await musicService.loadTracks(for: playlist)
                 tracks = loadedTracks
@@ -265,9 +268,10 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func playAll() async {
-        if let firstTrack = tracks.first {
-            playingTrackID = firstTrack.id
-        }
+        let firstTrackID = tracks.first?.id
+        pendingPlaybackTrackID = firstTrackID
+        playingTrackID = firstTrackID
+        isStartingPlayback = true
         isPlaying = true
 
         do {
@@ -282,20 +286,34 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 try await musicService.play(station: station)
                 playingTrackID = nil
             }
+            // 큐 교체 직후에는 이전 플레이어 상태 알림이 먼저 도착할 수 있다.
+            // 재생이 실제로 시작된 뒤 첫 곡 표시를 다시 확정한다.
+            if !isStationSource {
+                playingTrackID = firstTrackID
+            }
+            isStartingPlayback = false
         } catch {
+            isStartingPlayback = false
             isPlaying = false
             playingTrackID = nil
+            pendingPlaybackTrackID = nil
             errorMessage = "재생을 시작하지 못했어요."
         }
     }
 
     func play(track: SharedPlaylistTrack) async {
+        pendingPlaybackTrackID = track.id
         playingTrackID = track.id
+        isStartingPlayback = true
 
         do {
             try await musicService.play(sharedTracks: tracks, startingAt: track.id)
+            playingTrackID = track.id
+            isStartingPlayback = false
         } catch {
+            isStartingPlayback = false
             playingTrackID = nil
+            pendingPlaybackTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
         }
     }
@@ -319,16 +337,53 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     func savePlaylist() async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         guard appSaveState != .saving && appSaveState != .saved else { return }
+        guard canSaveToAppleMusic else {
+            errorMessage = "Apple Music 보관함에 저장할 수 없는 상태예요."
+            return
+        }
 
         appSaveState = .saving
 
         do {
-            try await firestoreService.saveSharedPlaylistToLibrary(uid: uid, summary: summary)
+            let libraryPlaylistID: String
+            if let pendingLibraryPlaylistID = pendingLibraryPlaylistID(for: uid) {
+                libraryPlaylistID = pendingLibraryPlaylistID
+            } else {
+                libraryPlaylistID = try await musicService.createLibraryPlaylist(
+                    name: summary.title,
+                    authorDisplayName: summary.ownerNickname,
+                    sharedTracks: tracks
+                )
+                // Apple Music 생성 뒤 Firestore 기록만 실패한 경우 재시도해도
+                // 동일 플레이리스트가 중복 생성되지 않도록 임시 식별자를 보관한다.
+                UserDefaults.standard.set(libraryPlaylistID, forKey: pendingLibraryPlaylistIDKey(for: uid))
+            }
+            try await firestoreService.saveSharedPlaylistToLibrary(
+                uid: uid,
+                summary: summary,
+                appleMusicLibraryPlaylistID: libraryPlaylistID
+            )
+            UserDefaults.standard.removeObject(forKey: pendingLibraryPlaylistIDKey(for: uid))
+            didSaveToAppleMusic = true
             appSaveState = .saved
         } catch {
             appSaveState = .idle
-            errorMessage = "플레이리스트를 저장하지 못했어요."
+            errorMessage = "Apple Music 플레이리스트를 저장하지 못했어요."
         }
+    }
+
+    private func pendingLibraryPlaylistID(for uid: String) -> String? {
+        let value = UserDefaults.standard.string(forKey: pendingLibraryPlaylistIDKey(for: uid))
+        guard let value,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        return value
+    }
+
+    private func pendingLibraryPlaylistIDKey(for uid: String) -> String {
+        "pendingAppleMusicPlaylistID_\(uid)_\(summary.id)"
     }
 
     func saveToAppleMusic() async {
@@ -565,6 +620,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 ($0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame || currentArtist.isEmpty)
             }) {
                 playingTrackID = matchedTrack.id
+                pendingPlaybackTrackID = nil
             }
             return
         }
@@ -573,8 +629,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             nowPlayingTitle = ""
             nowPlayingArtist = ""
             nowPlayingArtwork = nil
-            if !isPlaying {
+            if !isPlaying && !isStartingPlayback {
                 playingTrackID = nil
+                pendingPlaybackTrackID = nil
             }
             return
         }
@@ -586,6 +643,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         let currentStoreID = item.playbackStoreID.trimmingCharacters(in: .whitespacesAndNewlines)
         if let matchedTrack = tracks.first(where: { $0.songStoreID == currentStoreID && !currentStoreID.isEmpty }) {
             playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
             return
         }
 
@@ -596,11 +654,13 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             $0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame
         }) {
             playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
             return
         }
 
-        if !isPlaying {
+        if !isPlaying && !isStartingPlayback {
             playingTrackID = nil
+            pendingPlaybackTrackID = nil
         }
     }
 
