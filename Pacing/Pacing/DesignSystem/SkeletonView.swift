@@ -7,7 +7,7 @@ struct SkeletonBlock: View {
 
     var body: some View {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .fill(Color.gray100)
+            .fill(Color.skeletonBase)
             .frame(width: width, height: height)
             .skeletonShimmer()
     }
@@ -18,7 +18,7 @@ struct SkeletonCircle: View {
 
     var body: some View {
         Circle()
-            .fill(Color.gray100)
+            .fill(Color.skeletonBase)
             .frame(width: size, height: size)
             .skeletonShimmer()
     }
@@ -56,9 +56,9 @@ private struct SkeletonShimmer: ViewModifier {
                 GeometryReader { proxy in
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(0),
-                            Color.white.opacity(0.72),
-                            Color.white.opacity(0)
+                            Color.skeletonHighlight.opacity(0),
+                            Color.skeletonHighlight.opacity(0.58),
+                            Color.skeletonHighlight.opacity(0)
                         ],
                         startPoint: .top,
                         endPoint: .bottom

@@ -48,7 +48,7 @@ struct PacingApp: App {
         WindowGroup {
             SplashView()
                 .environmentObject(appState)
-                .preferredColorScheme(.light)
+                .preferredColorScheme(appState.appearance.preferredColorScheme)
                 .onOpenURL { url in
                     #if canImport(GoogleSignIn)
                     GIDSignIn.sharedInstance.handle(url)
