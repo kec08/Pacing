@@ -50,10 +50,6 @@ struct RunningView: View {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
     }
 
-    private var mapOverlaySurface: AnyShapeStyle {
-        colorScheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(Color.white)
-    }
-
     private var shouldDisplayRoute: Bool {
         viewModel.state != .idle && viewModel.locationManager.routeCoordinates.count >= 2
     }
@@ -124,7 +120,7 @@ struct RunningView: View {
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(Color.textPrimary)
                                     .frame(width: 40, height: 40)
-                                    .background(mapOverlaySurface)
+                                    .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
@@ -136,7 +132,7 @@ struct RunningView: View {
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(Color.textPrimary)
                                     .frame(width: 40, height: 40)
-                                    .background(mapOverlaySurface)
+                                    .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
@@ -146,7 +142,7 @@ struct RunningView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Color.main500)
                                     .frame(width: 40, height: 40)
-                                    .background(mapOverlaySurface)
+                                    .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         } else {
@@ -158,7 +154,7 @@ struct RunningView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(isFollowingUser ? Color.main500 : Color.textPrimary)
                                     .frame(width: 40, height: 40)
-                                    .background(mapOverlaySurface)
+                                    .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         }
@@ -440,7 +436,7 @@ struct RunningView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(mapOverlaySurface)
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -470,7 +466,7 @@ struct RunningView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(mapOverlaySurface)
+            .background(.ultraThinMaterial)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -491,7 +487,7 @@ struct RunningView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(mapOverlaySurface)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -554,7 +550,7 @@ struct RunningView: View {
             }
             .padding(.vertical, 16)
         }
-        .background(mapOverlaySurface)
+        .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal, 16)
     }
@@ -721,7 +717,7 @@ struct RunningView: View {
                     .font(.system(size: 20))
                     .foregroundStyle(Color.textPrimary)
                     .frame(width: 52, height: 52)
-                    .background(mapOverlaySurface)
+                    .background(.ultraThinMaterial)
                     .clipShape(Circle())
                 Text(label)
                     .font(.system(size: 11))
@@ -1346,9 +1342,11 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        // 지도 위에서도 텍스트 대비를 유지하면서, 내 재생 곡 카드는 다크 배경보다 한 단계 밝은 브랜드 표면을 사용한다.
-        let cardSurface: Color = runner.isMe ? Color.main200 : Color(.systemBackground)
-        let cardBg: Color = runner.isMe ? Color.main500.opacity(0.05) : Color.clear
+        // 내 재생 곡 카드는 라이트 모드에서 흰색으로, 다크 모드에서는 음표 배지와 같은 브랜드 표면으로 표시한다.
+        let cardSurface: Color = runner.isMe
+            ? (colorScheme == .dark ? Color.main200 : .white)
+            : Color(.systemBackground)
+        let cardBg: Color = runner.isMe && colorScheme == .dark ? Color.main500.opacity(0.05) : Color.clear
         let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
 
         Button {
@@ -1418,7 +1416,7 @@ struct RunningView: View {
                     if !runner.songTitle.isEmpty {
                         ZStack {
                             Circle()
-                                .fill(Color(.systemBackground))
+                                .fill(runner.isMe ? cardSurface : Color(.systemBackground))
                                 .frame(width: 18, height: 18)
                             Image(systemName: "music.note")
                                 .font(.system(size: 8, weight: .bold))
