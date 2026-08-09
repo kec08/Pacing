@@ -27,6 +27,15 @@ struct BarChartEntry: Identifiable {
     var endDate: Date
 }
 
+struct RunHistoryMonth: Identifiable, Hashable {
+    let year: Int
+    let month: Int
+
+    var id: String { "\(year)-\(month)" }
+    var label: String { "\(month)월" }
+    var accessibilityLabel: String { "\(year)년 \(month)월" }
+}
+
 final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
@@ -46,6 +55,8 @@ final class MyViewModel: ObservableObject {
     @Published var chartEntries: [BarChartEntry] = []
     @Published var selectedChartEntryID: String?
     @Published var runHistory: [RunRecord] = []
+    @Published private(set) var availableHistoryMonths: [RunHistoryMonth] = []
+    @Published private(set) var selectedHistoryMonth: RunHistoryMonth?
     @Published var isLoading: Bool = true
     @Published var isDeletingAccount: Bool = false
     @Published var accountDeletionError: String?
@@ -113,6 +124,7 @@ final class MyViewModel: ObservableObject {
     }
 
     private func applyData(records: [RunRecord]) {
+        let now = Date()
         let filtered = filter(records: records)
 
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
@@ -127,8 +139,42 @@ final class MyViewModel: ObservableObject {
         )
 
         chartEntries = buildChartEntries(from: filtered)
-        runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
+        runHistory = records
+            .filter { $0.startedAt <= now }
+            .sorted(by: { $0.startedAt > $1.startedAt })
+        updateHistoryMonths()
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
+    }
+
+    var filteredRunHistory: [RunRecord] {
+        guard let selectedHistoryMonth else { return [] }
+
+        return runHistory.filter {
+            cal.component(.year, from: $0.startedAt) == selectedHistoryMonth.year
+                && cal.component(.month, from: $0.startedAt) == selectedHistoryMonth.month
+        }
+    }
+
+    func selectHistoryMonth(_ month: RunHistoryMonth) {
+        selectedHistoryMonth = month
+    }
+
+    private func updateHistoryMonths() {
+        var seenMonthIDs = Set<String>()
+        let months = runHistory.compactMap { record -> RunHistoryMonth? in
+            let month = RunHistoryMonth(
+                year: cal.component(.year, from: record.startedAt),
+                month: cal.component(.month, from: record.startedAt)
+            )
+            return seenMonthIDs.insert(month.id).inserted ? month : nil
+        }
+
+        availableHistoryMonths = months
+        if let selectedHistoryMonth,
+           months.contains(selectedHistoryMonth) {
+            return
+        }
+        selectedHistoryMonth = months.first
     }
 
     func toggleChartSelection(label: String) {
