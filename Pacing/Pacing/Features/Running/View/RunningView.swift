@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     private let locationFocusDistance: Double = 1_000
 
     @StateObject private var viewModel = RunningViewModel()
@@ -46,6 +48,10 @@ struct RunningView: View {
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
+    }
+
+    private var mapOverlaySurface: AnyShapeStyle {
+        colorScheme == .dark ? AnyShapeStyle(.ultraThinMaterial) : AnyShapeStyle(Color.white)
     }
 
     private var shouldDisplayRoute: Bool {
@@ -118,7 +124,7 @@ struct RunningView: View {
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(Color.textPrimary)
                                     .frame(width: 40, height: 40)
-                                    .background(.ultraThinMaterial)
+                                    .background(mapOverlaySurface)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
@@ -130,7 +136,7 @@ struct RunningView: View {
                                     .font(.system(size: 16, weight: .semibold))
                                     .foregroundStyle(Color.textPrimary)
                                     .frame(width: 40, height: 40)
-                                    .background(.ultraThinMaterial)
+                                    .background(mapOverlaySurface)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
@@ -140,7 +146,7 @@ struct RunningView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(Color.main500)
                                     .frame(width: 40, height: 40)
-                                    .background(.ultraThinMaterial)
+                                    .background(mapOverlaySurface)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         } else {
@@ -152,7 +158,7 @@ struct RunningView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(isFollowingUser ? Color.main500 : Color.textPrimary)
                                     .frame(width: 40, height: 40)
-                                    .background(.ultraThinMaterial)
+                                    .background(mapOverlaySurface)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                         }
@@ -434,7 +440,7 @@ struct RunningView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
+            .background(mapOverlaySurface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -464,7 +470,7 @@ struct RunningView: View {
             }
             .padding(.horizontal, 10)
             .padding(.vertical, 8)
-            .background(.ultraThinMaterial)
+            .background(mapOverlaySurface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
         }
     }
@@ -485,7 +491,7 @@ struct RunningView: View {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(.ultraThinMaterial)
+        .background(mapOverlaySurface)
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 
@@ -548,7 +554,7 @@ struct RunningView: View {
             }
             .padding(.vertical, 16)
         }
-        .background(.ultraThinMaterial)
+        .background(mapOverlaySurface)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal, 16)
     }
@@ -715,7 +721,7 @@ struct RunningView: View {
                     .font(.system(size: 20))
                     .foregroundStyle(Color.textPrimary)
                     .frame(width: 52, height: 52)
-                    .background(.ultraThinMaterial)
+                    .background(mapOverlaySurface)
                     .clipShape(Circle())
                 Text(label)
                     .font(.system(size: 11))
