@@ -601,11 +601,11 @@ struct RunningView: View {
                     // 종료 — 1초 꾹 누르기
                     ZStack {
                         Circle()
-                            .stroke(Color.white.opacity(0.3), lineWidth: 4)
+                            .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
                             .frame(width: 80, height: 80)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
-                            .stroke(Color(white: 0.2), lineWidth: 4)
+                            .stroke(Color.stopHoldProgress, lineWidth: 4)
                             .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.05), value: stopHoldProgress)
@@ -671,11 +671,11 @@ struct RunningView: View {
         HStack(spacing: 24) {
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.3), lineWidth: 4)
+                    .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
                     .frame(width: 80, height: 80)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
-                    .stroke(Color.white, lineWidth: 4)
+                    .stroke(Color.stopHoldProgress, lineWidth: 4)
                     .frame(width: 80, height: 80)
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.05), value: stopHoldProgress)
@@ -1340,7 +1340,9 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        let cardBg: Color = runner.isMe ? Color.main500.opacity(0.12) : Color.clear
+        // 지도 위에서도 텍스트 대비를 유지하면서, 내 재생 곡 카드는 다크 배경보다 한 단계 밝은 브랜드 표면을 사용한다.
+        let cardSurface: Color = runner.isMe ? Color.main200 : Color(.systemBackground)
+        let cardBg: Color = runner.isMe ? Color.main500.opacity(0.05) : Color.clear
         let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
 
         Button {
@@ -1385,13 +1387,15 @@ struct RunningView: View {
                     .padding(.vertical, 7)
                     .background(
                         ZStack {
-                            RoundedRectangle(cornerRadius: 12).fill(Color(.systemBackground))
+                            RoundedRectangle(cornerRadius: 12).fill(cardSurface)
                             RoundedRectangle(cornerRadius: 12).fill(cardBg)
                         }
                         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
                     )
-                    Triangle()
-                        .fill(Color(.systemBackground))
+                    ZStack {
+                        Triangle().fill(cardSurface)
+                        Triangle().fill(cardBg)
+                    }
                         .frame(width: 10, height: 6)
                 }
                 .scaleEffect(isCollapsed ? 0.1 : 1, anchor: .bottom)

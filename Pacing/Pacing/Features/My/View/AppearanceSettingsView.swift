@@ -68,10 +68,7 @@ private struct AppearancePreview: View {
     var body: some View {
         ZStack {
             if mode == .system {
-                HStack(spacing: 0) {
-                    previewContent(isDark: false)
-                    previewContent(isDark: true)
-                }
+                systemPreview
             } else {
                 previewContent(isDark: mode == .dark)
             }
@@ -80,7 +77,7 @@ private struct AppearancePreview: View {
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color.gray300, lineWidth: 1)
+                .stroke(Color.surfaceBorder, lineWidth: 1)
         }
         .accessibilityHidden(true)
     }
@@ -90,7 +87,7 @@ private struct AppearancePreview: View {
         let previewPrimary = isDark ? Color(red: 0.95, green: 0.95, blue: 0.97) : Color(red: 0.11, green: 0.11, blue: 0.12)
         let previewSecondary = isDark ? Color(red: 0.32, green: 0.32, blue: 0.34) : Color(red: 0.78, green: 0.78, blue: 0.80)
 
-        VStack(alignment: .leading, spacing: 6) {
+        return VStack(alignment: .leading, spacing: 6) {
             Text("P")
                 .font(.system(size: 13, weight: .bold))
                 .foregroundStyle(Color.main500)
@@ -102,5 +99,24 @@ private struct AppearancePreview: View {
         .padding(9)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(previewBackground)
+    }
+
+    private var systemPreview: some View {
+        VStack(spacing: 0) {
+            Color.white
+            Color(red: 0.07, green: 0.07, blue: 0.07)
+        }
+        .overlay {
+            Circle()
+                .fill(Color.backgroundPrimary)
+                .frame(width: 27, height: 27)
+                .overlay {
+                    Circle()
+                        .stroke(Color.textPrimary, lineWidth: 2)
+                    Capsule()
+                        .fill(Color.textPrimary)
+                        .frame(width: 18, height: 5)
+                }
+        }
     }
 }

@@ -184,7 +184,7 @@ struct FriendProfileView: View {
     private var relationshipTint: Color {
         switch vm.relationship {
         case .friend:
-            return Color.main500.opacity(0.12)
+            return Color.backgroundSecondary
         case .requestPending:
             return Color.gray100.opacity(0.82)
         case .none:
@@ -293,7 +293,7 @@ private struct FriendProfileAvatar: View {
         .clipShape(Circle())
         .overlay {
             Circle()
-                .stroke(Color.white.opacity(0.9), lineWidth: 2)
+                .stroke(Color.surfaceBorder, lineWidth: 1.5)
         }
         .shadow(color: Color.main500.opacity(0.12), radius: 14, y: 8)
     }
@@ -472,7 +472,7 @@ private extension View {
                 }
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                        .stroke(Color.surfaceBorder, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }
@@ -491,7 +491,7 @@ private extension View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                        .stroke(Color.surfaceBorder, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }
