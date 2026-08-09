@@ -318,7 +318,6 @@ struct RunningView: View {
         .onChange(of: musicVM.nowPlayingSnapshot?.songStoreID) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
-        .preferredColorScheme(.light)
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
             Button("설정으로 이동") {
                 guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
@@ -1569,7 +1568,6 @@ struct RunningView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
-        .preferredColorScheme(.light)
     }
 
     private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
@@ -1791,7 +1789,6 @@ struct RunningView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
-        .preferredColorScheme(.light)
     }
 
     private func nearbyRunnerCard(runner: NearbyRunner) -> some View {

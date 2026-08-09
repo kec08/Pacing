@@ -1,6 +1,6 @@
 # Pacing Design System
 
-> Apple Music inspired, Clean & Modern, Light Mode, Rounded Cards, Minimal
+> Apple Music inspired, Clean & Modern, Light & Dark Mode, Rounded Cards, Minimal
 
 ---
 
@@ -29,6 +29,18 @@
 |------|-----|------|
 | `background/primary` | `#FFFFFF` | 메인 배경, 카드 |
 | `background/secondary` | `#F5F5F7` | 화면 배경, 섹션 구분 |
+
+### Dark Mode
+
+| 토큰 | HEX | 용도 |
+|------|-----|------|
+| `background/primary` | `#151515` | 메인 표면, 카드 |
+| `background/secondary` | `#202020` | 화면 배경, 보조 표면 |
+| `text/primary` | `#F5F5F7` | 본문, 제목 |
+| `text/secondary` | `#AEAEB2` | 부제목, 설명 텍스트 |
+| `divider/primary` | `#3A3A3C` | 섹션 구분선 |
+
+SwiftUI 색상 토큰은 UI 환경의 색상 모드에 따라 라이트·다크 값을 자동 선택한다. 다크 모드의 표면과 텍스트 대비는 제공된 Figma 색상 레퍼런스를 따른다.
 
 ### Gray
 

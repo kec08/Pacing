@@ -9,6 +9,7 @@ struct MyView: View {
     @State private var showLogoutAlert = false
     @State private var showAccountDeletionAlert = false
     @State private var showAccountDeletion = false
+    @State private var showAppearanceSettings = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,9 @@ struct MyView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showAccountDeletion) {
                 AccountDeletionView(viewModel: vm)
+            }
+            .navigationDestination(isPresented: $showAppearanceSettings) {
+                AppearanceSettingsView()
             }
         }
         .refreshable { vm.loadData() }
@@ -537,6 +541,13 @@ struct MyView: View {
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
+            settingsRow(icon: "circle.lefthalf.filled", label: "화면 모드 변경") {
+                showAppearanceSettings = true
+            }
+
+            Divider()
+                .padding(.leading, 56)
+
             Button {
                 showLogoutAlert = true
             } label: {
