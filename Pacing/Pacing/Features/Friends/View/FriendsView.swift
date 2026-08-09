@@ -601,7 +601,7 @@ private struct FriendAvatar: View {
         .clipShape(Circle())
         .overlay {
             Circle()
-                .stroke(.white.opacity(0.85), lineWidth: 1.5)
+                .stroke(Color.surfaceBorder, lineWidth: 1)
         }
         .shadow(color: Color.main500.opacity(0.1), radius: 8, y: 4)
     }
@@ -632,7 +632,7 @@ private extension View {
                 }
                 .overlay {
                     Capsule()
-                        .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                        .stroke(Color.surfaceBorder, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }
@@ -648,7 +648,7 @@ private extension View {
                 }
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                        .stroke(Color.surfaceBorder, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }
@@ -664,7 +664,7 @@ private extension View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.white.opacity(0.72), lineWidth: 1)
+                        .stroke(Color.surfaceBorder, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }

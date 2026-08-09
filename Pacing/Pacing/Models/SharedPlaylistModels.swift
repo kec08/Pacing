@@ -7,6 +7,7 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let title: String
     let subtitle: String
     let artworkURL: String?
+    let artworkData: String?
     let sourcePlaylistID: String?
     let sourcePlaylistURL: String?
     let trackCount: Int
@@ -14,6 +15,10 @@ struct SharedPlaylistSummary: Identifiable, Equatable {
     let tracks: [SharedPlaylistTrack]
 
     var effectiveArtworkURL: String? {
+        // 플레이리스트 대표 이미지는 첫 수록곡의 앨범 커버를 사용한다.
+        if let firstTrackArtworkURL = tracks.first?.effectiveArtworkURL {
+            return firstTrackArtworkURL
+        }
         guard let artworkURL, !artworkURL.isEmpty else { return nil }
         return artworkURL
     }

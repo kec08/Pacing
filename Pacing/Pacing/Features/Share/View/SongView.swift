@@ -318,15 +318,12 @@ struct SongView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 ForEach(0..<2, id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: 10) {
-                        SkeletonBlock(width: 212, height: 212, cornerRadius: 24)
-                        SkeletonBlock(width: 132, height: 16, cornerRadius: 8)
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(width: 188, height: 188, cornerRadius: 18)
+                        SkeletonBlock(width: 118, height: 16, cornerRadius: 8)
                         SkeletonBlock(width: 76, height: 13, cornerRadius: 7)
                     }
-                    .frame(width: 212, alignment: .leading)
-                    .padding(14)
-                    .background(Color.backgroundPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .frame(width: 188, alignment: .leading)
                 }
             }
         }
@@ -427,15 +424,28 @@ final class SongNowPlayingController: ObservableObject {
     @Published private(set) var isForceCollapsed: Bool = false
 
     private let player = MPMusicPlayerController.systemMusicPlayer
+    private let applicationPlayer = ApplicationMusicPlayer.shared
     private var notificationObservers: [NSObjectProtocol] = []
+    private var applicationQueueObserver: AnyCancellable?
+    private var applicationStateObserver: AnyCancellable?
+    private var applicationPlaybackPoller: AnyCancellable?
 
     var hasActiveTrack: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    var trackIdentity: String {
+        "\(title)\u{1F}|\(artist)"
+    }
+
+    var artworkIdentity: String {
+        "\(trackIdentity)|\(artwork == nil ? "placeholder" : "artwork")"
+    }
+
     init() {
         player.beginGeneratingPlaybackNotifications()
         observePlayer()
+        observeApplicationPlayer()
         refresh()
     }
 
@@ -445,17 +455,55 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func togglePlayPause() {
-        if isPlaying {
-            player.pause()
-        } else {
-            player.play()
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                if applicationPlayer.state.playbackStatus == .playing {
+                    applicationPlayer.pause()
+                } else {
+                    do {
+                        try await applicationPlayer.play()
+                    } catch {
+                        return
+                    }
+                }
+            } else if isPlaying {
+                player.pause()
+            } else {
+                player.play()
+            }
+            refresh()
         }
-        refresh()
+    }
+
+    func skipToPrevious() {
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                do {
+                    try await applicationPlayer.skipToPreviousEntry()
+                } catch {
+                    return
+                }
+            } else {
+                player.skipToPreviousItem()
+            }
+            refresh()
+        }
     }
 
     func skipToNext() {
-        player.skipToNextItem()
-        refresh()
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                do {
+                    try await applicationPlayer.skipToNextEntry()
+                } catch {
+                    // 단일 곡 또는 마지막 곡에서는 다음 항목이 없으므로 재생을 종료한다.
+                    applicationPlayer.pause()
+                }
+            } else {
+                player.skipToNextItem()
+            }
+            refresh()
+        }
     }
 
     func updateCollapseProgress(_ progress: CGFloat) {
@@ -489,6 +537,12 @@ final class SongNowPlayingController: ObservableObject {
         self.title = title
         self.artist = artist
         self.isPlaying = true
+        loadArtwork(from: artworkURL)
+    }
+
+    private func loadArtwork(from artworkURL: String?) {
+        // 다음 곡의 이미지를 못 받아도 이전 곡 커버가 남지 않게 즉시 초기화한다.
+        self.artwork = nil
 
         guard let artworkURL,
               let url = URL(string: artworkURL) else {
@@ -505,7 +559,7 @@ final class SongNowPlayingController: ObservableObject {
                     }
                 }
             } catch {
-                // Keep the current artwork if fetching the next image fails.
+                // 현재 곡의 이미지를 못 받으면 플레이스홀더를 표시한다.
             }
         }
     }
@@ -534,7 +588,57 @@ final class SongNowPlayingController: ObservableObject {
         notificationObservers = [stateObserver, itemObserver]
     }
 
+    private func observeApplicationPlayer() {
+        applicationStateObserver = applicationPlayer.state.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.refresh()
+            }
+
+        let queueObserver = NotificationCenter.default.addObserver(
+            forName: .applicationMusicPlayerQueueDidChange,
+            object: applicationPlayer,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.bindApplicationQueue()
+                self?.refresh()
+            }
+        }
+        notificationObservers.append(queueObserver)
+        bindApplicationQueue()
+
+        applicationPlaybackPoller = Timer.publish(every: 0.5, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
+                self?.refresh()
+            }
+    }
+
+    private func bindApplicationQueue() {
+        applicationQueueObserver = applicationPlayer.queue.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.refresh()
+            }
+    }
+
     private func refresh() {
+        if let entry = applicationPlayer.queue.currentEntry,
+           applicationPlayer.state.playbackStatus != .stopped {
+            let nextTitle = entry.title
+            let nextArtist = entry.subtitle ?? "Apple Music"
+            let didTrackChange = title != nextTitle || artist != nextArtist
+            title = nextTitle
+            artist = nextArtist
+            isPlaying = applicationPlayer.state.playbackStatus == .playing
+            if didTrackChange {
+                loadArtwork(from: entry.artwork?.url(width: 220, height: 220)?.absoluteString)
+            }
+            return
+        }
+
         if player.playbackState == .stopped {
             title = ""
             artist = ""
@@ -624,29 +728,48 @@ private struct SongNowPlayingOverlay: View {
                     .scaleEffect(lerp(from: 1, to: 1.26, progress: progress))
                     .offset(x: lerp(from: 0, to: 2, progress: progress))
 
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(controller.title)
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(1)
+                ZStack(alignment: .leading) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(controller.title)
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                            .lineLimit(1)
 
-                    Text(controller.artist)
-                        .font(.system(size: 11.5, weight: .medium))
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
+                        Text(controller.artist)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                    .id(controller.trackIdentity)
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
                 }
+                .clipped()
                 .opacity(barOpacity)
                 .blur(radius: progress * 1.2)
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Button {
+                        controller.skipToPrevious()
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+
                     Button {
                         controller.togglePlayPause()
                     } label: {
                         Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
 
@@ -654,8 +777,9 @@ private struct SongNowPlayingOverlay: View {
                         controller.skipToNext()
                     } label: {
                         Image(systemName: "forward.fill")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
                 }
@@ -687,24 +811,33 @@ private struct SongNowPlayingOverlay: View {
         .onLongPressGesture(minimumDuration: 0.24) {
             controller.requestRestore()
         }
+        .animation(.easeInOut(duration: 0.30), value: controller.trackIdentity)
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: progress)
     }
 
     private func artworkView(size: CGFloat) -> some View {
-        Group {
-            if let artwork = controller.artwork {
-                Image(uiImage: artwork)
-                    .resizable()
-                    .scaledToFill()
-            } else {
-                LinearGradient(
-                    colors: [Color.main500.opacity(0.85), Color.main300.opacity(0.45)],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
+        ZStack {
+            Group {
+                if let artwork = controller.artwork {
+                    Image(uiImage: artwork)
+                        .resizable()
+                        .scaledToFill()
+                } else {
+                    LinearGradient(
+                        colors: [Color.main500.opacity(0.85), Color.main300.opacity(0.45)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
             }
+            .id(controller.artworkIdentity)
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            ))
         }
         .frame(width: size, height: size)
+        .clipped()
         .clipShape(Circle())
     }
 
@@ -733,26 +866,31 @@ private struct FriendSharedPlaylistCard: View {
     let playlist: SharedPlaylistSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
-                .frame(width: 212, height: 212)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        VStack(alignment: .leading, spacing: 12) {
+            artwork
+            .frame(width: 188, height: 188)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
 
             Text(playlist.title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(1)
 
             Text(playlist.ownerNickname)
-                .font(.system(size: 14))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
         }
-        .frame(width: 212, alignment: .leading)
-        .padding(14)
-        .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: Color.main500.opacity(0.08), radius: 12, y: 6)
+        .frame(width: 188, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
     }
 }
 

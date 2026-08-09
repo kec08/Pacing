@@ -27,11 +27,19 @@ struct BarChartEntry: Identifiable {
     var endDate: Date
 }
 
+struct RunHistoryMonth: Identifiable, Hashable {
+    let year: Int
+    let month: Int
+
+    var id: String { "\(year)-\(month)" }
+    var label: String { "\(month)월" }
+    var accessibilityLabel: String { "\(year)년 \(month)월" }
+}
+
 final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
     @Published var weight: Int = 0
-    @Published var age: Int = 0
     @Published var profileImage: UIImage? = nil
     @Published var activityStatusText: String = "러닝 기록 없음"
     @Published var selectedPeriod: StatsPeriod = .week
@@ -47,6 +55,8 @@ final class MyViewModel: ObservableObject {
     @Published var chartEntries: [BarChartEntry] = []
     @Published var selectedChartEntryID: String?
     @Published var runHistory: [RunRecord] = []
+    @Published private(set) var availableHistoryMonths: [RunHistoryMonth] = []
+    @Published private(set) var selectedHistoryMonth: RunHistoryMonth?
     @Published var isLoading: Bool = true
     @Published var isDeletingAccount: Bool = false
     @Published var accountDeletionError: String?
@@ -63,7 +73,7 @@ final class MyViewModel: ObservableObject {
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
         height   = UserDefaults.standard.integer(forKey: "height")
         weight   = UserDefaults.standard.integer(forKey: "weight")
-        age      = UserDefaults.standard.integer(forKey: "age")
+        UserDefaults.standard.removeObject(forKey: "age")
         profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
         guard let uid = Auth.auth().currentUser?.uid else { return }
@@ -72,7 +82,6 @@ final class MyViewModel: ObservableObject {
                 nickname = data["nickname"] as? String ?? nickname
                 height   = data["height"]   as? Int    ?? height
                 weight   = data["weight"]   as? Int    ?? weight
-                age      = data["age"]      as? Int    ?? age
                 if let img = data["profileImageBase64"] as? String {
                     UserDefaults.standard.set(img, forKey: "profileImageBase64")
                     profileImage = Self.decodeImage(img)
@@ -115,6 +124,7 @@ final class MyViewModel: ObservableObject {
     }
 
     private func applyData(records: [RunRecord]) {
+        let now = Date()
         let filtered = filter(records: records)
 
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
@@ -129,8 +139,42 @@ final class MyViewModel: ObservableObject {
         )
 
         chartEntries = buildChartEntries(from: filtered)
-        runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
+        runHistory = records
+            .filter { $0.startedAt <= now }
+            .sorted(by: { $0.startedAt > $1.startedAt })
+        updateHistoryMonths()
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
+    }
+
+    var filteredRunHistory: [RunRecord] {
+        guard let selectedHistoryMonth else { return [] }
+
+        return runHistory.filter {
+            cal.component(.year, from: $0.startedAt) == selectedHistoryMonth.year
+                && cal.component(.month, from: $0.startedAt) == selectedHistoryMonth.month
+        }
+    }
+
+    func selectHistoryMonth(_ month: RunHistoryMonth) {
+        selectedHistoryMonth = month
+    }
+
+    private func updateHistoryMonths() {
+        var seenMonthIDs = Set<String>()
+        let months = runHistory.compactMap { record -> RunHistoryMonth? in
+            let month = RunHistoryMonth(
+                year: cal.component(.year, from: record.startedAt),
+                month: cal.component(.month, from: record.startedAt)
+            )
+            return seenMonthIDs.insert(month.id).inserted ? month : nil
+        }
+
+        availableHistoryMonths = months
+        if let selectedHistoryMonth,
+           months.contains(selectedHistoryMonth) {
+            return
+        }
+        selectedHistoryMonth = months.first
     }
 
     func toggleChartSelection(label: String) {
@@ -324,7 +368,6 @@ final class MyViewModel: ObservableObject {
 
     func saveProfile(
         nickname: String,
-        age: Int,
         height: Int,
         weight: Int,
         profileImage: UIImage?
@@ -340,7 +383,7 @@ final class MyViewModel: ObservableObject {
         defaults.set(trimmedNickname, forKey: "nickname")
         defaults.set(height, forKey: "height")
         defaults.set(weight, forKey: "weight")
-        defaults.set(age, forKey: "age")
+        defaults.removeObject(forKey: "age")
         if let imageBase64 {
             defaults.set(imageBase64, forKey: "profileImageBase64")
         }
@@ -351,13 +394,11 @@ final class MyViewModel: ObservableObject {
             nickname: trimmedNickname,
             height: height,
             weight: weight,
-            age: age,
             profileImageBase64: imageBase64
         )
 
         await MainActor.run {
             self.nickname = trimmedNickname
-            self.age = age
             self.height = height
             self.weight = weight
             self.profileImage = profileImage

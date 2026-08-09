@@ -216,8 +216,10 @@ final class AuthViewModel: ObservableObject {
             d.set(nickname, forKey: "nickname")
             if let h = data["height"] as? Int { d.set(h, forKey: "height") }
             if let w = data["weight"] as? Int { d.set(w, forKey: "weight") }
-            if let a = data["age"]    as? Int { d.set(a, forKey: "age") }
             if let img = data["profileImageBase64"] as? String { d.set(img, forKey: "profileImageBase64") }
+            if data["age"] != nil {
+                try? await FirestoreService.shared.removeLegacyAge(uid: uid)
+            }
             appState.isProfileComplete = true
         } else {
             appState.isProfileComplete = false

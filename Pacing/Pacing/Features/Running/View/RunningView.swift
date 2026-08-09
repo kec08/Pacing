@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     private let locationFocusDistance: Double = 1_000
 
     @StateObject private var viewModel = RunningViewModel()
@@ -28,7 +30,8 @@ struct RunningView: View {
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
     @State private var collapsedPinIDs: Set<String> = []
-    @State private var mapZoomDistance: Double = 400
+    // 최초 진입도 내 위치 버튼과 같은 거리로 맞춰 내 위치가 너무 작게 보이지 않게 한다.
+    @State private var mapZoomDistance: Double = 1_000
     @State private var isFollowingUser: Bool = true      // 내 위치 자동 추적
     @State private var isProgrammaticMove: Bool = false  // 코드 카메라 이동 플래그
     @State private var showListenSheet = false
@@ -317,7 +320,6 @@ struct RunningView: View {
         .onChange(of: musicVM.nowPlayingSnapshot?.songStoreID) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
-        .preferredColorScheme(.light)
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
             Button("설정으로 이동") {
                 guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
@@ -601,11 +603,11 @@ struct RunningView: View {
                     // 종료 — 1초 꾹 누르기
                     ZStack {
                         Circle()
-                            .stroke(Color.white.opacity(0.3), lineWidth: 4)
+                            .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
                             .frame(width: 80, height: 80)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
-                            .stroke(Color(white: 0.2), lineWidth: 4)
+                            .stroke(Color.stopHoldProgress, lineWidth: 4)
                             .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.05), value: stopHoldProgress)
@@ -671,11 +673,11 @@ struct RunningView: View {
         HStack(spacing: 24) {
             ZStack {
                 Circle()
-                    .stroke(Color.white.opacity(0.3), lineWidth: 4)
+                    .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
                     .frame(width: 80, height: 80)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
-                    .stroke(Color.white, lineWidth: 4)
+                    .stroke(Color.stopHoldProgress, lineWidth: 4)
                     .frame(width: 80, height: 80)
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.05), value: stopHoldProgress)
@@ -1340,7 +1342,11 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        let cardBg: Color = runner.isMe ? Color.main500.opacity(0.12) : Color.clear
+        // 내 재생 곡 카드는 라이트 모드에서 흰색으로, 다크 모드에서는 음표 배지와 같은 브랜드 표면으로 표시한다.
+        let cardSurface: Color = runner.isMe
+            ? (colorScheme == .dark ? Color.main200 : .white)
+            : Color(.systemBackground)
+        let cardBg: Color = runner.isMe && colorScheme == .dark ? Color.main500.opacity(0.05) : Color.clear
         let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
 
         Button {
@@ -1385,13 +1391,15 @@ struct RunningView: View {
                     .padding(.vertical, 7)
                     .background(
                         ZStack {
-                            RoundedRectangle(cornerRadius: 12).fill(Color(.systemBackground))
+                            RoundedRectangle(cornerRadius: 12).fill(cardSurface)
                             RoundedRectangle(cornerRadius: 12).fill(cardBg)
                         }
                         .shadow(color: .black.opacity(0.18), radius: 4, y: 2)
                     )
-                    Triangle()
-                        .fill(Color(.systemBackground))
+                    ZStack {
+                        Triangle().fill(cardSurface)
+                        Triangle().fill(cardBg)
+                    }
                         .frame(width: 10, height: 6)
                 }
                 .scaleEffect(isCollapsed ? 0.1 : 1, anchor: .bottom)
@@ -1408,7 +1416,7 @@ struct RunningView: View {
                     if !runner.songTitle.isEmpty {
                         ZStack {
                             Circle()
-                                .fill(Color(.systemBackground))
+                                .fill(runner.isMe ? cardSurface : Color(.systemBackground))
                                 .frame(width: 18, height: 18)
                             Image(systemName: "music.note")
                                 .font(.system(size: 8, weight: .bold))
@@ -1568,7 +1576,6 @@ struct RunningView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
-        .preferredColorScheme(.light)
     }
 
     private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
@@ -1790,7 +1797,6 @@ struct RunningView: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
-        .preferredColorScheme(.light)
     }
 
     private func nearbyRunnerCard(runner: NearbyRunner) -> some View {

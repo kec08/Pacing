@@ -322,6 +322,7 @@ private struct SharedAlbumTrackRow: View {
                         spacing: 3.2,
                         speed: 1.0
                     )
+                    .transition(.opacity.combined(with: .scale(scale: 0.82)))
                 } else {
                     Text("\(trackNumber)")
                         .font(.system(size: 14, weight: .medium))
@@ -353,6 +354,7 @@ private struct SharedAlbumTrackRow: View {
         .padding(.horizontal, 2)
         .padding(.vertical, 16)
         .contentShape(Rectangle())
+        .animation(.easeInOut(duration: 0.26), value: isPlaying)
     }
 }
 
@@ -389,20 +391,8 @@ private struct SharedPlaylistTrackRow: View {
                     .overlay {
                         if isPlaying {
                             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            Color.main500.opacity(0.18),
-                                            Color.white.opacity(0.04)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(Color.main500.opacity(0.18), lineWidth: 0.8)
-                                )
+                                .fill(.black.opacity(0.42))
+                                .transition(.opacity)
                         }
                     }
                     .overlay {
@@ -415,6 +405,7 @@ private struct SharedPlaylistTrackRow: View {
                                 spacing: 3,
                                 speed: 1.1
                             )
+                            .transition(.opacity.combined(with: .scale(scale: 0.84)))
                         }
                     }
             }
@@ -442,6 +433,7 @@ private struct SharedPlaylistTrackRow: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 7)
         .contentShape(Rectangle())
+        .animation(.easeInOut(duration: 0.26), value: isPlaying)
     }
 
     private var trackTitleColor: Color {

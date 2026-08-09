@@ -11,18 +11,25 @@ final class FirestoreService {
     private init() {}
 
     // MARK: - 프로필 저장
-    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, age: Int, profileImageBase64: String? = nil) async throws {
+    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, profileImageBase64: String? = nil) async throws {
         var data: [String: Any] = [
             "nickname": nickname,
             "height": height,
             "weight": weight,
-            "age": age,
+            // 심사 대응: 더 이상 수집하지 않는 기존 나이 필드를 함께 정리한다.
+            "age": FieldValue.delete(),
             "createdAt": FieldValue.serverTimestamp()
         ]
         if let img = profileImageBase64 {
             data["profileImageBase64"] = img
         }
         try await db.collection("users").document(uid).setData(data, merge: true)
+    }
+
+    func removeLegacyAge(uid: String) async throws {
+        try await db.collection("users").document(uid).updateData([
+            "age": FieldValue.delete()
+        ])
     }
 
     // MARK: - 프로필 조회
@@ -451,8 +458,17 @@ final class FirestoreService {
             "tracks": summary.tracks.map(sharedTrackData(from:))
         ]
 
-        if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
+        // 대표 커버는 플레이리스트 자체의 값만 사용한다. 값이 사라진 경우에도
+        // 과거 문서의 첫 수록곡 커버가 남지 않도록 기존 필드를 제거한다.
+        if let artworkURL = summary.effectiveArtworkURL {
             data["artworkURL"] = artworkURL
+        } else {
+            data["artworkURL"] = FieldValue.delete()
+        }
+        if let artworkData = summary.artworkData, !artworkData.isEmpty {
+            data["artworkData"] = artworkData
+        } else {
+            data["artworkData"] = FieldValue.delete()
         }
         if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
             data["sourcePlaylistID"] = sourcePlaylistID
@@ -519,6 +535,9 @@ final class FirestoreService {
 
         if let artworkURL = summary.artworkURL, !artworkURL.isEmpty {
             data["artworkURL"] = artworkURL
+        }
+        if let artworkData = summary.artworkData, !artworkData.isEmpty {
+            data["artworkData"] = artworkData
         }
         if let sourcePlaylistID = summary.sourcePlaylistID, !sourcePlaylistID.isEmpty {
             data["sourcePlaylistID"] = sourcePlaylistID
@@ -592,6 +611,7 @@ final class FirestoreService {
             title: title,
             subtitle: data["subtitle"] as? String ?? "",
             artworkURL: data["artworkURL"] as? String,
+            artworkData: data["artworkData"] as? String,
             sourcePlaylistID: data["sourcePlaylistID"] as? String,
             sourcePlaylistURL: data["sourcePlaylistURL"] as? String,
             trackCount: (data["trackCount"] as? NSNumber)?.intValue ?? tracks.count,

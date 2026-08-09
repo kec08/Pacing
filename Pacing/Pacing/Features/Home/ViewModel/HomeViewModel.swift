@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import FirebaseAuth
+import UIKit
 
 @MainActor
 final class HomeViewModel: ObservableObject {
@@ -104,22 +105,49 @@ final class HomeViewModel: ObservableObject {
     private func resolveMissingFriendSongArtworkURLs(
         for activities: [FriendRecentSongActivity]
     ) async -> [String: String] {
+        let activitiesNeedingRemoteArtwork = activities.filter {
+            !hasDecodableArtworkData($0.song.artworkData)
+        }
+
         var artworkURLs: [String: String] = [:]
+        for batchStartIndex in stride(from: 0, to: activitiesNeedingRemoteArtwork.count, by: 4) {
+            let batch = activitiesNeedingRemoteArtwork[
+                batchStartIndex..<min(batchStartIndex + 4, activitiesNeedingRemoteArtwork.count)
+            ]
 
-        for activity in activities where activity.song.artworkData?.isEmpty != false && activity.song.artworkURL?.isEmpty != false {
-            guard let artworkURL = await musicService.resolvedRecentSongArtworkURL(
-                title: activity.song.title,
-                artistName: activity.song.artistName
-            ) else {
-                continue
+            await withTaskGroup(of: (String, String?).self) { group in
+                for activity in batch {
+                    let activityID = activity.id
+                    let title = activity.song.title
+                    let artistName = activity.song.artistName
+                    group.addTask { [musicService] in
+                        let artworkURL = await musicService.resolvedRecentSongArtworkURL(
+                            title: title,
+                            artistName: artistName
+                        )
+                        return (activityID, artworkURL)
+                    }
+                }
+
+                for await (activityID, artworkURL) in group {
+                    if let artworkURL, !artworkURL.isEmpty {
+                        artworkURLs[activityID] = artworkURL
+                    }
+                }
             }
-            artworkURLs[activity.id] = artworkURL
         }
 
-        Task {
-            await ArtworkImageStore.shared.prefetch(urlStrings: Array(artworkURLs.values))
-        }
+        await ArtworkImageStore.shared.prefetch(urlStrings: Array(artworkURLs.values))
         return artworkURLs
+    }
+
+    private func hasDecodableArtworkData(_ encodedArtwork: String?) -> Bool {
+        guard let encodedArtwork,
+              let data = Data(base64Encoded: encodedArtwork)
+        else {
+            return false
+        }
+        return UIImage(data: data) != nil
     }
 
     private func loadFriendRecentRuns(uid: String) async {

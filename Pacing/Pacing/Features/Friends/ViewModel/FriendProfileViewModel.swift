@@ -1,6 +1,7 @@
 import Foundation
 import Combine
 import FirebaseAuth
+import UIKit
 
 @MainActor
 final class FriendProfileViewModel: ObservableObject {
@@ -10,6 +11,8 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var recentRuns: [RunRecord] = []
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var recentSongArtworkURLs: [String: String] = [:]
+    @Published var playingSongID: String?
+    @Published var playbackError: String?
     @Published var isLoading: Bool = false
     @Published var isUpdatingRelationship: Bool = false
     @Published var errorMessage: String?
@@ -47,13 +50,49 @@ final class FriendProfileViewModel: ObservableObject {
     }
 
     private func resolveArtworkURLs(for songs: [FriendRecentSong]) async -> [String: String] {
-        var urls: [String: String] = [:]
-        for song in songs {
-            if let url = await musicService.resolvedRecentSongArtworkURL(title: song.title, artistName: song.artistName) {
-                urls[song.id] = url
+        let songsNeedingRemoteArtwork = songs.filter {
+            !hasDecodableArtworkData($0.artworkData)
+        }
+
+        var artworkURLs: [String: String] = [:]
+        for batchStartIndex in stride(from: 0, to: songsNeedingRemoteArtwork.count, by: 4) {
+            let batch = songsNeedingRemoteArtwork[
+                batchStartIndex..<min(batchStartIndex + 4, songsNeedingRemoteArtwork.count)
+            ]
+
+            await withTaskGroup(of: (String, String?).self) { group in
+                for song in batch {
+                    let songID = song.id
+                    let title = song.title
+                    let artistName = song.artistName
+                    group.addTask { [musicService] in
+                        let artworkURL = await musicService.resolvedRecentSongArtworkURL(
+                            title: title,
+                            artistName: artistName
+                        )
+                        return (songID, artworkURL)
+                    }
+                }
+
+                for await (songID, artworkURL) in group {
+                    if let artworkURL, !artworkURL.isEmpty {
+                        artworkURLs[songID] = artworkURL
+                    }
+                }
             }
         }
-        return urls
+
+        await ArtworkImageStore.shared.prefetch(urlStrings: Array(artworkURLs.values))
+        return artworkURLs
+    }
+
+    private func hasDecodableArtworkData(_ encodedArtwork: String?) -> Bool {
+        guard let encodedArtwork,
+              let data = Data(base64Encoded: encodedArtwork)
+        else {
+            return false
+        }
+        return UIImage(data: data) != nil
     }
 
     func sendFriendRequest() async -> Bool {
@@ -93,6 +132,26 @@ final class FriendProfileViewModel: ObservableObject {
             errorMessage = "친구 요청을 취소하지 못했어요."
             isUpdatingRelationship = false
             return false
+        }
+    }
+
+    func playRecentSong(_ song: FriendRecentSong) async {
+        guard let songStoreID = song.songStoreID,
+              !songStoreID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            playbackError = "재생 정보를 찾을 수 없어요"
+            playingSongID = nil
+            return
+        }
+
+        playingSongID = song.id
+        playbackError = nil
+
+        do {
+            try await musicService.playTracks(with: [songStoreID])
+        } catch {
+            playbackError = "재생을 시작하지 못했어요"
+            playingSongID = nil
         }
     }
 

@@ -43,10 +43,14 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
     private let systemPlayer = MPMusicPlayerController.systemMusicPlayer
+    private let applicationPlayer = ApplicationMusicPlayer.shared
     private var recommendationPlaylist: Playlist?
     private var recentAlbum: Album?
     private var recommendedStation: Station?
     private var notificationObservers: [NSObjectProtocol] = []
+    private var applicationQueueObserver: AnyCancellable?
+    private var applicationStateObserver: AnyCancellable?
+    private var applicationPlaybackPoller: AnyCancellable?
 
     init(sharedPlaylist: SharedPlaylistSummary) {
         self.source = .shared(sharedPlaylist)
@@ -63,6 +67,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             title: recommendedPlaylist.name,
             subtitle: recommendedPlaylist.curatorName ?? recommendedPlaylist.shortDescription ?? "추천 플레이리스트",
             artworkURL: recommendedPlaylist.artwork?.url(width: 800, height: 800)?.absoluteString,
+            artworkData: nil,
             sourcePlaylistID: "\(recommendedPlaylist.id)",
             sourcePlaylistURL: recommendedPlaylist.url?.absoluteString,
             trackCount: 0,
@@ -84,6 +89,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             title: recentAlbum.title,
             subtitle: recentAlbum.artistName,
             artworkURL: recentAlbum.artwork?.url(width: 800, height: 800)?.absoluteString,
+            artworkData: nil,
             sourcePlaylistID: "\(recentAlbum.id)",
             sourcePlaylistURL: recentAlbum.url?.absoluteString,
             trackCount: recentAlbum.trackCount,
@@ -105,6 +111,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             title: recommendedStation.name,
             subtitle: "Apple Music 스테이션",
             artworkURL: recommendedStation.artwork?.url(width: 800, height: 800)?.absoluteString,
+            artworkData: nil,
             sourcePlaylistID: "\(recommendedStation.id)",
             sourcePlaylistURL: recommendedStation.url?.absoluteString,
             trackCount: 0,
@@ -142,6 +149,24 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 // 전달받은 스냅샷을 먼저 표시한다. 상세 진입 시 제목 검색을 하면
                 // 유사 제목의 다른 곡으로 바뀌고 목록이 늦게 나타날 수 있다.
                 tracks = summary.tracks
+                // 과거 공유 문서에는 곡 커버가 비어 있을 수 있다. 대표 커버는
+                // 소유자 설정값을 유지하고, 수록곡 커버만 현재 기기에서 보강한다.
+                let enrichedTracks = await musicService.prepareSharedTracksForPlayback(summary.tracks)
+                tracks = enrichedTracks
+                summary = SharedPlaylistSummary(
+                    id: summary.id,
+                    ownerUID: summary.ownerUID,
+                    ownerNickname: summary.ownerNickname,
+                    title: summary.title,
+                    subtitle: summary.subtitle,
+                    artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
+                    sourcePlaylistID: summary.sourcePlaylistID,
+                    sourcePlaylistURL: summary.sourcePlaylistURL,
+                    trackCount: summary.trackCount,
+                    updatedAt: summary.updatedAt,
+                    tracks: enrichedTracks
+                )
 
                 if let uid = Auth.auth().currentUser?.uid {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
@@ -157,6 +182,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     title: summary.title,
                     subtitle: summary.subtitle,
                     artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
                     sourcePlaylistID: summary.sourcePlaylistID,
                     sourcePlaylistURL: summary.sourcePlaylistURL,
                     trackCount: loadedTracks.count,
@@ -181,6 +207,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     title: summary.title,
                     subtitle: summary.subtitle,
                     artworkURL: summary.artworkURL,
+                    artworkData: summary.artworkData,
                     sourcePlaylistID: summary.sourcePlaylistID,
                     sourcePlaylistURL: summary.sourcePlaylistURL,
                     trackCount: loadedTracks.count,
@@ -266,17 +293,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         playingTrackID = track.id
 
         do {
-            switch source {
-            case .shared:
-                try await musicService.play(sharedTrack: track)
-            default:
-                guard let songStoreID = track.songStoreID, !songStoreID.isEmpty else {
-                    errorMessage = "이 곡은 바로 재생할 수 없어요."
-                    playingTrackID = nil
-                    return
-                }
-                try await musicService.playTracks(with: [songStoreID])
-            }
+            try await musicService.play(sharedTracks: tracks, startingAt: track.id)
         } catch {
             playingTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
@@ -285,6 +302,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     func savePrimaryPlaylist() async {
         guard !isSaveButtonDisabled else { return }
+        errorMessage = nil
 
         switch source {
         case .shared:
@@ -359,14 +377,14 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     private func saveRecommendationPlaylist() async {
         guard appSaveState != .saving else { return }
-        guard canSaveToAppleMusic || Auth.auth().currentUser?.uid != nil else {
-            errorMessage = "플레이리스트를 저장할 수 없는 상태예요."
+        guard canSaveToAppleMusic else {
+            errorMessage = "Apple Music 보관함에 저장할 수 없는 상태예요."
             return
         }
 
         appSaveState = .saving
 
-        if canSaveToAppleMusic, !didSaveToAppleMusic {
+        if !didSaveToAppleMusic {
             await saveToAppleMusic()
             guard errorMessage == nil else {
                 appSaveState = .idle
@@ -477,11 +495,54 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         }
 
         notificationObservers = [stateObserver, itemObserver]
+        observeApplicationPlayer()
         syncPlaybackState()
         syncCurrentTrack()
     }
 
+    private func observeApplicationPlayer() {
+        applicationStateObserver = applicationPlayer.state.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.syncCurrentTrack()
+            }
+
+        let queueObserver = NotificationCenter.default.addObserver(
+            forName: .applicationMusicPlayerQueueDidChange,
+            object: applicationPlayer,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.bindApplicationQueue()
+                self?.syncCurrentTrack()
+            }
+        }
+        notificationObservers.append(queueObserver)
+        bindApplicationQueue()
+
+        applicationPlaybackPoller = Timer.publish(every: 0.5, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
+                self?.syncCurrentTrack()
+            }
+    }
+
+    private func bindApplicationQueue() {
+        applicationQueueObserver = applicationPlayer.queue.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] in
+                self?.syncCurrentTrack()
+            }
+    }
+
     private func syncPlaybackState() {
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            isPlaying = applicationPlayer.state.playbackStatus == .playing
+            return
+        }
+
         isPlaying = systemPlayer.playbackState == .playing
         if !isPlaying && systemPlayer.nowPlayingItem == nil {
             playingTrackID = nil
@@ -490,6 +551,23 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     private func syncCurrentTrack() {
         syncPlaybackState()
+
+        if let entry = applicationPlayer.queue.currentEntry,
+           applicationPlayer.state.playbackStatus != .stopped {
+            nowPlayingTitle = entry.title
+            nowPlayingArtist = entry.subtitle ?? summary.ownerNickname
+            nowPlayingArtwork = nil
+
+            let currentTitle = entry.title.trimmingCharacters(in: .whitespacesAndNewlines)
+            let currentArtist = (entry.subtitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if let matchedTrack = tracks.first(where: {
+                $0.title.caseInsensitiveCompare(currentTitle) == .orderedSame &&
+                ($0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame || currentArtist.isEmpty)
+            }) {
+                playingTrackID = matchedTrack.id
+            }
+            return
+        }
 
         guard let item = systemPlayer.nowPlayingItem else {
             nowPlayingTitle = ""

@@ -1,5 +1,10 @@
 import Foundation
 import MusicKit
+import UIKit
+
+extension Notification.Name {
+    static let applicationMusicPlayerQueueDidChange = Notification.Name("applicationMusicPlayerQueueDidChange")
+}
 
 struct ShareRecommendationBundle {
     let recentlyPlayedAlbums: [Album]
@@ -83,12 +88,14 @@ final class AppleMusicRecommendationService {
         return Array(response.items.prefix(limit))
     }
 
-    func syncCurrentUserPlaylists(uid: String, nickname: String, limit: Int = 6) async throws {
+    func syncCurrentUserPlaylists(uid: String, nickname: String, limit: Int = 30) async throws {
         let playlists = try await fetchLibraryPlaylists(limit: limit)
 
         for playlist in playlists {
             let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .library)
-            let sharedTracks = try await enrichedSharedTracks(from: loadedPlaylist)
+            // 개별 곡의 카탈로그 보강 실패가 대표 커버 동기화 전체를 막지 않도록 한다.
+            let sharedTracks = await enrichedSharedTracks(from: loadedPlaylist)
+            let artworkURL = Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800)
             let summary = SharedPlaylistSummary(
                 id: Self.makeSharedPlaylistDocumentID(ownerUID: uid, sourcePlaylistID: "\(playlist.id)"),
                 ownerUID: uid,
@@ -97,7 +104,8 @@ final class AppleMusicRecommendationService {
                 subtitle: loadedPlaylist.curatorName ?? loadedPlaylist.shortDescription ?? "내 플레이리스트",
                 // 플레이리스트 대표 커버만 저장한다. 수록곡 앨범 커버를 대신 쓰면
                 // 다른 기기에서 대표 이미지와 곡 매핑이 달라질 수 있다.
-                artworkURL: Self.remoteArtworkURL(from: loadedPlaylist.artwork, width: 800, height: 800),
+                artworkURL: artworkURL,
+                artworkData: await Self.encodedArtworkData(from: artworkURL),
                 sourcePlaylistID: "\(loadedPlaylist.id)",
                 sourcePlaylistURL: loadedPlaylist.url?.absoluteString,
                 trackCount: loadedPlaylist.tracks?.count ?? 0,
@@ -273,21 +281,15 @@ final class AppleMusicRecommendationService {
     }
 
     func play(playlist: Playlist) async throws {
-        player.queue = .init(for: [playlist])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: [playlist]))
     }
 
     func play(album: Album) async throws {
-        player.queue = .init(for: [album])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: [album]))
     }
 
     func play(station: Station) async throws {
-        player.queue = .init(for: [station])
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: [station]))
     }
 
     func playTracks(with ids: [String]) async throws {
@@ -309,9 +311,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: songs)
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: songs))
     }
 
     func play(sharedTracks: [SharedPlaylistTrack]) async throws {
@@ -320,9 +320,29 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: songs)
-        try await player.prepareToPlay()
-        try await player.play()
+        try await startPlayback(with: .init(for: songs))
+    }
+
+    /// 선택한 곡부터 목록의 마지막 곡까지 순서대로 재생한다.
+    /// 선택 곡이 재생 불가한 경우 다음 곡으로 건너뛰지 않고 오류를 반환한다.
+    func play(sharedTracks: [SharedPlaylistTrack], startingAt trackID: String) async throws {
+        guard let startIndex = sharedTracks.firstIndex(where: { $0.id == trackID }) else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let queuedTracks = Array(sharedTracks[startIndex...])
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: queuedTracks)
+
+        guard resolvedSongsByTrackID[trackID] != nil else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        let songs = queuedTracks.compactMap { resolvedSongsByTrackID[$0.id] }
+        guard !songs.isEmpty else {
+            throw AppleMusicRecommendationError.noPlayableTracks
+        }
+
+        try await startPlayback(with: .init(for: songs))
     }
 
     func play(sharedTrack: SharedPlaylistTrack) async throws {
@@ -331,7 +351,12 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        player.queue = .init(for: [song])
+        try await startPlayback(with: .init(for: [song]))
+    }
+
+    private func startPlayback(with queue: ApplicationMusicPlayer.Queue) async throws {
+        player.queue = queue
+        NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()
         try await player.play()
     }
@@ -339,8 +364,11 @@ final class AppleMusicRecommendationService {
     func prepareSharedTracksForPlayback(_ tracks: [SharedPlaylistTrack]) async -> [SharedPlaylistTrack] {
         guard !tracks.isEmpty else { return [] }
 
-        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: tracks) else {
-            return tracks
+        let resolvedSongsByTrackID: [String: Song]
+        if let resolvedSongs = try? await resolveCatalogSongMatches(for: tracks) {
+            resolvedSongsByTrackID = resolvedSongs
+        } else {
+            resolvedSongsByTrackID = await resolveFallbackCatalogSongMatches(for: tracks)
         }
 
         return tracks.map { track in
@@ -531,6 +559,34 @@ final class AppleMusicRecommendationService {
         return urlString
     }
 
+    private static func encodedArtworkData(from urlString: String?) async -> String? {
+        guard let urlString,
+              let url = URL(string: urlString),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "")
+        else {
+            return nil
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let response = response as? HTTPURLResponse,
+                  200..<300 ~= response.statusCode,
+                  let image = UIImage(data: data)
+            else {
+                return nil
+            }
+
+            let targetSize = CGSize(width: 400, height: 400)
+            let renderer = UIGraphicsImageRenderer(size: targetSize)
+            let resizedImage = renderer.image { _ in
+                image.draw(in: CGRect(origin: .zero, size: targetSize))
+            }
+            return resizedImage.jpegData(compressionQuality: 0.72)?.base64EncodedString()
+        } catch {
+            return nil
+        }
+    }
+
     private func resolveCatalogSongs(for tracks: [SharedPlaylistTrack]) async throws -> [Song] {
         let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: tracks)
         return tracks.compactMap { resolvedSongsByTrackID[$0.id] }
@@ -686,10 +742,12 @@ final class AppleMusicRecommendationService {
         return resolvedSongsByTrackID
     }
 
-    private func enrichedSharedTracks(from playlist: Playlist) async throws -> [SharedPlaylistTrack] {
+    private func enrichedSharedTracks(from playlist: Playlist) async -> [SharedPlaylistTrack] {
         let baseTracks = Self.makeSharedTracks(from: playlist)
         guard !baseTracks.isEmpty else { return [] }
-        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: baseTracks)
+        guard let resolvedSongsByTrackID = try? await resolveCatalogSongMatches(for: baseTracks) else {
+            return baseTracks
+        }
 
         return baseTracks.map { track in
             guard !Self.isRemoteArtworkURL(track.artworkURL),

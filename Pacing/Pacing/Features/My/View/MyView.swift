@@ -5,10 +5,11 @@ struct MyView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = MyViewModel()
     @State private var showPicker = false
-    @State private var showAllHistory = false
     @State private var showLogoutAlert = false
     @State private var showAccountDeletionAlert = false
     @State private var showAccountDeletion = false
+    @State private var showAppearanceSettings = false
+    @State private var showAllHistory = false
 
     var body: some View {
         NavigationStack {
@@ -26,6 +27,9 @@ struct MyView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showAccountDeletion) {
                 AccountDeletionView(viewModel: vm)
+            }
+            .navigationDestination(isPresented: $showAppearanceSettings) {
+                AppearanceSettingsView()
             }
         }
         .refreshable { vm.loadData() }
@@ -480,6 +484,10 @@ struct MyView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
 
+            if !vm.availableHistoryMonths.isEmpty {
+                historyMonthPicker
+            }
+
             if vm.isLoading && vm.runHistory.isEmpty {
                 VStack(spacing: 12) {
                     ForEach(0..<3, id: \.self) { _ in
@@ -498,8 +506,7 @@ struct MyView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
-                let displayed = showAllHistory ? vm.runHistory : Array(vm.runHistory.prefix(5))
-                ForEach(displayed) { record in
+                ForEach(displayedRunHistory) { record in
                     NavigationLink {
                         RunActivityDetailView(record: record)
                     } label: {
@@ -510,23 +517,23 @@ struct MyView: View {
                     .padding(.horizontal, 20)
                 }
 
-                if vm.runHistory.count > 5 {
+                if vm.filteredRunHistory.count > 5 {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             showAllHistory.toggle()
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Text(showAllHistory ? "접기" : "더보기 (\(vm.runHistory.count - 5)개)")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(Color.main500)
+                        HStack(spacing: 6) {
+                            Text(showAllHistory ? "접기" : "모두보기")
                             Image(systemName: showAllHistory ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.main500)
                         }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.main500)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showAllHistory ? "최근 활동 접기" : "최근 활동 모두 보기")
                 }
             }
         }
@@ -534,9 +541,54 @@ struct MyView: View {
         .background(Color.backgroundPrimary)
     }
 
+    private var historyMonthPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(vm.availableHistoryMonths) { month in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAllHistory = false
+                            vm.selectHistoryMonth(month)
+                        }
+                    } label: {
+                        Text(month.label)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(vm.selectedHistoryMonth == month ? Color.white : Color.textPrimary)
+                            .padding(.horizontal, 16)
+                            .frame(height: 36)
+                            .background(vm.selectedHistoryMonth == month ? Color.main500 : Color.backgroundSecondary)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(month.accessibilityLabel)
+                    .accessibilityValue(vm.selectedHistoryMonth == month ? "선택됨" : "선택 안 됨")
+                }
+            }
+            .padding(.horizontal, 28)
+        }
+        .accessibilityLabel("최근 활동 월 선택")
+    }
+
+    private var displayedRunHistory: [RunRecord] {
+        showAllHistory ? vm.filteredRunHistory : Array(vm.filteredRunHistory.prefix(5))
+    }
+
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
+            Button {
+                showAppearanceSettings = true
+            }
+            label: {
+                Text("테마")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
+            }
+            .buttonStyle(.plain)
+
             Button {
                 showLogoutAlert = true
             } label: {
