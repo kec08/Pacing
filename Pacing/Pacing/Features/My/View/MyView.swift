@@ -9,6 +9,7 @@ struct MyView: View {
     @State private var showAccountDeletionAlert = false
     @State private var showAccountDeletion = false
     @State private var showAppearanceSettings = false
+    @State private var showAllHistory = false
 
     var body: some View {
         NavigationStack {
@@ -505,7 +506,7 @@ struct MyView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
-                ForEach(vm.filteredRunHistory) { record in
+                ForEach(displayedRunHistory) { record in
                     NavigationLink {
                         RunActivityDetailView(record: record)
                     } label: {
@@ -516,6 +517,24 @@ struct MyView: View {
                     .padding(.horizontal, 20)
                 }
 
+                if vm.filteredRunHistory.count > 5 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showAllHistory.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(showAllHistory ? "접기" : "모두보기")
+                            Image(systemName: showAllHistory ? "chevron.up" : "chevron.down")
+                        }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.main500)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showAllHistory ? "최근 활동 접기" : "최근 활동 모두 보기")
+                }
             }
         }
         .padding(.bottom, 22)
@@ -528,6 +547,7 @@ struct MyView: View {
                 ForEach(vm.availableHistoryMonths) { month in
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
+                            showAllHistory = false
                             vm.selectHistoryMonth(month)
                         }
                     } label: {
@@ -547,6 +567,10 @@ struct MyView: View {
             .padding(.horizontal, 28)
         }
         .accessibilityLabel("최근 활동 월 선택")
+    }
+
+    private var displayedRunHistory: [RunRecord] {
+        showAllHistory ? vm.filteredRunHistory : Array(vm.filteredRunHistory.prefix(5))
     }
 
     // MARK: - Settings Section

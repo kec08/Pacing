@@ -120,7 +120,10 @@ struct SongView: View {
                                 SharedPlaylistDetailView(viewModel: SharedPlaylistDetailViewModel(sharedPlaylist: playlist))
                                     .environmentObject(nowPlayingController)
                             } label: {
-                                FriendSharedPlaylistCard(playlist: playlist)
+                                FriendSharedPlaylistCard(
+                                    playlist: playlist,
+                                    isPlaying: isFriendPlaylistPlaying(playlist)
+                                )
                             }
                             .buttonStyle(.plain)
                         }
@@ -128,6 +131,14 @@ struct SongView: View {
                     .padding(.vertical, 2)
                 }
             }
+        }
+    }
+
+    private func isFriendPlaylistPlaying(_ playlist: SharedPlaylistSummary) -> Bool {
+        guard nowPlayingController.isPlaying else { return false }
+
+        return playlist.tracks.contains {
+            $0.title == nowPlayingController.title && $0.artistName == nowPlayingController.artist
         }
     }
 
@@ -318,15 +329,12 @@ struct SongView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 ForEach(0..<2, id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: 10) {
-                        SkeletonBlock(width: 212, height: 212, cornerRadius: 24)
-                        SkeletonBlock(width: 132, height: 16, cornerRadius: 8)
+                    VStack(alignment: .leading, spacing: 12) {
+                        SkeletonBlock(width: 188, height: 188, cornerRadius: 18)
+                        SkeletonBlock(width: 118, height: 16, cornerRadius: 8)
                         SkeletonBlock(width: 76, height: 13, cornerRadius: 7)
                     }
-                    .frame(width: 212, alignment: .leading)
-                    .padding(14)
-                    .background(Color.backgroundPrimary)
-                    .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                    .frame(width: 188, alignment: .leading)
                 }
             }
         }
@@ -817,33 +825,73 @@ private struct SongBottomScrollOffsetKey: PreferenceKey {
 
 private struct FriendSharedPlaylistCard: View {
     let playlist: SharedPlaylistSummary
+    let isPlaying: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            artwork
-                .frame(width: 212, height: 212)
-                .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        VStack(alignment: .leading, spacing: 12) {
+            ZStack {
+                artwork
+
+                if isPlaying {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(.black.opacity(0.42))
+
+                    FriendPlaylistPlayingWaveform()
+                }
+            }
+            .frame(width: 188, height: 188)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
 
             Text(playlist.title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(1)
 
             Text(playlist.ownerNickname)
-                .font(.system(size: 14))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
         }
-        .frame(width: 212, alignment: .leading)
-        .padding(14)
-        .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .shadow(color: Color.main500.opacity(0.08), radius: 12, y: 6)
+        .frame(width: 188, alignment: .leading)
     }
 
     @ViewBuilder
     private var artwork: some View {
         RemoteArtworkView(urlString: playlist.effectiveArtworkURL)
+    }
+}
+
+private struct FriendPlaylistPlayingWaveform: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 4) {
+            waveBar(height: 32, delay: 0.0)
+            waveBar(height: 46, delay: 0.1)
+            waveBar(height: 28, delay: 0.2)
+            waveBar(height: 50, delay: 0.3)
+            waveBar(height: 36, delay: 0.4)
+        }
+        .frame(width: 64, height: 60)
+        .onAppear { isAnimating = true }
+        .accessibilityLabel("재생 중")
+    }
+
+    private func waveBar(height: CGFloat, delay: Double) -> some View {
+        Capsule()
+            .fill(.white)
+            .frame(width: 5, height: height)
+            .scaleEffect(y: isAnimating ? 0.52 : 1, anchor: .center)
+            .animation(
+                .easeInOut(duration: 0.52)
+                    .repeatForever(autoreverses: true)
+                    .delay(delay),
+                value: isAnimating
+            )
     }
 }
 
