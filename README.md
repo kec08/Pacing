@@ -1,7 +1,7 @@
 # Pacing - 음악으로 연결되는 러닝
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/ead43496-46bc-494e-991f-119bb0a353c7" alt="Pacing 앱 미리보기" />
+  <img width="2994" height="1579" alt="Image" src="https://github.com/user-attachments/assets/ead43496-46bc-494e-991f-119bb0a353c7" />
 </p>
 
 <p align="center">
