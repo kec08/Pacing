@@ -455,17 +455,55 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func togglePlayPause() {
-        if isPlaying {
-            player.pause()
-        } else {
-            player.play()
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                if applicationPlayer.state.playbackStatus == .playing {
+                    applicationPlayer.pause()
+                } else {
+                    do {
+                        try await applicationPlayer.play()
+                    } catch {
+                        return
+                    }
+                }
+            } else if isPlaying {
+                player.pause()
+            } else {
+                player.play()
+            }
+            refresh()
         }
-        refresh()
+    }
+
+    func skipToPrevious() {
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                do {
+                    try await applicationPlayer.skipToPreviousEntry()
+                } catch {
+                    return
+                }
+            } else {
+                player.skipToPreviousItem()
+            }
+            refresh()
+        }
     }
 
     func skipToNext() {
-        player.skipToNextItem()
-        refresh()
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                do {
+                    try await applicationPlayer.skipToNextEntry()
+                } catch {
+                    // 단일 곡 또는 마지막 곡에서는 다음 항목이 없으므로 재생을 종료한다.
+                    applicationPlayer.pause()
+                }
+            } else {
+                player.skipToNextItem()
+            }
+            refresh()
+        }
     }
 
     func updateCollapseProgress(_ progress: CGFloat) {
@@ -714,13 +752,24 @@ private struct SongNowPlayingOverlay: View {
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Button {
+                        controller.skipToPrevious()
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
+                    }
+                    .buttonStyle(.plain)
+
                     Button {
                         controller.togglePlayPause()
                     } label: {
                         Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
 
@@ -728,8 +777,9 @@ private struct SongNowPlayingOverlay: View {
                         controller.skipToNext()
                     } label: {
                         Image(systemName: "forward.fill")
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
                 }
