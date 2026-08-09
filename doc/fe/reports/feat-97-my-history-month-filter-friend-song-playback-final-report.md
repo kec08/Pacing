@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-08-10<br>
 > **관련 이슈**: [#97](https://github.com/kec08/Pacing/issues/97)<br>
-> **PR**: 미생성 (개발자 최종 검토 후 생성)<br>
+> **PR**: [#98](https://github.com/kec08/Pacing/pull/98) — `main` 대상 Draft PR<br>
 > **브랜치**: `feat/97-my-history-month-filter-friend-song-playback`
 
 ---
