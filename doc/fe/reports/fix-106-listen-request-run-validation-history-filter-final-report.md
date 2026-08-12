@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-08-13
 > **관련 이슈**: [#106](https://github.com/kec08/Pacing/issues/106)
-> **PR**: 생성 후 업데이트
+> **PR**: [#107](https://github.com/kec08/Pacing/pull/107)
 > **브랜치**: `fix/106-listen-request-run-validation-history-filter`
 
 ---
