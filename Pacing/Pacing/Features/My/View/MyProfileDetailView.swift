@@ -120,10 +120,10 @@ struct MyProfileDetailView: View {
             .foregroundStyle(Color.main500)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background(Color.white.opacity(0.7))
+            .background(Color.backgroundPrimary)
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(Color.white.opacity(0.75), lineWidth: 1)
+                    .stroke(Color.surfaceBorder, lineWidth: 1)
             }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: Color.main500.opacity(0.08), radius: 14, y: 8)
@@ -281,7 +281,7 @@ private struct MyRecentSongRow: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.white.opacity(0.55))
+        .background(Color.backgroundPrimary)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
@@ -320,6 +320,8 @@ private struct MyProfileRecentRunRow: View {
             Spacer()
             Image(systemName: "chevron.right").foregroundStyle(Color.gray400)
         }
-        .padding(12).background(Color.white.opacity(0.55)).clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(12)
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
