@@ -345,7 +345,7 @@ private struct FriendRecentRunRow: View {
 
                     HStack(spacing: 12) {
                         Text(vm.formatDuration(activity.run.duration))
-                        Text(vm.formatPace(activity.run.avgPace) + "/km")
+                        Text(vm.formatPace(activity.run.displayPace) + "/km")
                     }
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textPrimary)

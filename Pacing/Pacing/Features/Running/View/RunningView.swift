@@ -1493,10 +1493,6 @@ struct RunningView: View {
         .padding(14)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.55), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
         .padding(.horizontal, 16)
         .padding(.top, 56)
@@ -1886,7 +1882,7 @@ struct RunningView: View {
             // 같이 듣기 버튼
             Button {
                 showNearbySheet = false
-                listenVM.sendRequest(to: runner, musicVM: musicVM)
+                Task { await listenVM.sendRequest(to: runner, musicVM: musicVM) }
             } label: {
                 Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
                     .font(.system(size: 13, weight: .medium))
