@@ -1,0 +1,20 @@
+{
+  "rules": {
+    "activeRunners": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid === $uid"
+      }
+    },
+    "listenSessions": {
+      ".read": "auth != null",
+      ".write": "auth != null"
+    },
+    "incomingRequests": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null"
+      }
+    }
+  }
+}

@@ -57,6 +57,21 @@ final class PacingTests: XCTestCase {
             )
         )
     }
+
+    func testActiveRunnerFreshnessExpiresAfterTwoMinutes() {
+        let referenceDate = Date(timeIntervalSince1970: 1_000)
+        let freshRunner = ActiveRunner(
+            id: "fresh", nickname: "러너", coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+            songTitle: "", artist: "", profileImageBase64: nil, updatedAt: 881_000
+        )
+        let staleRunner = ActiveRunner(
+            id: "stale", nickname: "러너", coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+            songTitle: "", artist: "", profileImageBase64: nil, updatedAt: 879_000
+        )
+
+        XCTAssertTrue(freshRunner.isFresh(referenceDate: referenceDate))
+        XCTAssertFalse(staleRunner.isFresh(referenceDate: referenceDate))
+    }
     func testEmailValidatorRejectsInvalidEmail() {
         XCTAssertEqual(
             AuthInputValidator.emailError(for: "pacing.example.com"),
