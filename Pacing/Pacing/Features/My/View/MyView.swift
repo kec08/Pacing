@@ -5,6 +5,7 @@ struct MyView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = MyViewModel()
     @State private var showPicker = false
+    @State private var showAllHistory = false
     @State private var showLogoutAlert = false
     @State private var showAccountDeletionAlert = false
     @State private var showAccountDeletion = false
@@ -505,7 +506,11 @@ struct MyView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
-                ForEach(vm.filteredRunHistory) { record in
+                let displayedHistory = showAllHistory
+                    ? vm.filteredRunHistory
+                    : Array(vm.filteredRunHistory.prefix(5))
+
+                ForEach(displayedHistory) { record in
                     NavigationLink {
                         RunActivityDetailView(record: record)
                     } label: {
@@ -514,6 +519,26 @@ struct MyView: View {
                     .buttonStyle(.plain)
                     .accessibilityHint("러닝 활동 상세를 엽니다")
                     .padding(.horizontal, 20)
+                }
+
+                if vm.filteredRunHistory.count > 5 {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showAllHistory.toggle()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(showAllHistory ? "접기" : "더보기 (\(vm.filteredRunHistory.count - 5)개)")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.main500)
+                            Image(systemName: showAllHistory ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.main500)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 12)
+                    }
+                    .accessibilityLabel(showAllHistory ? "최근 활동 접기" : "최근 활동 더보기")
                 }
             }
         }
@@ -528,6 +553,7 @@ struct MyView: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             vm.selectHistoryMonth(month)
+                            showAllHistory = false
                         }
                     } label: {
                         Text(month.label)
