@@ -27,6 +27,15 @@ struct BarChartEntry: Identifiable {
     var endDate: Date
 }
 
+struct RunHistoryMonth: Identifiable, Hashable {
+    let year: Int
+    let month: Int
+
+    var id: String { "\(year)-\(month)" }
+    var label: String { "\(month)월" }
+    var accessibilityLabel: String { "\(year)년 \(month)월" }
+}
+
 final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
@@ -46,6 +55,8 @@ final class MyViewModel: ObservableObject {
     @Published var chartEntries: [BarChartEntry] = []
     @Published var selectedChartEntryID: String?
     @Published var runHistory: [RunRecord] = []
+    @Published private(set) var availableHistoryMonths: [RunHistoryMonth] = []
+    @Published private(set) var selectedHistoryMonth: RunHistoryMonth?
     @Published var isLoading: Bool = true
     @Published var isDeletingAccount: Bool = false
     @Published var accountDeletionError: String?
@@ -115,9 +126,12 @@ final class MyViewModel: ObservableObject {
     private func applyData(records: [RunRecord]) {
         let filtered = filter(records: records)
 
+        let validPaceRecords = filtered.filter(\.isPaceValid)
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
         let totalTime = filtered.reduce(0) { $0 + $1.duration }
-        let avgPace = filtered.isEmpty ? 0 : filtered.reduce(0) { $0 + $1.avgPace } / Double(filtered.count)
+        let validDistance = validPaceRecords.reduce(0) { $0 + $1.distance }
+        let validDuration = validPaceRecords.reduce(0) { $0 + $1.duration }
+        let avgPace = validDistance > 0 ? Double(validDuration) / 60.0 / validDistance : 0
 
         stats = MyStats(
             totalDistance: totalDist,
@@ -128,7 +142,35 @@ final class MyViewModel: ObservableObject {
 
         chartEntries = buildChartEntries(from: filtered)
         runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
+            .filter { $0.startedAt <= Date() }
+        updateHistoryMonths()
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
+    }
+
+    var filteredRunHistory: [RunRecord] {
+        guard let selectedHistoryMonth else { return [] }
+        return runHistory.filter {
+            cal.component(.year, from: $0.startedAt) == selectedHistoryMonth.year
+                && cal.component(.month, from: $0.startedAt) == selectedHistoryMonth.month
+        }
+    }
+
+    func selectHistoryMonth(_ month: RunHistoryMonth) {
+        selectedHistoryMonth = month
+    }
+
+    private func updateHistoryMonths() {
+        var seen = Set<String>()
+        let months = runHistory.compactMap { record -> RunHistoryMonth? in
+            let month = RunHistoryMonth(
+                year: cal.component(.year, from: record.startedAt),
+                month: cal.component(.month, from: record.startedAt)
+            )
+            return seen.insert(month.id).inserted ? month : nil
+        }
+        availableHistoryMonths = months
+        if let selectedHistoryMonth, months.contains(selectedHistoryMonth) { return }
+        selectedHistoryMonth = months.first
     }
 
     func toggleChartSelection(label: String) {
@@ -306,10 +348,7 @@ final class MyViewModel: ObservableObject {
     }
 
     func formattedPace(_ pace: Double) -> String {
-        guard pace > 0 else { return "-'--\"" }
-        let min = Int(pace)
-        let sec = Int((pace - Double(min)) * 60)
-        return String(format: "%d'%02d\"", min, sec)
+        RunRecord.formattedPace(pace)
     }
 
     func formattedDuration(_ seconds: Int) -> String {

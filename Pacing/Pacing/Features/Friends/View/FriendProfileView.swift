@@ -414,7 +414,7 @@ private struct FriendProfileRecentRunRow: View {
                     HStack(spacing: 10) {
                         Label(formattedDistance(run.distance), systemImage: "figure.run")
                         Text(formattedDuration(run.duration))
-                        Text(formattedPace(run.avgPace) + "/km")
+                        Text(formattedPace(run.displayPace) + "/km")
                     }
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
@@ -454,10 +454,7 @@ private struct FriendProfileRecentRunRow: View {
     }
 
     private func formattedPace(_ pace: Double) -> String {
-        guard pace > 0 else { return "--'--\"" }
-        let minutes = Int(pace)
-        let seconds = Int((pace - Double(minutes)) * 60)
-        return String(format: "%d'%02d\"", minutes, seconds)
+        RunRecord.formattedPace(pace)
     }
 }
 

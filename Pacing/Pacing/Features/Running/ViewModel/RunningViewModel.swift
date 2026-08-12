@@ -238,9 +238,18 @@ final class RunningViewModel: ObservableObject {
     ) async {
         let savedDistance = distance ?? self.distance
         let savedElapsedSeconds = elapsedSeconds ?? self.elapsedSeconds
-        let savedAveragePace = avgPace ?? self.avgPace
+        let rawAveragePace = avgPace ?? self.avgPace
+        let savedAveragePace = RunRecord(
+            id: "validation",
+            startedAt: Date(),
+            duration: savedElapsedSeconds,
+            distance: savedDistance,
+            avgPace: rawAveragePace,
+            routeCoordinates: [],
+            lapPaces: []
+        ).displayPace
         let savedRouteCoordinates = routeCoordinates ?? locationManager.routeCoordinates
-        let savedLapPaces = lapPaces ?? completedLapPaces
+        let savedLapPaces = savedAveragePace > 0 ? (lapPaces ?? completedLapPaces) : []
 
         guard savedElapsedSeconds >= 60 else { return }  // 1분 미만은 저장하지 않음
         guard let uid = Auth.auth().currentUser?.uid else { return }

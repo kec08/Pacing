@@ -35,7 +35,7 @@ struct RunHistoryCard: View {
 
                 HStack(spacing: 16) {
                     statItem(value: String(format: "%.2f", record.distance), unit: "km")
-                    statItem(value: vm.formattedPace(record.avgPace), unit: "페이스")
+                    statItem(value: vm.formattedPace(record.displayPace), unit: "페이스")
                     statItem(value: vm.formattedDuration(record.duration), unit: "시간")
                 }
             }

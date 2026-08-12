@@ -484,6 +484,10 @@ struct MyView: View {
                 .padding(.horizontal, 28)
                 .padding(.top, 22)
 
+            if !vm.availableHistoryMonths.isEmpty {
+                historyMonthPicker
+            }
+
             if vm.isLoading && vm.runHistory.isEmpty {
                 VStack(spacing: 12) {
                     ForEach(0..<3, id: \.self) { _ in
@@ -502,8 +506,11 @@ struct MyView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
-                let displayed = showAllHistory ? vm.runHistory : Array(vm.runHistory.prefix(5))
-                ForEach(displayed) { record in
+                let displayedHistory = showAllHistory
+                    ? vm.filteredRunHistory
+                    : Array(vm.filteredRunHistory.prefix(5))
+
+                ForEach(displayedHistory) { record in
                     NavigationLink {
                         RunActivityDetailView(record: record)
                     } label: {
@@ -514,14 +521,14 @@ struct MyView: View {
                     .padding(.horizontal, 20)
                 }
 
-                if vm.runHistory.count > 5 {
+                if vm.filteredRunHistory.count > 5 {
                     Button {
                         withAnimation(.easeInOut(duration: 0.25)) {
                             showAllHistory.toggle()
                         }
                     } label: {
                         HStack(spacing: 4) {
-                            Text(showAllHistory ? "접기" : "더보기 (\(vm.runHistory.count - 5)개)")
+                            Text(showAllHistory ? "접기" : "더보기 (\(vm.filteredRunHistory.count - 5)개)")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(Color.main500)
                             Image(systemName: showAllHistory ? "chevron.up" : "chevron.down")
@@ -531,11 +538,40 @@ struct MyView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                     }
+                    .accessibilityLabel(showAllHistory ? "최근 활동 접기" : "최근 활동 더보기")
                 }
             }
         }
         .padding(.bottom, 22)
         .background(Color.backgroundPrimary)
+    }
+
+    private var historyMonthPicker: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(vm.availableHistoryMonths) { month in
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            vm.selectHistoryMonth(month)
+                            showAllHistory = false
+                        }
+                    } label: {
+                        Text(month.label)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(vm.selectedHistoryMonth == month ? Color.white : Color.textPrimary)
+                            .padding(.horizontal, 16)
+                            .frame(height: 36)
+                            .background(vm.selectedHistoryMonth == month ? Color.main500 : Color.backgroundSecondary)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(month.accessibilityLabel)
+                    .accessibilityValue(vm.selectedHistoryMonth == month ? "선택됨" : "선택 안 됨")
+                }
+            }
+            .padding(.horizontal, 28)
+        }
+        .accessibilityLabel("최근 활동 월 선택")
     }
 
     // MARK: - Settings Section

@@ -97,6 +97,33 @@ final class PacingTests: XCTestCase {
             )
         )
     }
+
+    func testRunRecordHidesPaceForShortDistanceAndExcludesExtremePace() {
+        let shortDistance = RunRecord(
+            id: "short", startedAt: .now, duration: 314, distance: 0.01, avgPace: 523.3,
+            routeCoordinates: [], lapPaces: []
+        )
+        let extremePace = RunRecord(
+            id: "extreme", startedAt: .now, duration: 300, distance: 0.20, avgPace: 30.01,
+            routeCoordinates: [], lapPaces: []
+        )
+
+        XCTAssertFalse(shortDistance.isPaceValid)
+        XCTAssertFalse(extremePace.isPaceValid)
+        XCTAssertEqual(shortDistance.displayPace, 0)
+        XCTAssertEqual(RunRecord.formattedPace(shortDistance.displayPace), "--'--\"")
+    }
+
+    func testRunRecordAcceptsPaceAtValidationBoundaries() {
+        let validRecord = RunRecord(
+            id: "valid", startedAt: .now, duration: 180, distance: 0.10, avgPace: 30.0,
+            routeCoordinates: [], lapPaces: []
+        )
+
+        XCTAssertTrue(validRecord.isPaceValid)
+        XCTAssertEqual(RunRecord.formattedPace(validRecord.displayPace), "30'00\"")
+    }
+
     func testEmailValidatorRejectsInvalidEmail() {
         XCTAssertEqual(
             AuthInputValidator.emailError(for: "pacing.example.com"),
