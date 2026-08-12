@@ -1423,7 +1423,8 @@ struct RunningView: View {
                     if !runner.songTitle.isEmpty {
                         ZStack {
                             Circle()
-                                .fill(Color(.systemBackground))
+                                // 내·친구 핀 모두 카드와 같은 버건디 음표 배지를 사용한다.
+                                .fill(Color.main200)
                                 .frame(width: 18, height: 18)
                             Image(systemName: "music.note")
                                 .font(.system(size: 8, weight: .bold))
