@@ -1351,10 +1351,10 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        // 내 위치와 친구 위치가 같은 음악 카드 경험을 제공하도록 하나의 표면 규칙을 사용한다.
-        let cardSurface = Color(.systemBackground)
-        let cardBg = Color.clear
-        let nameColor = Color(.label)
+        // 내 위치에 사용하던 진한 버건디 표면을 친구 카드에도 적용한다.
+        let cardSurface = Color.main200
+        let cardBg = Color.main500.opacity(0.05)
+        let nameColor = Color.textPrimary
 
         Button {
             collapsedPinIDs.formSymmetricDifference([runner.id])
@@ -1382,12 +1382,12 @@ struct RunningView: View {
                                 if !runner.songTitle.isEmpty {
                                     Text(runner.songTitle)
                                         .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(Color(.label))
+                                        .foregroundStyle(Color.textPrimary)
                                         .lineLimit(1)
                                     if !runner.artist.isEmpty {
                                         Text(runner.artist)
                                             .font(.system(size: 11))
-                                            .foregroundStyle(Color(.secondaryLabel))
+                                            .foregroundStyle(Color.textSecondary)
                                             .lineLimit(1)
                                     }
                                 }
