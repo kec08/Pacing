@@ -151,8 +151,9 @@ struct RunningView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
+                            .accessibilityLabel("내 위치로 이동")
                         } else {
-                            // 러닝 중: 항상 내 위치 버튼 표시 (추적 중이면 파란색)
+                            // 러닝 중: 통계 패널 아래에 배치하고 항상 내 위치 버튼만 표시한다.
                             Button {
                                 focusOnMyLocation()
                             } label: {
@@ -163,16 +164,19 @@ struct RunningView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
+                            .accessibilityLabel("내 위치로 이동하고 지도 추적 시작")
+                            .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
                         }
                     }
                     .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                     .padding(.trailing, 16)
-                    .padding(.top, 220)
+                    .padding(.top, viewModel.state == .idle ? 220 : 300)
                     .animation(.spring(duration: 0.3), value: viewModel.state)
                     .animation(.spring(duration: 0.3), value: isFollowingUser)
                 }
                 Spacer()
             }
+            .zIndex(2)
 
             VStack(spacing: 0) {
                 // 뮤직 카드: idle 상태에서만 표시
@@ -186,6 +190,7 @@ struct RunningView: View {
                     runningStatsOverlay
                         .padding(.top, 60)
                         .padding(.horizontal, 0)
+                        .zIndex(1)
                 }
 
                 Spacer()
@@ -1346,10 +1351,10 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        // 지도 위에서도 텍스트 대비를 유지하면서, 내 재생 곡 카드는 다크 배경보다 한 단계 밝은 브랜드 표면을 사용한다.
-        let cardSurface: Color = runner.isMe ? Color.main200 : Color(.systemBackground)
-        let cardBg: Color = runner.isMe ? Color.main500.opacity(0.05) : Color.clear
-        let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
+        // 내 위치에 사용하던 진한 버건디 표면을 친구 카드에도 적용한다.
+        let cardSurface = Color.main200
+        let cardBg = Color.main500.opacity(0.05)
+        let nameColor = Color.textPrimary
 
         Button {
             collapsedPinIDs.formSymmetricDifference([runner.id])
@@ -1377,12 +1382,12 @@ struct RunningView: View {
                                 if !runner.songTitle.isEmpty {
                                     Text(runner.songTitle)
                                         .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(Color(.label))
+                                        .foregroundStyle(Color.textPrimary)
                                         .lineLimit(1)
                                     if !runner.artist.isEmpty {
                                         Text(runner.artist)
                                             .font(.system(size: 11))
-                                            .foregroundStyle(Color(.secondaryLabel))
+                                            .foregroundStyle(Color.textSecondary)
                                             .lineLimit(1)
                                     }
                                 }
@@ -1418,7 +1423,8 @@ struct RunningView: View {
                     if !runner.songTitle.isEmpty {
                         ZStack {
                             Circle()
-                                .fill(Color(.systemBackground))
+                                // 내·친구 핀 모두 카드와 같은 버건디 음표 배지를 사용한다.
+                                .fill(Color.main200)
                                 .frame(width: 18, height: 18)
                             Image(systemName: "music.note")
                                 .font(.system(size: 8, weight: .bold))
@@ -1440,11 +1446,12 @@ struct RunningView: View {
     private func incomingRequestBanner(session: ListenSession) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(Color.main500).frame(width: 36, height: 36)
-                    Text(String(session.hostNickname.prefix(1)))
-                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                }
+                listenParticipantAvatar(
+                    name: session.hostNickname,
+                    profileImageBase64: session.hostProfileImageBase64,
+                    size: 36,
+                    fallbackColor: Color.main500
+                )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("같이 듣기 요청")
                         .font(.system(size: 12, weight: .semibold))
@@ -1504,6 +1511,8 @@ struct RunningView: View {
                     let myUID = Auth.auth().currentUser?.uid ?? ""
                     let partnerName = session.hostUID == myUID ? session.guestNickname : session.hostNickname
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
+                    let myProfileImageBase64 = session.profileImageBase64(for: myUID)
+                    let partnerProfileImageBase64 = session.profileImageBase64(for: session.partnerUID(for: myUID))
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
                     VStack(spacing: 18) {
@@ -1515,6 +1524,7 @@ struct RunningView: View {
                             VStack(spacing: 6) {
                                 listenParticipantCard(
                                     name: myName,
+                                    profileImageBase64: myProfileImageBase64,
                                     isMe: true,
                                     role: listenVM.isHost ? "호스트" : "게스트",
                                     song: session.songTitle,
@@ -1523,6 +1533,7 @@ struct RunningView: View {
                                 )
                                 listenParticipantCard(
                                     name: partnerName,
+                                    profileImageBase64: partnerProfileImageBase64,
                                     isMe: false,
                                     role: listenVM.isHost ? "게스트" : "호스트",
                                     song: session.songTitle,
@@ -1580,16 +1591,23 @@ struct RunningView: View {
         .presentationBackground(Color(.systemBackground))
     }
 
-    private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
+    private func listenParticipantCard(
+        name: String,
+        profileImageBase64: String,
+        isMe: Bool,
+        role: String,
+        song: String,
+        artist: String,
+        duration: Int
+    ) -> some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
-                    .frame(width: 42, height: 42)
-                Text(String(name.prefix(1)))
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(isMe ? .white : Color.main500)
-            }
+            listenParticipantAvatar(
+                name: name,
+                profileImageBase64: profileImageBase64,
+                size: 42,
+                fallbackColor: isMe ? Color.main500 : Color.main500.opacity(0.12),
+                fallbackTextColor: isMe ? .white : Color.main500
+            )
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1622,6 +1640,30 @@ struct RunningView: View {
             Spacer()
         }
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func listenParticipantAvatar(
+        name: String,
+        profileImageBase64: String,
+        size: CGFloat,
+        fallbackColor: Color,
+        fallbackTextColor: Color = .white
+    ) -> some View {
+        if let data = Data(base64Encoded: profileImageBase64), let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(Circle())
+        } else {
+            ZStack {
+                Circle().fill(fallbackColor).frame(width: size, height: size)
+                Text(String(name.prefix(1)))
+                    .font(.system(size: size * 0.4, weight: .bold))
+                    .foregroundStyle(fallbackTextColor)
+            }
+        }
     }
 
     private func listenAlbumHeader(session: ListenSession) -> some View {

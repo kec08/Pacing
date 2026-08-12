@@ -72,6 +72,31 @@ final class PacingTests: XCTestCase {
         XCTAssertTrue(freshRunner.isFresh(referenceDate: referenceDate))
         XCTAssertFalse(staleRunner.isFresh(referenceDate: referenceDate))
     }
+
+    func testPaceRemainsHiddenUntilMeaningfulDistanceIsRecorded() {
+        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0, elapsedSeconds: 30))
+        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.019, elapsedSeconds: 30))
+        XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.02, elapsedSeconds: 30))
+    }
+
+    func testPacePolicyRejectsStationaryGPSDriftAndAcceptsRunningSegment() {
+        XCTAssertFalse(
+            RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: 4,
+                timeInterval: 10,
+                previousHorizontalAccuracy: 5,
+                currentHorizontalAccuracy: 5
+            )
+        )
+        XCTAssertTrue(
+            RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: 6,
+                timeInterval: 3,
+                previousHorizontalAccuracy: 5,
+                currentHorizontalAccuracy: 5
+            )
+        )
+    }
     func testEmailValidatorRejectsInvalidEmail() {
         XCTAssertEqual(
             AuthInputValidator.emailError(for: "pacing.example.com"),

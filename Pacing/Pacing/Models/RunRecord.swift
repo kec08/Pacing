@@ -45,8 +45,10 @@ struct ListenSession: Identifiable {
     let id: String
     let hostUID: String
     let hostNickname: String
+    var hostProfileImageBase64: String = ""
     let guestUID: String
     let guestNickname: String
+    var guestProfileImageBase64: String = ""
     var songStoreID: String
     var songTitle: String
     var artistName: String
@@ -68,5 +70,9 @@ struct ListenSession: Identifiable {
 
     func partnerUID(for currentUID: String) -> String {
         currentUID == hostUID ? guestUID : hostUID
+    }
+
+    func profileImageBase64(for uid: String) -> String {
+        uid == hostUID ? hostProfileImageBase64 : guestProfileImageBase64
     }
 }
