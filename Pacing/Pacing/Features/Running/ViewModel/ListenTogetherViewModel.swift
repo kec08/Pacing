@@ -47,7 +47,9 @@ final class ListenTogetherViewModel: ObservableObject {
     func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) {
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
+            hostProfileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64") ?? "",
             guestUID: runner.id, guestNickname: runner.nickname,
+            guestProfileImageBase64: runner.profileImageBase64 ?? "",
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",
@@ -56,7 +58,9 @@ final class ListenTogetherViewModel: ObservableObject {
 
         activeSession = ListenSession(
             id: sessionID, hostUID: myUID, hostNickname: myNickname,
+            hostProfileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64") ?? "",
             guestUID: runner.id, guestNickname: runner.nickname,
+            guestProfileImageBase64: runner.profileImageBase64 ?? "",
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",

@@ -12,6 +12,36 @@ enum RunningState {
     case finished
 }
 
+enum RunningPacePolicy {
+    /// 정지 상태의 GPS 흔들림으로 페이스가 표시되는 것을 막기 위한 최소 유효 이동 거리입니다.
+    static let minimumDistanceForPaceKilometers = 0.02
+    private static let minimumRunningSpeedMetersPerSecond = 0.8
+    private static let maximumRunningSpeedMetersPerSecond = 10.0
+
+    static func isValidRunningSegment(
+        distanceMeters: CLLocationDistance,
+        timeInterval: TimeInterval,
+        previousHorizontalAccuracy: CLLocationAccuracy,
+        currentHorizontalAccuracy: CLLocationAccuracy
+    ) -> Bool {
+        guard distanceMeters > 0, timeInterval > 0 else { return false }
+
+        let speed = distanceMeters / timeInterval
+        guard speed >= minimumRunningSpeedMetersPerSecond,
+              speed < maximumRunningSpeedMetersPerSecond
+        else { return false }
+
+        // 정확도가 낮을수록 조금 더 큰 이동을 요구하되, 정상적인 러닝 위치 업데이트는 놓치지 않는다.
+        let accuracy = max(previousHorizontalAccuracy, currentHorizontalAccuracy)
+        let minimumDistance = max(3.0, min(12.0, accuracy * 0.5))
+        return distanceMeters >= minimumDistance
+    }
+
+    static func canDisplayPace(distanceKilometers: Double, elapsedSeconds: Int) -> Bool {
+        distanceKilometers >= minimumDistanceForPaceKilometers && elapsedSeconds > 0
+    }
+}
+
 final class RunningViewModel: ObservableObject {
     @Published var state: RunningState = .idle
     @Published var elapsedSeconds: Int = 0
@@ -182,9 +212,12 @@ final class RunningViewModel: ObservableObject {
             let timeDelta = location.timestamp.timeIntervalSince(last.timestamp)
             guard deltaMeters > 0, timeDelta > 0 else { continue }
 
-            // GPS 스파이크 필터: 36 km/h(10 m/s) 초과는 GPS 오류로 간주하고 무시
-            let speedMs = deltaMeters / timeDelta
-            guard speedMs < 10.0 else { continue }
+            guard RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: deltaMeters,
+                timeInterval: timeDelta,
+                previousHorizontalAccuracy: last.horizontalAccuracy,
+                currentHorizontalAccuracy: location.horizontalAccuracy
+            ) else { continue }
 
             let deltaKm = deltaMeters / 1000.0
             distance += deltaKm
@@ -253,6 +286,14 @@ final class RunningViewModel: ObservableObject {
     }
 
     private func updateDisplayedPace() {
+        guard RunningPacePolicy.canDisplayPace(
+            distanceKilometers: distance,
+            elapsedSeconds: elapsedSeconds
+        ) else {
+            currentPace = 0
+            return
+        }
+
         completePendingLapsIfNeeded()
 
         if lastCompletedLapPace > 0 {
