@@ -100,6 +100,14 @@ struct RunningView: View {
                 }
             }
             .mapStyle(.standard)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 1)
+                    .onChanged { _ in stopFollowingUser() }
+            )
+            .simultaneousGesture(
+                MagnifyGesture()
+                    .onChanged { _ in stopFollowingUser() }
+            )
             .ignoresSafeArea()
 
             // 맵 버튼 오버레이
@@ -264,9 +272,7 @@ struct RunningView: View {
             nearbyVM.updateMyLocation(loc.coordinate)
         }
         .onMapCameraChange(frequency: .continuous) { context in
-            guard !isProgrammaticMove else { return }
             mapZoomDistance = context.camera.distance
-            isFollowingUser = false
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
@@ -1758,13 +1764,17 @@ struct RunningView: View {
                 if nearbyVM.nearbyRunners.isEmpty {
                     Spacer()
                     VStack(spacing: 12) {
-                        Image(systemName: nearbyVM.selectedFilter == .friends ? "person.2.slash" : "figure.run")
+                        Image(systemName: nearbyVM.loadError == nil
+                              ? (nearbyVM.selectedFilter == .friends ? "person.2.slash" : "figure.run")
+                              : "exclamationmark.triangle")
                             .font(.system(size: 48))
                             .foregroundStyle(.secondary)
-                        Text(nearbyVM.selectedFilter == .friends ? "친구가 없어요" : "주변에 러너가 없어요")
+                        Text(nearbyVM.loadError ?? (nearbyVM.selectedFilter == .friends ? "친구가 없어요" : "주변에 러너가 없어요"))
                             .font(.system(size: 16))
                             .foregroundStyle(.secondary)
-                        Text(nearbyVM.selectedFilter == .friends ? "친구를 추가하면 여기서 볼 수 있어요" : "1km 반경 내 러닝 중인 사람이 없어요")
+                        Text(nearbyVM.loadError == nil
+                             ? (nearbyVM.selectedFilter == .friends ? "친구를 추가하면 여기서 볼 수 있어요" : "1km 반경 내 러닝 중인 사람이 없어요")
+                             : "잠시 후 다시 시도해 주세요.")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
@@ -1880,6 +1890,11 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func stopFollowingUser() {
+        guard isFollowingUser else { return }
+        isFollowingUser = false
     }
 
     private func refreshMyProfileImage() {
