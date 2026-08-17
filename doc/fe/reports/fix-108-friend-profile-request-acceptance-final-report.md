@@ -2,7 +2,7 @@
 
 > **상태**: 개발 완료 · 실기기 QA 완료
 > **관련 이슈**: #108
-> **PR**: Ready PR 생성 예정 — 기존 #109는 닫힘
+> **PR**: #110 (Ready for review) — 기존 #109는 닫힘
 > **브랜치**: `fix/108-friend-profile-request-acceptance`
 
 ---
