@@ -290,7 +290,7 @@ struct FriendsView: View {
         if vm.friends.contains(where: { $0.id == user.id }) {
             return .friend
         }
-        vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
+        return vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
     }
 }
 
