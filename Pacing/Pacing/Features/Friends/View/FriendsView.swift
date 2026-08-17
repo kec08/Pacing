@@ -32,6 +32,24 @@ struct FriendsView: View {
             .navigationBarHidden(true)
         }
         .task { await vm.load() }
+        .task(id: vm.searchText) {
+            guard vm.hasSearchQuery else {
+                vm.searchResults = []
+                vm.isSearching = false
+                return
+            }
+
+            // 입력이 이어지는 동안 이전 검색을 취소해 Firestore 요청을 과도하게
+            // 만들지 않고, 키보드 입력 중에도 최신 검색어 결과를 바로 보여준다.
+            do {
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            await vm.search()
+        }
         .fullScreenCover(isPresented: $showsRequests) {
             FriendRequestsFullScreenView(vm: vm, isPresented: $showsRequests)
         }
@@ -128,10 +146,6 @@ struct FriendsView: View {
                 .buttonStyle(.plain)
             }
         }
-        .onChange(of: vm.searchText) { _, newValue in
-            guard newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            vm.searchResults = []
-        }
     }
 
     private var searchResultsSection: some View {
@@ -139,7 +153,7 @@ struct FriendsView: View {
             if vm.isSearching && vm.searchResults.isEmpty {
                 friendRowsSkeleton(count: 3)
             } else if vm.searchResults.isEmpty {
-                emptyCard("검색 결과가 없어요")
+                emptyState(systemImage: "magnifyingglass", message: "검색 결과가 없어요")
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.searchResults) { user in
@@ -174,6 +188,8 @@ struct FriendsView: View {
                             FriendUserRow(user: friend)
                         }
                         .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                 }
             }
@@ -185,7 +201,7 @@ struct FriendsView: View {
             if vm.isLoading && vm.recommendedUsers.isEmpty {
                 friendRowsSkeleton(count: 3)
             } else if vm.recommendedUsers.isEmpty {
-                emptyCard("추천할 러너를 찾는 중이에요")
+                emptyState(systemImage: "person.2", message: "추천할 러너를 찾는 중이에요")
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.recommendedUsers) { user in
@@ -228,13 +244,18 @@ struct FriendsView: View {
         }
     }
 
-    private func emptyCard(_ message: String) -> some View {
-        Text(message)
-            .font(.system(size: 14))
-            .foregroundStyle(Color.textSecondary)
+    private func emptyState(systemImage: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(Color.gray500)
+
+            Text(message)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.textSecondary)
+        }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .glassRounded(cornerRadius: 16)
+        .padding(.vertical, 46)
     }
 
     private var emptyFriendsState: some View {
@@ -266,7 +287,10 @@ struct FriendsView: View {
     }
 
     private func relationship(for user: FriendUser) -> FriendRelationship {
-        vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
+        if vm.friends.contains(where: { $0.id == user.id }) {
+            return .friend
+        }
+        return vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
     }
 }
 
@@ -371,7 +395,7 @@ private struct FriendRequestsFullScreenView: View {
     private var requestsContent: some View {
         VStack(spacing: 12) {
             ForEach(vm.incomingRequests) { request in
-                FriendRequestRow(request: request) {
+                FriendRequestRow(request: request, isProcessing: vm.isProcessing(request)) {
                     Task { await vm.accept(request) }
                 } onReject: {
                     Task { await vm.reject(request) }
@@ -383,6 +407,7 @@ private struct FriendRequestsFullScreenView: View {
 
 private struct FriendRequestRow: View {
     let request: FriendRequest
+    let isProcessing: Bool
     let onAccept: () -> Void
     let onReject: () -> Void
 
@@ -409,16 +434,25 @@ private struct FriendRequestRow: View {
                     .glassCircle()
             }
             .buttonStyle(.plain)
+            .disabled(isProcessing)
 
             Button(action: onAccept) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.main500)
-                    .clipShape(Circle())
+                Group {
+                    if isProcessing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .background(Color.main500)
+                .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .disabled(isProcessing)
         }
         .padding(.vertical, 2)
     }
@@ -449,6 +483,8 @@ private struct FriendUserRow: View {
                 .glassCircle(tint: Color.main500.opacity(0.12))
         }
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
@@ -481,9 +517,11 @@ private struct FriendCandidateRow: View {
                             .foregroundStyle(Color.textPrimary)
                         Text(user.source.rawValue)
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.textSecondary)
+                            .foregroundStyle(relationship == .friend ? Color.main500 : Color.textSecondary)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -492,13 +530,16 @@ private struct FriendCandidateRow: View {
             Button(action: onSend) {
                 Text(buttonTitle)
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(isEnabled ? Color.main500 : Color.gray500)
+                    .foregroundStyle(relationship == .friend ? Color.main500 : (isEnabled ? Color.main500 : Color.gray500))
                     .padding(.horizontal, 16)
                     .frame(height: 34)
-                    .glassCapsule(tint: isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8))
+                    .glassCapsule(
+                        tint: relationship == .friend ? Color.main500.opacity(0.10) : (isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8)),
+                        stroke: relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
+                    )
             }
             .buttonStyle(.plain)
-            .disabled(!isEnabled)
+            .allowsHitTesting(isEnabled)
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
@@ -531,27 +572,20 @@ private struct FriendRecommendationRow: View {
                     onRequestCanceled: { _ in onRequestCanceled() }
                 )
             } label: {
-                FriendAvatar(user: user)
-            }
-            .buttonStyle(.plain)
+                HStack(spacing: 12) {
+                    FriendAvatar(user: user)
 
-            NavigationLink {
-                FriendProfileView(
-                    friend: user,
-                    initialRelationship: relationship,
-                    onRequestSent: { _ in onRequestSent() },
-                    onRequestCanceled: { _ in onRequestCanceled() }
-                )
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(user.nickname)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color.textPrimary)
-                    Text(user.statusText)
-                        .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
-                        .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(user.nickname)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                        Text(user.statusText)
+                            .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
+                            .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -560,13 +594,16 @@ private struct FriendRecommendationRow: View {
             Button(action: onSend) {
                 Text(buttonTitle)
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(isEnabled ? Color.main500 : Color.gray500)
+                    .foregroundStyle(relationship == .friend ? Color.main500 : (isEnabled ? Color.main500 : Color.gray500))
                     .padding(.horizontal, 16)
                     .frame(height: 34)
-                    .glassCapsule(tint: isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8))
+                    .glassCapsule(
+                        tint: relationship == .friend ? Color.main500.opacity(0.10) : (isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8)),
+                        stroke: relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
+                    )
             }
             .buttonStyle(.plain)
-            .disabled(!isEnabled)
+            .allowsHitTesting(isEnabled)
         }
         .padding(.vertical, 2)
     }
@@ -622,7 +659,10 @@ private struct GlassIconButton<Content: View>: View {
 }
 
 private extension View {
-    func glassCapsule(tint: Color = Color.backgroundPrimary.opacity(0.58)) -> some View {
+    func glassCapsule(
+        tint: Color = Color.backgroundPrimary.opacity(0.58),
+        stroke: Color = Color.surfaceBorder
+    ) -> some View {
         background {
             Capsule()
                 .fill(.ultraThinMaterial)
@@ -632,7 +672,7 @@ private extension View {
                 }
                 .overlay {
                     Capsule()
-                        .stroke(Color.surfaceBorder, lineWidth: 1)
+                        .stroke(stroke, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }

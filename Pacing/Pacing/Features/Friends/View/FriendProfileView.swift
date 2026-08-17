@@ -65,6 +65,12 @@ struct FriendProfileView: View {
                             .padding(.vertical, 8)
                     }
                 }
+            } else if !vm.canViewActivity {
+                privateActivityState(
+                    systemImage: "lock.fill",
+                    title: "친구가 되면 러닝을 볼 수 있어요",
+                    description: "친구 요청을 수락하면 최근 러닝 기록이 여기에 표시돼요."
+                )
             } else if vm.recentRuns.isEmpty {
                 ContentUnavailableView(
                     "최근 러닝이 없어요",
@@ -152,10 +158,14 @@ struct FriendProfileView: View {
             .foregroundStyle(relationshipForeground)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .glassRounded(cornerRadius: 16, tint: relationshipTint)
+            .glassRounded(
+                cornerRadius: 16,
+                tint: relationshipTint,
+                stroke: relationshipBorder
+            )
         }
         .buttonStyle(.plain)
-        .disabled(!vm.canTapAction)
+        .allowsHitTesting(vm.canTapAction)
         .animation(.easeInOut(duration: 0.2), value: vm.relationship)
     }
 
@@ -184,12 +194,16 @@ struct FriendProfileView: View {
     private var relationshipTint: Color {
         switch vm.relationship {
         case .friend:
-            return Color.backgroundSecondary
+            return Color.main500.opacity(0.10)
         case .requestPending:
             return Color.gray100.opacity(0.82)
         case .none:
             return Color.main500.opacity(0.13)
         }
+    }
+
+    private var relationshipBorder: Color {
+        vm.relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
     }
 
     private var statsSection: some View {
@@ -237,6 +251,12 @@ struct FriendProfileView: View {
                             .padding(.vertical, 8)
                     }
                 }
+            } else if !vm.canViewActivity {
+                privateActivityState(
+                    systemImage: "lock.fill",
+                    title: "친구가 되면 음악을 볼 수 있어요",
+                    description: "친구 요청을 수락하면 최근 들은 노래가 여기에 표시돼요."
+                )
             } else if vm.recentSongs.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "music.note")
@@ -263,6 +283,20 @@ struct FriendProfileView: View {
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } }
         )
+    }
+
+    private func privateActivityState(
+        systemImage: String,
+        title: String,
+        description: String
+    ) -> some View {
+        ContentUnavailableView(
+            title,
+            systemImage: systemImage,
+            description: Text(description)
+        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 }
 
@@ -477,7 +511,8 @@ private extension View {
 
     func glassRounded(
         cornerRadius: CGFloat,
-        tint: Color = Color.backgroundPrimary.opacity(0.58)
+        tint: Color = Color.backgroundPrimary.opacity(0.58),
+        stroke: Color = Color.surfaceBorder
     ) -> some View {
         background {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -488,7 +523,7 @@ private extension View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.surfaceBorder, lineWidth: 1)
+                        .stroke(stroke, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }

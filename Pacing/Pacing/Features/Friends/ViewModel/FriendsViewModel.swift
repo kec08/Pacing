@@ -13,6 +13,7 @@ final class FriendsViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isSearching: Bool = false
     @Published var errorMessage: String?
+    @Published private(set) var processingRequestID: String?
 
     private let service = FirestoreService.shared
 
@@ -24,10 +25,18 @@ final class FriendsViewModel: ObservableObject {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var excludedUIDs: Set<String> {
+    /// 추천 목록에서는 이미 요청한 러너를 숨겨 중복 제안을 막는다.
+    var recommendationExcludedUIDs: Set<String> {
         Set(friends.map(\.id))
             .union(incomingRequests.map(\.fromUID))
             .union(sentRequestUIDs)
+    }
+
+    /// 이미 친구인 러너는 로컬 목록에서 우선 표시하므로, 원격 검색에서는 제외한다.
+    /// 요청 대기 중인 러너는 검색 결과에 남겨 현재 상태와 취소 동작을 제공한다.
+    var searchExcludedUIDs: Set<String> {
+        Set(friends.map(\.id))
+            .union(incomingRequests.map(\.fromUID))
     }
 
     func load() async {
@@ -53,7 +62,7 @@ final class FriendsViewModel: ObservableObject {
             sentRequestUIDs = loadedSentRequestUIDs
             recommendedUsers = try await service.fetchRecommendedUsers(
                 currentUID: uid,
-                excluding: excludedUIDs
+                excluding: recommendationExcludedUIDs
             )
 
             if hasSearchQuery {
@@ -82,17 +91,25 @@ final class FriendsViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            searchResults = try await service.searchUsersByNickname(
+            let remoteResults = try await service.searchUsersByNickname(
                 currentUID: uid,
                 query: query,
-                excluding: excludedUIDs
+                excluding: searchExcludedUIDs
             )
+            // 취소되지 못한 이전 비동기 요청이 늦게 완료돼도 현재 입력값의 결과를
+            // 덮어쓰지 않도록 검색어가 동일할 때만 화면 상태를 갱신한다.
+            guard query == searchText.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            let matchingFriends = friends.filter { $0.nickname.hasPrefix(query) }
+            searchResults = Array(sortedSearchResults(matchingFriends + remoteResults).prefix(5))
         } catch {
+            guard query == searchText.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchResults = []
             errorMessage = "검색 결과를 불러오지 못했어요."
         }
 
-        isSearching = false
+        if query == searchText.trimmingCharacters(in: .whitespacesAndNewlines) {
+            isSearching = false
+        }
     }
 
     func clearSearch() {
@@ -110,7 +127,6 @@ final class FriendsViewModel: ObservableObject {
 
     func markRequestSent(to user: FriendUser) {
         sentRequestUIDs.insert(user.id)
-        searchResults.removeAll { $0.id == user.id }
         recommendedUsers.removeAll { $0.id == user.id }
     }
 
@@ -125,7 +141,6 @@ final class FriendsViewModel: ObservableObject {
         do {
             try await service.sendFriendRequest(from: uid, to: user.id)
             sentRequestUIDs.insert(user.id)
-            searchResults.removeAll { $0.id == user.id }
             recommendedUsers.removeAll { $0.id == user.id }
         } catch {
             errorMessage = "친구 요청을 보내지 못했어요."
@@ -133,9 +148,13 @@ final class FriendsViewModel: ObservableObject {
     }
 
     func accept(_ request: FriendRequest) async {
+        guard processingRequestID == nil else { return }
         let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
 
+        processingRequestID = request.id
         errorMessage = nil
+        defer { processingRequestID = nil }
+
         do {
             try await service.acceptFriendRequest(request, currentUserNickname: nickname)
             incomingRequests.removeAll { $0.id == request.id }
@@ -160,15 +179,35 @@ final class FriendsViewModel: ObservableObject {
         guard let uid = currentUID else { return [] }
         return try await service.fetchRecommendedUsers(
             currentUID: uid,
-            excluding: excludedUIDs
+            excluding: recommendationExcludedUIDs
         )
     }
 
     func buttonTitle(for user: FriendUser) -> String {
-        sentRequestUIDs.contains(user.id) ? "요청됨" : "추가"
+        if friends.contains(where: { $0.id == user.id }) {
+            return "친구"
+        }
+        return sentRequestUIDs.contains(user.id) ? "요청됨" : "추가"
     }
 
     func canSendRequest(to user: FriendUser) -> Bool {
-        !sentRequestUIDs.contains(user.id)
+        !friends.contains(where: { $0.id == user.id }) && !sentRequestUIDs.contains(user.id)
+    }
+
+    func isProcessing(_ request: FriendRequest) -> Bool {
+        processingRequestID == request.id
+    }
+
+    private func sortedSearchResults(_ users: [FriendUser]) -> [FriendUser] {
+        let friendIDs = Set(friends.map(\.id))
+
+        return users.sorted { lhs, rhs in
+            let lhsIsFriend = friendIDs.contains(lhs.id)
+            let rhsIsFriend = friendIDs.contains(rhs.id)
+            if lhsIsFriend != rhsIsFriend {
+                return lhsIsFriend
+            }
+            return lhs.nickname.localizedStandardCompare(rhs.nickname) == .orderedAscending
+        }
     }
 }

@@ -362,7 +362,7 @@ final class FirestoreService {
         currentUID: String,
         query: String,
         excluding excludedUIDs: Set<String>,
-        limit: Int = 10
+        limit: Int = 5
     ) async throws -> [FriendUser] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
@@ -418,9 +418,15 @@ final class FirestoreService {
             "createdAt": FieldValue.serverTimestamp()
         ]
 
-        try await db.collection("friendRequests")
-            .document(requestID)
-            .setData(data, merge: true)
+        let requestRef = db.collection("friendRequests").document(requestID)
+        let existingRequest = try await requestRef.getDocument()
+        if existingRequest.exists {
+            // 취소·거절된 요청을 다시 보낼 때는 요청의 메타데이터를 덮어쓰지 않고
+            // 상태만 pending으로 되돌린다. Firestore 규칙도 이 전환만 허용한다.
+            try await requestRef.updateData(["status": FriendRequestStatus.pending.rawValue])
+        } else {
+            try await requestRef.setData(data)
+        }
     }
 
     // MARK: - 보낸 친구 요청 취소
@@ -435,9 +441,15 @@ final class FirestoreService {
     // MARK: - 친구 요청 수락
     func acceptFriendRequest(_ request: FriendRequest, currentUserNickname: String) async throws {
         _ = currentUserNickname
-        _ = try await functions
+        let result = try await functions
             .httpsCallable("acceptFriendRequest")
             .call(["requestID": request.id])
+
+        guard let data = result.data as? [String: Any],
+              data["accepted"] as? Bool == true
+        else {
+            throw FriendRequestAcceptanceError.invalidResponse
+        }
     }
 
     // MARK: - 친구 요청 거절
@@ -687,4 +699,8 @@ final class FirestoreService {
 
         return data
     }
+}
+
+private enum FriendRequestAcceptanceError: Error {
+    case invalidResponse
 }
