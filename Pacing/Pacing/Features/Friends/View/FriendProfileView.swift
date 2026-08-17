@@ -34,6 +34,8 @@ struct FriendProfileView: View {
                         statsSection
                         recentRunsSection
                         recentSongsSection
+                    } else {
+                        privateProfileNotice
                     }
                 }
                 .padding(.horizontal, 18)
@@ -231,6 +233,25 @@ struct FriendProfileView: View {
             }
         }
         .padding(.vertical, 6)
+    }
+
+    private var privateProfileNotice: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(Color.textSecondary)
+
+            Text("비공개 프로필입니다")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
+
+            Text("이 친구가 프로필을 비공개로 설정했어요.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
     }
 
     private var statDivider: some View {
