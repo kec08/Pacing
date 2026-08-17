@@ -48,7 +48,6 @@ final class AuthViewModel: ObservableObject {
     private func authenticateWithEmail(email: String, password: String, appState: AppState) async {
         isLoading = true
         errorMessage = nil
-        appState.isAuthLoading = true
         defer {
             isLoading = false
             appState.isAuthLoading = false
@@ -59,8 +58,10 @@ final class AuthViewModel: ObservableObject {
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
-            appState.isLoggedIn = true
             await restoreProfile(appState: appState)
+            // 이메일 로그인은 인증·프로필 복원 중에도 현재 로그인 화면의 로딩 UI를
+            // 유지한 뒤, 복원이 끝난 시점에만 메인 화면으로 전환한다.
+            appState.isLoggedIn = true
         } catch {
             appState.isLoggedIn = false
             errorMessage = Self.emailAuthErrorMessage(for: error)
