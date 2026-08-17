@@ -12,6 +12,7 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var recentSongArtworkURLs: [String: String] = [:]
     @Published var isLoading: Bool = false
+    @Published var isProfileVisible: Bool = true
     @Published var isUpdatingRelationship: Bool = false
     @Published var errorMessage: String?
 
@@ -26,6 +27,7 @@ final class FriendProfileViewModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
+        isProfileVisible = true
         defer { isLoading = false }
 
         do {
@@ -51,6 +53,15 @@ final class FriendProfileViewModel: ObservableObject {
             recentSongs = try await songsTask
             recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
         } catch {
+            if error is ProfileVisibilityError {
+                isProfileVisible = false
+                stats = .empty
+                recentRuns = []
+                recentSongs = []
+                recentSongArtworkURLs = [:]
+                return
+            }
+
             // 비친구 프로필은 공개 정보와 친구 추가 UI만 제공하면 된다. 이 상태에서
             // 관계·활동 조회가 일시적으로 실패해도 권한 제한을 오류로 노출하지 않고
             // 잠금 상태를 유지한다.

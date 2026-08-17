@@ -26,19 +26,27 @@ struct FriendProfileView: View {
         ZStack {
             background
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    profileHeader
-                    relationshipAction
-                    statsSection
-                    recentRunsSection
-                    recentSongsSection
+            if vm.isProfileVisible {
+                ScrollView {
+                    VStack(spacing: 24) {
+                        profileHeader
+                        relationshipAction
+                        statsSection
+                        recentRunsSection
+                        recentSongsSection
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 18)
+                    .padding(.bottom, 34)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 18)
-                .padding(.bottom, 34)
+                .scrollIndicators(.hidden)
+            } else {
+                ContentUnavailableView(
+                    "공개되지 않은 프로필이에요",
+                    systemImage: "lock.fill",
+                    description: Text("이 사용자가 공개 범위를 변경했어요."))
+                    .foregroundStyle(Color.textSecondary)
             }
-            .scrollIndicators(.hidden)
         }
         .navigationTitle("친구 프로필")
         .navigationBarTitleDisplayMode(.inline)

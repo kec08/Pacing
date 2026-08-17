@@ -11,6 +11,92 @@ admin.initializeApp();
 const firestore = admin.firestore();
 const realtimeDatabase = admin.database();
 
+function profileVisibilityAllows(profile, viewerUID, friendUIDs) {
+  if (!profile || profile.id === viewerUID) return true;
+
+  // 공개 범위 필드가 도입되기 전 사용자 프로필은 기존 동작을 유지한다.
+  const visibility = profile.get("profileVisibility") || "public";
+  if (visibility === "public") return true;
+  if (visibility === "friendsOnly") return friendUIDs.has(profile.id);
+  return false;
+}
+
+function publicProfileData(profile) {
+  const data = {
+    id: profile.id,
+    nickname: profile.get("nickname") || "러너",
+    statusText: profile.get("statusText") || "최근 활동 없음",
+  };
+  const profileImageBase64 = profile.get("profileImageBase64");
+  if (profileImageBase64) data.profileImageBase64 = profileImageBase64;
+  return data;
+}
+
+async function friendUIDsFor(uid) {
+  const snapshot = await firestore.collection("users").doc(uid).collection("friends").get();
+  return new Set(snapshot.docs.map((document) => document.id));
+}
+
+/**
+ * Returns only the minimum profile fields that the authenticated user is
+ * permitted to view. Direct client list queries are intentionally avoided so
+ * private profile documents cannot be enumerated through Firestore.
+ */
+exports.getVisibleProfile = onCall(async (request) => {
+  const viewerUID = request.auth?.uid;
+  const targetUID = request.data?.uid;
+  if (!viewerUID) {
+    throw new HttpsError("unauthenticated", "로그인한 사용자만 프로필을 볼 수 있어요.");
+  }
+  if (!targetUID || typeof targetUID !== "string") {
+    throw new HttpsError("invalid-argument", "프로필 사용자 ID가 필요해요.");
+  }
+
+  const [profile, friendUIDs] = await Promise.all([
+    firestore.collection("users").doc(targetUID).get(),
+    friendUIDsFor(viewerUID),
+  ]);
+  if (!profile.exists || !profileVisibilityAllows(profile, viewerUID, friendUIDs)) {
+    return { visible: false };
+  }
+  return { visible: true, profile: publicProfileData(profile) };
+});
+
+/**
+ * Searches or recommends profiles after applying profile visibility on the
+ * server. The response deliberately excludes height, weight and activity data.
+ */
+exports.listVisibleProfiles = onCall(async (request) => {
+  const viewerUID = request.auth?.uid;
+  const mode = request.data?.mode;
+  const requestedLimit = Number(request.data?.limit);
+  const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 10, 1), 20);
+  if (!viewerUID) {
+    throw new HttpsError("unauthenticated", "로그인한 사용자만 프로필을 검색할 수 있어요.");
+  }
+  if (mode !== "search" && mode !== "recommended") {
+    throw new HttpsError("invalid-argument", "지원하지 않는 프로필 조회 방식이에요.");
+  }
+
+  const friendUIDs = await friendUIDsFor(viewerUID);
+  let query = firestore.collection("users");
+  if (mode === "search") {
+    const keyword = typeof request.data?.query === "string" ? request.data.query.trim() : "";
+    if (!keyword) return { profiles: [] };
+    query = query.orderBy("nickname").startAt(keyword).endAt(`${keyword}\uf8ff`);
+  } else {
+    query = query.orderBy("createdAt", "desc");
+  }
+
+  // 공개 범위 필터로 일부 문서가 제외될 수 있으므로 필요한 개수보다 넉넉히 읽는다.
+  const snapshot = await query.limit(Math.min(limit * 4, 80)).get();
+  const profiles = snapshot.docs
+    .filter((profile) => profileVisibilityAllows(profile, viewerUID, friendUIDs))
+    .slice(0, limit)
+    .map(publicProfileData);
+  return { profiles };
+});
+
 async function deleteFirestoreDocuments(documents) {
   const chunks = [];
   for (let index = 0; index < documents.length; index += 400) {

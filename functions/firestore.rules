@@ -18,19 +18,32 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/users/$(uid)/friends/$(request.auth.uid));
     }
 
+    function hasPublicProfile(uid) {
+      return !('profileVisibility' in get(/databases/$(database)/documents/users/$(uid)).data)
+        || get(/databases/$(database)/documents/users/$(uid)).data.profileVisibility == 'public';
+    }
+
+    function canViewProfile(uid) {
+      return isOwner(uid)
+        || hasPublicProfile(uid)
+        || (get(/databases/$(database)/documents/users/$(uid)).data.profileVisibility == 'friendsOnly'
+          && isFriendOf(uid));
+    }
+
     match /users/{userId} {
-      // 현재 앱은 닉네임 검색·친구 추천을 위해 사용자 문서를 조회합니다.
-      // 쓰기는 반드시 본인 문서에만 허용합니다.
-      allow read: if signedIn();
+      // 검색·추천은 Callable Function에서 공개 범위를 검사한다. 클라이언트의
+      // 목록 조회는 금지해 비공개 프로필 열거를 막고, 개별 조회도 공개 범위에 따른다.
+      allow get: if canViewProfile(userId);
+      allow list: if false;
       allow create, update, delete: if isOwner(userId);
 
       match /runHistory/{recordId} {
-        allow read: if isOwner(userId) || isFriendOf(userId);
+        allow read: if isOwner(userId) || (isFriendOf(userId) && canViewProfile(userId));
         allow create, update, delete: if isOwner(userId);
       }
 
       match /recentSongs/{songId} {
-        allow read: if isOwner(userId) || isFriendOf(userId);
+        allow read: if isOwner(userId) || (isFriendOf(userId) && canViewProfile(userId));
         allow create, update, delete: if isOwner(userId);
       }
 

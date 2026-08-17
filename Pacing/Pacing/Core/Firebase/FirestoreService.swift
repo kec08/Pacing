@@ -11,19 +11,35 @@ final class FirestoreService {
     private init() {}
 
     // MARK: - 프로필 저장
-    func saveUserProfile(uid: String, nickname: String, height: Int, weight: Int, profileImageBase64: String? = nil) async throws {
+    func saveUserProfile(
+        uid: String,
+        nickname: String,
+        height: Int,
+        weight: Int,
+        profileImageBase64: String? = nil,
+        initialProfileVisibility: ProfileVisibility? = nil
+    ) async throws {
         var data: [String: Any] = [
             "nickname": nickname,
             "height": height,
             "weight": weight,
-            // 심사 대응: 더 이상 수집하지 않는 기존 나이 필드를 함께 정리한다.
-            "age": FieldValue.delete(),
-            "createdAt": FieldValue.serverTimestamp()
+            "age": FieldValue.delete()
         ]
+        if let initialProfileVisibility {
+            data["profileVisibility"] = initialProfileVisibility.rawValue
+            data["createdAt"] = FieldValue.serverTimestamp()
+        }
         if let img = profileImageBase64 {
             data["profileImageBase64"] = img
         }
         try await db.collection("users").document(uid).setData(data, merge: true)
+    }
+
+    func saveProfileVisibility(uid: String, visibility: ProfileVisibility) async throws {
+        try await db.collection("users").document(uid).updateData([
+            "profileVisibility": visibility.rawValue,
+            "profileVisibilityUpdatedAt": FieldValue.serverTimestamp()
+        ])
     }
 
     func removeLegacyAge(uid: String) async throws {
@@ -289,7 +305,10 @@ final class FirestoreService {
 
     // MARK: - 친구 프로필 조회
     func fetchFriendUserProfile(uid: String, source: FriendRecommendationSource = .friend) async throws -> FriendUser {
-        try await fetchFriendUser(uid: uid, source: source)
+        guard let user = try await fetchVisibleFriendUser(uid: uid, source: source) else {
+            throw ProfileVisibilityError.notVisible
+        }
+        return user
     }
 
     // MARK: - 보낸 친구 요청 조회
@@ -367,21 +386,13 @@ final class FirestoreService {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
 
-        let snapshot = try await db.collection("users")
-            .order(by: "nickname")
-            .start(at: [trimmed])
-            .end(at: [trimmed + "\u{f8ff}"])
-            .limit(to: limit)
-            .getDocuments()
-
-        var users: [FriendUser] = []
-        for doc in snapshot.documents {
-            guard doc.documentID != currentUID, !excludedUIDs.contains(doc.documentID) else { continue }
-            if let user = try await makeFriendUserWithActivity(from: doc, source: .search) {
-                users.append(user)
-            }
-        }
-        return users
+        let users = try await fetchVisibleFriendUsers(
+            mode: "search",
+            query: trimmed,
+            limit: limit,
+            source: .search
+        )
+        return users.filter { $0.id != currentUID && !excludedUIDs.contains($0.id) }
     }
 
     // MARK: - 추천 친구 조회
@@ -390,20 +401,13 @@ final class FirestoreService {
         excluding excludedUIDs: Set<String>,
         limit: Int = 10
     ) async throws -> [FriendUser] {
-        let snapshot = try await db.collection("users")
-            .order(by: "createdAt", descending: true)
-            .limit(to: limit + excludedUIDs.count + 1)
-            .getDocuments()
-
-        var users: [FriendUser] = []
-        for doc in snapshot.documents {
-            guard doc.documentID != currentUID, !excludedUIDs.contains(doc.documentID) else { continue }
-            if let user = try await makeFriendUserWithActivity(from: doc, source: .recent) {
-                users.append(user)
-            }
-            if users.count >= limit { break }
-        }
-        return users
+        let users = try await fetchVisibleFriendUsers(
+            mode: "recommended",
+            query: nil,
+            limit: limit + excludedUIDs.count + 1,
+            source: .recent
+        )
+        return Array(users.filter { $0.id != currentUID && !excludedUIDs.contains($0.id) }.prefix(limit))
     }
 
     // MARK: - 친구 요청 생성
@@ -599,14 +603,55 @@ final class FirestoreService {
     }
 
     private func fetchFriendUser(uid: String, source: FriendRecommendationSource) async throws -> FriendUser {
-        let doc = try await db.collection("users").document(uid).getDocument()
-        return try await makeFriendUserWithActivity(from: doc, source: source) ?? FriendUser(
+        if let user = try await fetchVisibleFriendUser(uid: uid, source: source) {
+            return user
+        }
+        return FriendUser(
             id: uid,
             nickname: "러너",
             profileImageBase64: nil,
             statusText: "최근 활동 없음",
             source: source
         )
+    }
+
+    private func fetchVisibleFriendUser(
+        uid: String,
+        source: FriendRecommendationSource
+    ) async throws -> FriendUser? {
+        let result = try await functions
+            .httpsCallable("getVisibleProfile")
+            .call(["uid": uid])
+        guard let data = result.data as? [String: Any],
+              data["visible"] as? Bool == true,
+              let profile = data["profile"] as? [String: Any]
+        else {
+            return nil
+        }
+        return makeFriendUser(from: profile, source: source)
+    }
+
+    private func fetchVisibleFriendUsers(
+        mode: String,
+        query: String?,
+        limit: Int,
+        source: FriendRecommendationSource
+    ) async throws -> [FriendUser] {
+        var payload: [String: Any] = [
+            "mode": mode,
+            "limit": max(1, limit)
+        ]
+        if let query { payload["query"] = query }
+
+        let result = try await functions
+            .httpsCallable("listVisibleProfiles")
+            .call(payload)
+        guard let data = result.data as? [String: Any],
+              let profiles = data["profiles"] as? [[String: Any]]
+        else {
+            return []
+        }
+        return profiles.compactMap { makeFriendUser(from: $0, source: source) }
     }
 
     private func makeFriendUser(from doc: DocumentSnapshot, source: FriendRecommendationSource) -> FriendUser? {
@@ -624,18 +669,17 @@ final class FirestoreService {
         )
     }
 
-    private func makeFriendUserWithActivity(from doc: DocumentSnapshot, source: FriendRecommendationSource) async throws -> FriendUser? {
-        guard let baseUser = makeFriendUser(from: doc, source: source) else { return nil }
-        if baseUser.statusText != "최근 활동 없음" {
-            return baseUser
-        }
+    private func makeFriendUser(from data: [String: Any], source: FriendRecommendationSource) -> FriendUser? {
+        guard let id = data["id"] as? String,
+              let nickname = data["nickname"] as? String,
+              !nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return nil }
 
-        let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
         return FriendUser(
-            id: baseUser.id,
-            nickname: baseUser.nickname,
-            profileImageBase64: baseUser.profileImageBase64,
-            statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
+            id: id,
+            nickname: nickname,
+            profileImageBase64: data["profileImageBase64"] as? String,
+            statusText: data["statusText"] as? String ?? "최근 활동 없음",
             source: source
         )
     }
