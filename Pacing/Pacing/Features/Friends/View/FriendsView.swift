@@ -517,7 +517,7 @@ private struct FriendCandidateRow: View {
                             .foregroundStyle(Color.textPrimary)
                         Text(user.source.rawValue)
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.textSecondary)
+                            .foregroundStyle(relationship == .friend ? Color.main500 : Color.textSecondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -530,13 +530,16 @@ private struct FriendCandidateRow: View {
             Button(action: onSend) {
                 Text(buttonTitle)
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(isEnabled ? Color.main500 : Color.gray500)
+                    .foregroundStyle(relationship == .friend ? Color.main500 : (isEnabled ? Color.main500 : Color.gray500))
                     .padding(.horizontal, 16)
                     .frame(height: 34)
-                    .glassCapsule(tint: isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8))
+                    .glassCapsule(
+                        tint: relationship == .friend ? Color.main500.opacity(0.10) : (isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8)),
+                        stroke: relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
+                    )
             }
             .buttonStyle(.plain)
-            .disabled(!isEnabled)
+            .allowsHitTesting(isEnabled)
 
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
@@ -591,13 +594,16 @@ private struct FriendRecommendationRow: View {
             Button(action: onSend) {
                 Text(buttonTitle)
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(isEnabled ? Color.main500 : Color.gray500)
+                    .foregroundStyle(relationship == .friend ? Color.main500 : (isEnabled ? Color.main500 : Color.gray500))
                     .padding(.horizontal, 16)
                     .frame(height: 34)
-                    .glassCapsule(tint: isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8))
+                    .glassCapsule(
+                        tint: relationship == .friend ? Color.main500.opacity(0.10) : (isEnabled ? Color.main500.opacity(0.13) : Color.gray100.opacity(0.8)),
+                        stroke: relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
+                    )
             }
             .buttonStyle(.plain)
-            .disabled(!isEnabled)
+            .allowsHitTesting(isEnabled)
         }
         .padding(.vertical, 2)
     }
@@ -653,7 +659,10 @@ private struct GlassIconButton<Content: View>: View {
 }
 
 private extension View {
-    func glassCapsule(tint: Color = Color.backgroundPrimary.opacity(0.58)) -> some View {
+    func glassCapsule(
+        tint: Color = Color.backgroundPrimary.opacity(0.58),
+        stroke: Color = Color.surfaceBorder
+    ) -> some View {
         background {
             Capsule()
                 .fill(.ultraThinMaterial)
@@ -663,7 +672,7 @@ private extension View {
                 }
                 .overlay {
                     Capsule()
-                        .stroke(Color.surfaceBorder, lineWidth: 1)
+                        .stroke(stroke, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }

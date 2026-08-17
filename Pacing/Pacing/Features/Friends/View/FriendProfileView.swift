@@ -158,10 +158,14 @@ struct FriendProfileView: View {
             .foregroundStyle(relationshipForeground)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .glassRounded(cornerRadius: 16, tint: relationshipTint)
+            .glassRounded(
+                cornerRadius: 16,
+                tint: relationshipTint,
+                stroke: relationshipBorder
+            )
         }
         .buttonStyle(.plain)
-        .disabled(!vm.canTapAction)
+        .allowsHitTesting(vm.canTapAction)
         .animation(.easeInOut(duration: 0.2), value: vm.relationship)
     }
 
@@ -190,12 +194,16 @@ struct FriendProfileView: View {
     private var relationshipTint: Color {
         switch vm.relationship {
         case .friend:
-            return Color.backgroundSecondary
+            return Color.main500.opacity(0.10)
         case .requestPending:
             return Color.gray100.opacity(0.82)
         case .none:
             return Color.main500.opacity(0.13)
         }
+    }
+
+    private var relationshipBorder: Color {
+        vm.relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
     }
 
     private var statsSection: some View {
@@ -503,7 +511,8 @@ private extension View {
 
     func glassRounded(
         cornerRadius: CGFloat,
-        tint: Color = Color.backgroundPrimary.opacity(0.58)
+        tint: Color = Color.backgroundPrimary.opacity(0.58),
+        stroke: Color = Color.surfaceBorder
     ) -> some View {
         background {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -514,7 +523,7 @@ private extension View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.surfaceBorder, lineWidth: 1)
+                        .stroke(stroke, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }
