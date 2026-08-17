@@ -139,7 +139,7 @@ struct FriendsView: View {
             if vm.isSearching && vm.searchResults.isEmpty {
                 friendRowsSkeleton(count: 3)
             } else if vm.searchResults.isEmpty {
-                emptyCard("검색 결과가 없어요")
+                emptyState(systemImage: "magnifyingglass", message: "검색 결과가 없어요")
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.searchResults) { user in
@@ -187,7 +187,7 @@ struct FriendsView: View {
             if vm.isLoading && vm.recommendedUsers.isEmpty {
                 friendRowsSkeleton(count: 3)
             } else if vm.recommendedUsers.isEmpty {
-                emptyCard("추천할 러너를 찾는 중이에요")
+                emptyState(systemImage: "person.2", message: "추천할 러너를 찾는 중이에요")
             } else {
                 listStack(spacing: 12) {
                     ForEach(vm.recommendedUsers) { user in
@@ -230,13 +230,18 @@ struct FriendsView: View {
         }
     }
 
-    private func emptyCard(_ message: String) -> some View {
-        Text(message)
-            .font(.system(size: 14))
-            .foregroundStyle(Color.textSecondary)
+    private func emptyState(systemImage: String, message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(Color.gray500)
+
+            Text(message)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(Color.textSecondary)
+        }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .glassRounded(cornerRadius: 16)
+        .padding(.vertical, 46)
     }
 
     private var emptyFriendsState: some View {

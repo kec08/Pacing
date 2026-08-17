@@ -25,10 +25,17 @@ final class FriendsViewModel: ObservableObject {
         !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    var excludedUIDs: Set<String> {
+    /// 추천 목록에서는 이미 요청한 러너를 숨겨 중복 제안을 막는다.
+    var recommendationExcludedUIDs: Set<String> {
         Set(friends.map(\.id))
             .union(incomingRequests.map(\.fromUID))
             .union(sentRequestUIDs)
+    }
+
+    /// 검색에서는 요청 대기 중인 러너를 남겨 현재 상태와 취소 동작을 제공한다.
+    var searchExcludedUIDs: Set<String> {
+        Set(friends.map(\.id))
+            .union(incomingRequests.map(\.fromUID))
     }
 
     func load() async {
@@ -54,7 +61,7 @@ final class FriendsViewModel: ObservableObject {
             sentRequestUIDs = loadedSentRequestUIDs
             recommendedUsers = try await service.fetchRecommendedUsers(
                 currentUID: uid,
-                excluding: excludedUIDs
+                excluding: recommendationExcludedUIDs
             )
 
             if hasSearchQuery {
@@ -86,7 +93,7 @@ final class FriendsViewModel: ObservableObject {
             searchResults = try await service.searchUsersByNickname(
                 currentUID: uid,
                 query: query,
-                excluding: excludedUIDs
+                excluding: searchExcludedUIDs
             )
         } catch {
             searchResults = []
@@ -111,7 +118,6 @@ final class FriendsViewModel: ObservableObject {
 
     func markRequestSent(to user: FriendUser) {
         sentRequestUIDs.insert(user.id)
-        searchResults.removeAll { $0.id == user.id }
         recommendedUsers.removeAll { $0.id == user.id }
     }
 
@@ -126,7 +132,6 @@ final class FriendsViewModel: ObservableObject {
         do {
             try await service.sendFriendRequest(from: uid, to: user.id)
             sentRequestUIDs.insert(user.id)
-            searchResults.removeAll { $0.id == user.id }
             recommendedUsers.removeAll { $0.id == user.id }
         } catch {
             errorMessage = "친구 요청을 보내지 못했어요."
@@ -165,7 +170,7 @@ final class FriendsViewModel: ObservableObject {
         guard let uid = currentUID else { return [] }
         return try await service.fetchRecommendedUsers(
             currentUID: uid,
-            excluding: excludedUIDs
+            excluding: recommendationExcludedUIDs
         )
     }
 

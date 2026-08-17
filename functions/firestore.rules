@@ -54,12 +54,16 @@ service cloud.firestore {
         && request.resource.data.toUID != request.auth.uid
         && request.resource.data.status == 'pending';
 
-      // 발신자는 취소(거절)할 수 있고, 수신자는 수락 또는 거절할 수 있습니다.
+      // 발신자는 취소한 요청을 다시 보낼 수 있고, 수신자는 수락 또는 거절할 수 있습니다.
       // 요청의 당사자와 상태 외의 필드는 수정할 수 없습니다.
       allow update: if signedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
         && (
-          (resource.data.fromUID == request.auth.uid && request.resource.data.status == 'rejected')
+          (resource.data.fromUID == request.auth.uid
+            && (
+              request.resource.data.status == 'rejected'
+              || (resource.data.status == 'rejected' && request.resource.data.status == 'pending')
+            ))
           || (resource.data.toUID == request.auth.uid && request.resource.data.status in ['accepted', 'rejected'])
         );
 
