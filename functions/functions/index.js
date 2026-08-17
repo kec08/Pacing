@@ -38,9 +38,9 @@ async function friendUIDsFor(uid) {
 }
 
 /**
- * Returns only the minimum profile fields that the authenticated user is
- * permitted to view. Direct client list queries are intentionally avoided so
- * private profile documents cannot be enumerated through Firestore.
+ * Returns basic profile identity for a direct profile screen and separately
+ * reports whether detailed activity is visible. Search/recommend never return
+ * private profiles, so this is only reachable from a known profile route.
  */
 exports.getVisibleProfile = onCall(async (request) => {
   const viewerUID = request.auth?.uid;
@@ -56,10 +56,13 @@ exports.getVisibleProfile = onCall(async (request) => {
     firestore.collection("users").doc(targetUID).get(),
     friendUIDsFor(viewerUID),
   ]);
-  if (!profile.exists || !profileVisibilityAllows(profile, viewerUID, friendUIDs)) {
+  if (!profile.exists) {
     return { visible: false };
   }
-  return { visible: true, profile: publicProfileData(profile) };
+  return {
+    visible: profileVisibilityAllows(profile, viewerUID, friendUIDs),
+    profile: publicProfileData(profile),
+  };
 });
 
 /**

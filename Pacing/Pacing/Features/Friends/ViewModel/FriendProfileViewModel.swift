@@ -12,7 +12,7 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var recentSongArtworkURLs: [String: String] = [:]
     @Published var isLoading: Bool = false
-    @Published var isProfileVisible: Bool = true
+    @Published var canViewDetails: Bool = true
     @Published var isUpdatingRelationship: Bool = false
     @Published var errorMessage: String?
 
@@ -27,16 +27,18 @@ final class FriendProfileViewModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
-        isProfileVisible = true
+        canViewDetails = true
         defer { isLoading = false }
 
         do {
             // 사용자 기본 프로필과 현재 사용자의 친구 관계는 공개/본인 데이터이므로
             // 먼저 조회한다. 친구 전용 활동 데이터는 관계가 확인된 뒤에만 요청한다.
-            friend = try await service.fetchFriendUserProfile(uid: friend.id, source: .friend)
+            let profileAccess = try await service.fetchFriendUserProfile(uid: friend.id, source: .friend)
+            friend = profileAccess.user
+            canViewDetails = profileAccess.canViewDetails
             relationship = try await fetchRelationship()
 
-            guard relationship == .friend else {
+            guard relationship == .friend, canViewDetails else {
                 stats = .empty
                 recentRuns = []
                 recentSongs = []
@@ -54,7 +56,7 @@ final class FriendProfileViewModel: ObservableObject {
             recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
         } catch {
             if error is ProfileVisibilityError {
-                isProfileVisible = false
+                canViewDetails = false
                 stats = .empty
                 recentRuns = []
                 recentSongs = []
@@ -194,7 +196,8 @@ final class FriendProfileViewModel: ObservableObject {
     }
 
     var activityText: String {
-        FriendActivityText.runningStatus(lastRunDate: stats.lastRunDate)
+        guard canViewDetails else { return friend.statusText }
+        return FriendActivityText.runningStatus(lastRunDate: stats.lastRunDate)
     }
 
     var isTodayActivity: Bool {

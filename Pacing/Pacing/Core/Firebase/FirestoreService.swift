@@ -304,11 +304,23 @@ final class FirestoreService {
     }
 
     // MARK: - 친구 프로필 조회
-    func fetchFriendUserProfile(uid: String, source: FriendRecommendationSource = .friend) async throws -> FriendUser {
-        guard let user = try await fetchVisibleFriendUser(uid: uid, source: source) else {
+    func fetchFriendUserProfile(
+        uid: String,
+        source: FriendRecommendationSource = .friend
+    ) async throws -> FriendProfileAccess {
+        let result = try await functions
+            .httpsCallable("getVisibleProfile")
+            .call(["uid": uid])
+        guard let data = result.data as? [String: Any],
+              let profile = data["profile"] as? [String: Any],
+              let user = makeFriendUser(from: profile, source: source)
+        else {
             throw ProfileVisibilityError.notVisible
         }
-        return user
+        return FriendProfileAccess(
+            user: user,
+            canViewDetails: data["visible"] as? Bool ?? false
+        )
     }
 
     // MARK: - 보낸 친구 요청 조회
