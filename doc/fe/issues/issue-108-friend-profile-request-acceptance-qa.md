@@ -49,6 +49,9 @@
 - Cloud Function이 `accepted` 상태의 동일 요청을 멱등 성공으로 반환하고, 트랜잭션 읽기를 `getAll`로 명시했다.
 - iOS 클라이언트가 Callable 응답의 `accepted: true`를 검증하도록 했다.
 - 변경된 `acceptFriendRequest` v2 Callable 함수를 `asia-northeast3`에 배포했다.
+- 취소된 요청은 기존 문서의 상태만 `pending`으로 되돌리도록 수정하고, Firestore 규칙에서 발신자의 `rejected → pending` 전환을 허용했다.
+- 검색 결과는 요청 대기 중인 러너를 유지하고, 추천 목록에서만 제거하도록 필터를 분리했다.
+- 검색 빈 상태는 테두리·그림자 없이 아이콘과 문구만 표시하도록 정리했다.
 
 ## 관련 파일
 

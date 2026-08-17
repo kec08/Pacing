@@ -18,6 +18,9 @@
 - [x] 친구 요청 수락 중복 탭 방지 및 진행 상태 표시
 - [x] 이미 수락된 요청의 서버 멱등 성공 처리
 - [x] Callable 응답 성공 여부 검증
+- [x] 취소된 친구 요청의 상태 초기화 및 재전송 지원
+- [x] 요청 대기 러너의 검색 결과 유지 및 추천 목록 필터 분리
+- [x] 검색·추천 빈 상태 UI 간소화
 - [x] `acceptFriendRequest` Cloud Function 운영 배포
 
 ## 계획서 대비 변경 사항
@@ -35,6 +38,7 @@
 | Cloud Function JavaScript 문법 | ✅ `node --check index.js` 통과 |
 | 함수 의존성 설치 상태 | ✅ `npm ls --depth=0` 통과 |
 | Cloud Function 배포 | ✅ `acceptFriendRequest` v2 / `asia-northeast3` 확인 |
+| Firestore 규칙 컴파일·배포 | ✅ `firestore.rules` 컴파일 및 운영 반영 완료 |
 | iOS 프로젝트 빌드·단위 테스트 | ⚠️ 미실행 — 현재 환경은 Command Line Tools만 있고 전체 Xcode가 없음 |
 | 실제 두 계정 수동 수락 시나리오 | ⚠️ 배포 완료 후 실제 기기에서 확인 필요 |
 
