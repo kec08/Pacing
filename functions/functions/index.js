@@ -128,23 +128,29 @@ exports.acceptFriendRequest = onCall(async (request) => {
   });
 
   try {
-    await firestore.runTransaction(async (transaction) => {
+    const result = await firestore.runTransaction(async (transaction) => {
       const friendRequest = await transaction.get(requestRef);
       if (!friendRequest.exists) {
         throw new HttpsError("not-found", "친구 요청을 찾을 수 없어요.");
       }
 
       const data = friendRequest.data();
-      if (data.toUID !== uid || data.status !== "pending") {
+      if (data.toUID !== uid) {
         throw new HttpsError("permission-denied", "수락할 수 없는 친구 요청이에요.");
+      }
+      // 사용자가 수락 버튼을 연속 탭하거나 네트워크가 재시도해도, 이미 완료된
+      // 동일 요청은 실패가 아닌 성공으로 응답한다. 트랜잭션이 친구 문서와 상태를
+      // 함께 기록하므로 accepted 상태는 상호 친구 관계가 완성된 상태를 뜻한다.
+      if (data.status === "accepted") {
+        return { accepted: true, alreadyAccepted: true };
+      }
+      if (data.status !== "pending" || typeof data.fromUID !== "string" || !data.fromUID) {
+        throw new HttpsError("failed-precondition", "처리할 수 없는 친구 요청이에요.");
       }
 
       const senderRef = firestore.collection("users").doc(data.fromUID);
       const recipientRef = firestore.collection("users").doc(uid);
-      const [sender, recipient] = await Promise.all([
-        transaction.get(senderRef),
-        transaction.get(recipientRef),
-      ]);
+      const [sender, recipient] = await transaction.getAll(senderRef, recipientRef);
 
       transaction.set(
         recipientRef.collection("friends").doc(data.fromUID),
@@ -157,9 +163,10 @@ exports.acceptFriendRequest = onCall(async (request) => {
         { merge: true },
       );
       transaction.update(requestRef, { status: "accepted" });
+      return { accepted: true, alreadyAccepted: false };
     });
 
-    return { accepted: true };
+    return result;
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Friend request acceptance failed", {

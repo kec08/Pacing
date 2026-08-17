@@ -13,6 +13,7 @@ final class FriendsViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isSearching: Bool = false
     @Published var errorMessage: String?
+    @Published private(set) var processingRequestID: String?
 
     private let service = FirestoreService.shared
 
@@ -133,9 +134,13 @@ final class FriendsViewModel: ObservableObject {
     }
 
     func accept(_ request: FriendRequest) async {
+        guard processingRequestID == nil else { return }
         let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
 
+        processingRequestID = request.id
         errorMessage = nil
+        defer { processingRequestID = nil }
+
         do {
             try await service.acceptFriendRequest(request, currentUserNickname: nickname)
             incomingRequests.removeAll { $0.id == request.id }
@@ -170,5 +175,9 @@ final class FriendsViewModel: ObservableObject {
 
     func canSendRequest(to user: FriendUser) -> Bool {
         !sentRequestUIDs.contains(user.id)
+    }
+
+    func isProcessing(_ request: FriendRequest) -> Bool {
+        processingRequestID == request.id
     }
 }

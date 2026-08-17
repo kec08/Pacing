@@ -65,6 +65,12 @@ struct FriendProfileView: View {
                             .padding(.vertical, 8)
                     }
                 }
+            } else if !vm.canViewActivity {
+                privateActivityState(
+                    systemImage: "lock.fill",
+                    title: "친구가 되면 러닝을 볼 수 있어요",
+                    description: "친구 요청을 수락하면 최근 러닝 기록이 여기에 표시돼요."
+                )
             } else if vm.recentRuns.isEmpty {
                 ContentUnavailableView(
                     "최근 러닝이 없어요",
@@ -237,6 +243,12 @@ struct FriendProfileView: View {
                             .padding(.vertical, 8)
                     }
                 }
+            } else if !vm.canViewActivity {
+                privateActivityState(
+                    systemImage: "lock.fill",
+                    title: "친구가 되면 음악을 볼 수 있어요",
+                    description: "친구 요청을 수락하면 최근 들은 노래가 여기에 표시돼요."
+                )
             } else if vm.recentSongs.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "music.note")
@@ -263,6 +275,20 @@ struct FriendProfileView: View {
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } }
         )
+    }
+
+    private func privateActivityState(
+        systemImage: String,
+        title: String,
+        description: String
+    ) -> some View {
+        ContentUnavailableView(
+            title,
+            systemImage: systemImage,
+            description: Text(description)
+        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 }
 

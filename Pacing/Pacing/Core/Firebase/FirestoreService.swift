@@ -435,9 +435,15 @@ final class FirestoreService {
     // MARK: - 친구 요청 수락
     func acceptFriendRequest(_ request: FriendRequest, currentUserNickname: String) async throws {
         _ = currentUserNickname
-        _ = try await functions
+        let result = try await functions
             .httpsCallable("acceptFriendRequest")
             .call(["requestID": request.id])
+
+        guard let data = result.data as? [String: Any],
+              data["accepted"] as? Bool == true
+        else {
+            throw FriendRequestAcceptanceError.invalidResponse
+        }
     }
 
     // MARK: - 친구 요청 거절
@@ -687,4 +693,8 @@ final class FirestoreService {
 
         return data
     }
+}
+
+private enum FriendRequestAcceptanceError: Error {
+    case invalidResponse
 }

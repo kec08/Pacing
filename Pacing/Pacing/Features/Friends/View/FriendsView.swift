@@ -371,7 +371,7 @@ private struct FriendRequestsFullScreenView: View {
     private var requestsContent: some View {
         VStack(spacing: 12) {
             ForEach(vm.incomingRequests) { request in
-                FriendRequestRow(request: request) {
+                FriendRequestRow(request: request, isProcessing: vm.isProcessing(request)) {
                     Task { await vm.accept(request) }
                 } onReject: {
                     Task { await vm.reject(request) }
@@ -383,6 +383,7 @@ private struct FriendRequestsFullScreenView: View {
 
 private struct FriendRequestRow: View {
     let request: FriendRequest
+    let isProcessing: Bool
     let onAccept: () -> Void
     let onReject: () -> Void
 
@@ -409,16 +410,25 @@ private struct FriendRequestRow: View {
                     .glassCircle()
             }
             .buttonStyle(.plain)
+            .disabled(isProcessing)
 
             Button(action: onAccept) {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 34, height: 34)
-                    .background(Color.main500)
-                    .clipShape(Circle())
+                Group {
+                    if isProcessing {
+                        ProgressView()
+                            .tint(.white)
+                    } else {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 34, height: 34)
+                .background(Color.main500)
+                .clipShape(Circle())
             }
             .buttonStyle(.plain)
+            .disabled(isProcessing)
         }
         .padding(.vertical, 2)
     }

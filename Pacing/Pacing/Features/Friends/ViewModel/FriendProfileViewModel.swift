@@ -26,25 +26,33 @@ final class FriendProfileViewModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
+        defer { isLoading = false }
 
         do {
-            async let profileTask = service.fetchFriendUserProfile(uid: friend.id, source: .friend)
+            // 사용자 기본 프로필과 현재 사용자의 친구 관계는 공개/본인 데이터이므로
+            // 먼저 조회한다. 친구 전용 활동 데이터는 관계가 확인된 뒤에만 요청한다.
+            friend = try await service.fetchFriendUserProfile(uid: friend.id, source: .friend)
+            relationship = try await fetchRelationship()
+
+            guard relationship == .friend else {
+                stats = .empty
+                recentRuns = []
+                recentSongs = []
+                recentSongArtworkURLs = [:]
+                return
+            }
+
             async let statsTask = service.fetchFriendProfileStats(uid: friend.id)
             async let runsTask = service.fetchRunHistory(uid: friend.id, limit: 5)
             async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 5)
-            async let relationshipTask = fetchRelationship()
 
-            friend = try await profileTask
             stats = try await statsTask
             recentRuns = try await runsTask
             recentSongs = try await songsTask
             recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
-            relationship = try await relationshipTask
         } catch {
             errorMessage = "친구 프로필을 불러오지 못했어요."
         }
-
-        isLoading = false
     }
 
     private func resolveArtworkURLs(for songs: [FriendRecentSong]) async -> [String: String] {
@@ -184,5 +192,9 @@ final class FriendProfileViewModel: ObservableObject {
 
     var canTapAction: Bool {
         relationship != .friend && !isUpdatingRelationship
+    }
+
+    var canViewActivity: Bool {
+        relationship == .friend
     }
 }
