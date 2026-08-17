@@ -174,6 +174,8 @@ struct FriendsView: View {
                             FriendUserRow(user: friend)
                         }
                         .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                 }
             }
@@ -459,6 +461,8 @@ private struct FriendUserRow: View {
                 .glassCircle(tint: Color.main500.opacity(0.12))
         }
         .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 
@@ -494,6 +498,8 @@ private struct FriendCandidateRow: View {
                             .foregroundStyle(Color.textSecondary)
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
@@ -541,27 +547,20 @@ private struct FriendRecommendationRow: View {
                     onRequestCanceled: { _ in onRequestCanceled() }
                 )
             } label: {
-                FriendAvatar(user: user)
-            }
-            .buttonStyle(.plain)
+                HStack(spacing: 12) {
+                    FriendAvatar(user: user)
 
-            NavigationLink {
-                FriendProfileView(
-                    friend: user,
-                    initialRelationship: relationship,
-                    onRequestSent: { _ in onRequestSent() },
-                    onRequestCanceled: { _ in onRequestCanceled() }
-                )
-            } label: {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(user.nickname)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(Color.textPrimary)
-                    Text(user.statusText)
-                        .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
-                        .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(user.nickname)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                        Text(user.statusText)
+                            .font(.system(size: 12, weight: FriendActivityText.isTodayStatus(user.statusText) ? .bold : .medium))
+                            .foregroundStyle(FriendActivityText.isTodayStatus(user.statusText) ? Color.green : Color.textSecondary)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
 
