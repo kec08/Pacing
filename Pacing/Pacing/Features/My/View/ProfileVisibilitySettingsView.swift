@@ -41,11 +41,9 @@ struct ProfileVisibilitySettingsView: View {
 
                                 Spacer(minLength: 8)
 
-                                if selection == visibility {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 17, weight: .bold))
-                                        .foregroundStyle(Color.main500)
-                                }
+                                Image(systemName: selection == visibility ? "circle.inset.filled" : "circle")
+                                    .font(.system(size: 21, weight: .semibold))
+                                    .foregroundStyle(selection == visibility ? Color.main500 : Color.gray300)
                             }
                             .padding(.vertical, 16)
                             .frame(maxWidth: .infinity, alignment: .leading)
