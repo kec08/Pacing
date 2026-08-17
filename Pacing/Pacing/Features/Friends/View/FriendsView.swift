@@ -32,6 +32,24 @@ struct FriendsView: View {
             .navigationBarHidden(true)
         }
         .task { await vm.load() }
+        .task(id: vm.searchText) {
+            guard vm.hasSearchQuery else {
+                vm.searchResults = []
+                vm.isSearching = false
+                return
+            }
+
+            // 입력이 이어지는 동안 이전 검색을 취소해 Firestore 요청을 과도하게
+            // 만들지 않고, 키보드 입력 중에도 최신 검색어 결과를 바로 보여준다.
+            do {
+                try await Task.sleep(nanoseconds: 250_000_000)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled else { return }
+            await vm.search()
+        }
         .fullScreenCover(isPresented: $showsRequests) {
             FriendRequestsFullScreenView(vm: vm, isPresented: $showsRequests)
         }
@@ -127,10 +145,6 @@ struct FriendsView: View {
                 }
                 .buttonStyle(.plain)
             }
-        }
-        .onChange(of: vm.searchText) { _, newValue in
-            guard newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            vm.searchResults = []
         }
     }
 

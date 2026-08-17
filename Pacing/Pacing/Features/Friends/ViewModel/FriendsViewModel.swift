@@ -90,17 +90,24 @@ final class FriendsViewModel: ObservableObject {
         errorMessage = nil
 
         do {
-            searchResults = try await service.searchUsersByNickname(
+            let results = try await service.searchUsersByNickname(
                 currentUID: uid,
                 query: query,
                 excluding: searchExcludedUIDs
             )
+            // 취소되지 못한 이전 비동기 요청이 늦게 완료돼도 현재 입력값의 결과를
+            // 덮어쓰지 않도록 검색어가 동일할 때만 화면 상태를 갱신한다.
+            guard query == searchText.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+            searchResults = results
         } catch {
+            guard query == searchText.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
             searchResults = []
             errorMessage = "검색 결과를 불러오지 못했어요."
         }
 
-        isSearching = false
+        if query == searchText.trimmingCharacters(in: .whitespacesAndNewlines) {
+            isSearching = false
+        }
     }
 
     func clearSearch() {

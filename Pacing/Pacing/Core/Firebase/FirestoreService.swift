@@ -362,7 +362,7 @@ final class FirestoreService {
         currentUID: String,
         query: String,
         excluding excludedUIDs: Set<String>,
-        limit: Int = 10
+        limit: Int = 5
     ) async throws -> [FriendUser] {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
