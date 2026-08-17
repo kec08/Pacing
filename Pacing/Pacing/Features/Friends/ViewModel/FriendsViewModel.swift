@@ -34,8 +34,7 @@ final class FriendsViewModel: ObservableObject {
 
     /// 검색에서는 요청 대기 중인 러너를 남겨 현재 상태와 취소 동작을 제공한다.
     var searchExcludedUIDs: Set<String> {
-        Set(friends.map(\.id))
-            .union(incomingRequests.map(\.fromUID))
+        Set(incomingRequests.map(\.fromUID))
     }
 
     func load() async {
@@ -182,11 +181,14 @@ final class FriendsViewModel: ObservableObject {
     }
 
     func buttonTitle(for user: FriendUser) -> String {
-        sentRequestUIDs.contains(user.id) ? "요청됨" : "추가"
+        if friends.contains(where: { $0.id == user.id }) {
+            return "친구"
+        }
+        return sentRequestUIDs.contains(user.id) ? "요청됨" : "추가"
     }
 
     func canSendRequest(to user: FriendUser) -> Bool {
-        !sentRequestUIDs.contains(user.id)
+        !friends.contains(where: { $0.id == user.id }) && !sentRequestUIDs.contains(user.id)
     }
 
     func isProcessing(_ request: FriendRequest) -> Bool {

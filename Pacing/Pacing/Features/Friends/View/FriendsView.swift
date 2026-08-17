@@ -287,6 +287,9 @@ struct FriendsView: View {
     }
 
     private func relationship(for user: FriendUser) -> FriendRelationship {
+        if vm.friends.contains(where: { $0.id == user.id }) {
+            return .friend
+        }
         vm.sentRequestUIDs.contains(user.id) ? .requestPending : .none
     }
 }
