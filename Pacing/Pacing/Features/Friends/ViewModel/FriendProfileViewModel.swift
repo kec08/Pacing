@@ -51,6 +51,17 @@ final class FriendProfileViewModel: ObservableObject {
             recentSongs = try await songsTask
             recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
         } catch {
+            // 비친구 프로필은 공개 정보와 친구 추가 UI만 제공하면 된다. 이 상태에서
+            // 관계·활동 조회가 일시적으로 실패해도 권한 제한을 오류로 노출하지 않고
+            // 잠금 상태를 유지한다.
+            guard relationship == .friend else {
+                stats = .empty
+                recentRuns = []
+                recentSongs = []
+                recentSongArtworkURLs = [:]
+                return
+            }
+
             errorMessage = "친구 프로필을 불러오지 못했어요."
         }
     }
