@@ -418,9 +418,15 @@ final class FirestoreService {
             "createdAt": FieldValue.serverTimestamp()
         ]
 
-        try await db.collection("friendRequests")
-            .document(requestID)
-            .setData(data, merge: true)
+        let requestRef = db.collection("friendRequests").document(requestID)
+        let existingRequest = try await requestRef.getDocument()
+        if existingRequest.exists {
+            // 취소·거절된 요청을 다시 보낼 때는 요청의 메타데이터를 덮어쓰지 않고
+            // 상태만 pending으로 되돌린다. Firestore 규칙도 이 전환만 허용한다.
+            try await requestRef.updateData(["status": FriendRequestStatus.pending.rawValue])
+        } else {
+            try await requestRef.setData(data)
+        }
     }
 
     // MARK: - 보낸 친구 요청 취소
