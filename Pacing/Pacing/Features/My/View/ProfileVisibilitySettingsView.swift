@@ -20,7 +20,7 @@ struct ProfileVisibilitySettingsView: View {
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
 
-                VStack(spacing: 10) {
+                VStack(spacing: 0) {
                     ForEach(ProfileVisibility.allCases) { visibility in
                         Button { selection = visibility } label: {
                             HStack(spacing: 14) {
@@ -32,7 +32,7 @@ struct ProfileVisibilitySettingsView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(visibility.title)
                                         .font(.system(size: 17, weight: .bold))
-                                        .foregroundStyle(Color.textPrimary)
+                                        .foregroundStyle(selection == visibility ? Color.main500 : Color.textPrimary)
                                     Text(visibility.description)
                                         .font(.system(size: 13, weight: .medium))
                                         .foregroundStyle(Color.textSecondary)
@@ -41,20 +41,22 @@ struct ProfileVisibilitySettingsView: View {
 
                                 Spacer(minLength: 8)
 
-                                Image(systemName: selection == visibility ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 21, weight: .semibold))
-                                    .foregroundStyle(selection == visibility ? Color.main500 : Color.gray300)
+                                if selection == visibility {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 17, weight: .bold))
+                                        .foregroundStyle(Color.main500)
+                                }
                             }
-                            .padding(18)
+                            .padding(.vertical, 16)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(selection == visibility ? Color.main500.opacity(0.10) : Color.backgroundSecondary)
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .stroke(selection == visibility ? Color.main500.opacity(0.38) : Color.surfaceBorder, lineWidth: 1)
-                            }
-                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+
+                        if visibility != .private {
+                            Divider()
+                                .padding(.leading, 42)
+                        }
                     }
                 }
             }

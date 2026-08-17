@@ -43,9 +43,6 @@ struct MyProfileDetailView: View {
                         .foregroundStyle(Color.textPrimary)
                         .frame(width: 40, height: 40)
                         .background(.ultraThinMaterial)
-                        .overlay {
-                            Circle().stroke(Color.surfaceBorder, lineWidth: 1)
-                        }
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
