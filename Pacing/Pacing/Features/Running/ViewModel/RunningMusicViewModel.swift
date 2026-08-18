@@ -50,7 +50,6 @@ final class RunningMusicViewModel: ObservableObject {
     private var resolvingSongArtworkIDs: Set<String> = []
     private var resolvedApplicationSongsByEntryID: [String: Song] = [:]
     private var resolvingApplicationEntryIDs: Set<String> = []
-    private var resolvingApplicationArtworkIDs: Set<String> = []
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -198,16 +197,14 @@ final class RunningMusicViewModel: ObservableObject {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let song = applicationSong(from: entry)
-            let resolvedArtwork = nowPlayingSnapshot?.songStoreID == entry.id
-                ? nowPlayingSnapshot?.artwork
-                : nil
+            let systemArtwork = matchingSystemArtwork(for: entry)
             return PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: resolvedArtwork
+                artwork: systemArtwork
             )
         }
 
@@ -408,7 +405,7 @@ final class RunningMusicViewModel: ObservableObject {
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: nowPlayingSnapshot?.songStoreID == entry.id ? nowPlayingSnapshot?.artwork : nil
+                artwork: matchingSystemArtwork(for: entry)
             )
             if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
                 ?? queueSongs.firstIndex(where: {
@@ -423,7 +420,6 @@ final class RunningMusicViewModel: ObservableObject {
                 currentSong = queueSongs[index]
             }
             resolveApplicationSongMetadataIfNeeded(for: entry, song: song)
-            loadApplicationArtworkIfNeeded(for: entry.id, urlString: nowPlayingSnapshot?.artworkURL)
             return
         }
 
@@ -498,28 +494,17 @@ final class RunningMusicViewModel: ObservableObject {
         return song
     }
 
-    private func loadApplicationArtworkIfNeeded(for entryID: String, urlString: String?) {
-        guard let urlString, let url = URL(string: urlString),
-              resolvingApplicationArtworkIDs.insert(entryID).inserted
-        else { return }
-
-        Task { [weak self] in
-            let image = await ArtworkImageStore.shared.image(for: url)
-            guard let self,
-                  self.applicationPlayer.queue.currentEntry?.id == entryID
-            else { return }
-            self.resolvingApplicationArtworkIDs.remove(entryID)
-            guard let snapshot = self.nowPlayingSnapshot,
-                  snapshot.songStoreID == entryID
-            else { return }
-            self.nowPlayingSnapshot = PlayerSongSnapshot(
-                title: snapshot.title,
-                artistName: snapshot.artistName,
-                songStoreID: snapshot.songStoreID,
-                artworkURL: snapshot.artworkURL,
-                artwork: image
-            )
-        }
+    /// 시스템 플레이어는 이전 항목의 nowPlayingItem을 잠시 유지할 수 있다.
+    /// 현재 ApplicationMusicPlayer 엔트리와 메타데이터가 일치할 때만 이미지를
+    /// 사용해 이전 곡의 커버가 러닝 시트에 남지 않도록 한다.
+    private func matchingSystemArtwork(
+        for entry: MusicKit.MusicPlayer.Queue.Entry
+    ) -> UIImage? {
+        guard let item = player.nowPlayingItem,
+              item.title?.caseInsensitiveCompare(entry.title) == .orderedSame,
+              entry.subtitle == nil || item.artist?.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame
+        else { return nil }
+        return item.artwork?.image(at: CGSize(width: 900, height: 900))
     }
 
     private func resolveApplicationSongMetadataIfNeeded(
