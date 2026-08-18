@@ -489,6 +489,21 @@ final class SongNowPlayingController: ObservableObject {
         refresh()
     }
 
+    func skipToPrevious() {
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            Task { [weak self] in
+                guard let self else { return }
+                try? await self.applicationPlayer.skipToPreviousEntry()
+                self.refresh()
+            }
+            return
+        }
+
+        player.skipToPreviousItem()
+        refresh()
+    }
+
     func updateCollapseProgress(_ progress: CGFloat) {
         if isForceCollapsed {
             collapseProgress = 1
@@ -737,6 +752,15 @@ private struct SongNowPlayingOverlay: View {
                 Spacer(minLength: 8)
 
                 HStack(spacing: 12) {
+                    Button {
+                        controller.skipToPrevious()
+                    } label: {
+                        Image(systemName: "backward.fill")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(controlForegroundColor)
+                    }
+                    .buttonStyle(.plain)
+
                     Button {
                         controller.togglePlayPause()
                     } label: {

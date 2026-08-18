@@ -1165,10 +1165,12 @@ struct RunningView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+                .frame(height: 126)
             }
 
             Spacer().frame(height: 8)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.1), radius: 10, y: 4)

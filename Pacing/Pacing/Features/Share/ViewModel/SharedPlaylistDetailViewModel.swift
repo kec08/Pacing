@@ -621,6 +621,10 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             }) {
                 playingTrackID = matchedTrack.id
                 pendingPlaybackTrackID = nil
+            } else {
+                // 이전에 선택한 곡이 남아 있으면 다음 곡으로 넘어가도 핑크 표시가 고정된다.
+                playingTrackID = nil
+                pendingPlaybackTrackID = nil
             }
             return
         }
@@ -658,10 +662,8 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             return
         }
 
-        if !isPlaying && !isStartingPlayback {
-            playingTrackID = nil
-            pendingPlaybackTrackID = nil
-        }
+        playingTrackID = nil
+        pendingPlaybackTrackID = nil
     }
 
     func togglePlayPause() {
