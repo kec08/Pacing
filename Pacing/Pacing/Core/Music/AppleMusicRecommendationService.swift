@@ -1,6 +1,7 @@
 import Foundation
 import MusicKit
 import MediaPlayer
+import Combine
 import UIKit
 
 extension Notification.Name {
@@ -60,8 +61,41 @@ enum AppleMusicRecommendationError: LocalizedError {
 }
 
 @MainActor
+final class ApplicationPlaybackContext: ObservableObject {
+    static let shared = ApplicationPlaybackContext()
+
+    @Published private(set) var songs: [Song] = []
+    @Published private(set) var currentSong: Song?
+    @Published private(set) var currentIndex: Int = 0
+
+    func configure(songs: [Song], startingAt song: Song? = nil) {
+        self.songs = songs
+        currentIndex = song.flatMap { target in songs.firstIndex(where: { $0.id == target.id }) } ?? 0
+        currentSong = songs.indices.contains(currentIndex) ? songs[currentIndex] : nil
+    }
+
+    func sync(title: String, artist: String?) {
+        guard let index = songs.firstIndex(where: {
+            $0.title.caseInsensitiveCompare(title) == .orderedSame &&
+            (artist == nil || $0.artistName.caseInsensitiveCompare(artist ?? "") == .orderedSame)
+        }) else { return }
+        currentIndex = index
+        currentSong = songs[index]
+    }
+
+    func move(by offset: Int) {
+        let index = currentIndex + offset
+        guard songs.indices.contains(index) else { return }
+        currentIndex = index
+        currentSong = songs[index]
+    }
+}
+
+@MainActor
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
+
+    let playbackContext = ApplicationPlaybackContext.shared
 
     private let player = ApplicationMusicPlayer.shared
     private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
@@ -302,7 +336,7 @@ final class AppleMusicRecommendationService {
             return nil
         } ?? []
         guard !songs.isEmpty else { throw AppleMusicRecommendationError.noPlayableTracks }
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     func play(album: Album) async throws {
@@ -312,7 +346,7 @@ final class AppleMusicRecommendationService {
             return nil
         } ?? []
         guard !songs.isEmpty else { throw AppleMusicRecommendationError.noPlayableTracks }
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     func play(station: Station) async throws {
@@ -338,7 +372,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     /// ApplicationMusicPlayer 큐가 최소 정보만 제공할 때 커버·재생 시간을 보강한다.
@@ -354,7 +388,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     /// 선택한 곡부터 목록의 마지막 곡까지 순서대로 재생한다.
@@ -375,7 +409,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs, startingAt: targetSong))
+        try await startPlayback(with: .init(for: songs, startingAt: targetSong), songs: songs, startingAt: targetSong)
     }
 
     func play(sharedTrack: SharedPlaylistTrack) async throws {
@@ -384,13 +418,18 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: [song]))
+        try await startPlayback(with: .init(for: [song]), songs: [song])
     }
 
-    private func startPlayback(with queue: ApplicationMusicPlayer.Queue) async throws {
+    private func startPlayback(
+        with queue: ApplicationMusicPlayer.Queue,
+        songs: [Song] = [],
+        startingAt song: Song? = nil
+    ) async throws {
         // 러닝 시트의 시스템 플레이어가 남아 있으면 탭마다 서로 다른 곡을 표시할 수 있다.
         // 새 재생 경로를 시작하기 전에 이전 경로를 명시적으로 멈춘다.
         MPMusicPlayerController.systemMusicPlayer.pause()
+        playbackContext.configure(songs: songs, startingAt: song)
         player.queue = queue
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()

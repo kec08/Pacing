@@ -137,6 +137,7 @@ final class RunningMusicViewModel: ObservableObject {
         queueSongs = loadedSongs
         currentSong = loadedSongs[0]
         currentSongIndex = 0
+        musicService.playbackContext.configure(songs: loadedSongs)
         applicationPlayer.queue = .init(for: loadedSongs)
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
         try? await applicationPlayer.prepareToPlay()
@@ -150,6 +151,7 @@ final class RunningMusicViewModel: ObservableObject {
         let targetSong = queueSongs[index]
         currentSongIndex = index
         currentSong = targetSong
+        musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
         applicationPlayer.queue = .init(for: queueSongs, startingAt: targetSong)
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
         try? await applicationPlayer.prepareToPlay()
@@ -158,7 +160,7 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     // MARK: - 재생 시간
-    var currentPlaybackTime: TimeInterval { isUsingApplicationPlayer ? 0 : displayPlaybackTime }
+    var currentPlaybackTime: TimeInterval { displayPlaybackTime }
     var playbackDuration: TimeInterval {
         isUsingApplicationPlayer ? applicationPlaybackDuration : player.nowPlayingItem?.playbackDuration ?? 0
     }
@@ -384,8 +386,9 @@ final class RunningMusicViewModel: ObservableObject {
     func syncCurrentState() {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
+            musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
             let song = applicationSong(from: entry)
-            currentSong = nil
+            currentSong = musicService.playbackContext.currentSong
             pendingTrackPersistentID = nil
             isPlaying = applicationPlayer.state.playbackStatus == .playing
             displayPlaybackTime = 0
@@ -467,6 +470,11 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func applicationSong(from entry: MusicKit.MusicPlayer.Queue.Entry) -> Song? {
+        if let contextSong = musicService.playbackContext.currentSong,
+           contextSong.title.caseInsensitiveCompare(entry.title) == .orderedSame &&
+           (entry.subtitle == nil || contextSong.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame) {
+            return contextSong
+        }
         if let resolvedSong = resolvedApplicationSongsByEntryID[entry.id] {
             return resolvedSong
         }

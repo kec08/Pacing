@@ -320,6 +320,10 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
     func isCurrentTrack(_ track: SharedPlaylistTrack) -> Bool {
         guard isPlaying else { return false }
+        if let contextSong = musicService.playbackContext.currentSong {
+            return track.title.caseInsensitiveCompare(contextSong.title) == .orderedSame &&
+                track.artistName.caseInsensitiveCompare(contextSong.artistName) == .orderedSame
+        }
         if !nowPlayingTitle.isEmpty {
             return track.title.caseInsensitiveCompare(nowPlayingTitle) == .orderedSame &&
                 (nowPlayingArtist.isEmpty || track.artistName.caseInsensitiveCompare(nowPlayingArtist) == .orderedSame)
