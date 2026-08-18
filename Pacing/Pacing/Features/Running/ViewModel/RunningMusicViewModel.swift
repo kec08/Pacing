@@ -48,6 +48,8 @@ final class RunningMusicViewModel: ObservableObject {
     private var pendingTrackPersistentID: MPMediaEntityPersistentID?
     private var activePlaylistLoadID: UUID?
     private var resolvingSongArtworkIDs: Set<String> = []
+    private var resolvedApplicationSongsByEntryID: [String: Song] = [:]
+    private var resolvingApplicationEntryIDs: Set<String> = []
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -174,12 +176,12 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     var canSkipToPrevious: Bool {
-        if isUsingApplicationPlayer { return currentSongIndex > 0 }
+        if isUsingApplicationPlayer { return true }
         return currentSongIndex > 0 && currentSongIndex < cachedMediaItems.count
     }
 
     var canSkipToNext: Bool {
-        if isUsingApplicationPlayer { return currentSongIndex + 1 < queueSongs.count }
+        if isUsingApplicationPlayer { return true }
         return currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
     }
 
@@ -280,7 +282,12 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     func seek(to time: TimeInterval) {
-        guard !isUsingApplicationPlayer else { return }
+        if isUsingApplicationPlayer {
+            let boundedTime = max(0, min(time, playbackDuration))
+            applicationPlayer.playbackTime = boundedTime
+            displayPlaybackTime = boundedTime
+            return
+        }
         let boundedTime = max(0, min(time, playbackDuration))
         let effectiveTime = boundedTime == 0 ? 0.05 : boundedTime
         let shouldResumePlayback = isPlaying || player.playbackState == .playing
@@ -399,6 +406,7 @@ final class RunningMusicViewModel: ObservableObject {
                 currentSongIndex = index
                 currentSong = queueSongs[index]
             }
+            resolveApplicationSongMetadataIfNeeded(for: entry, song: song)
             return
         }
 
@@ -459,10 +467,38 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func applicationSong(from entry: MusicKit.MusicPlayer.Queue.Entry) -> Song? {
+        if let resolvedSong = resolvedApplicationSongsByEntryID[entry.id] {
+            return resolvedSong
+        }
         guard let item = entry.item,
               case let .song(song) = item
         else { return nil }
         return song
+    }
+
+    private func resolveApplicationSongMetadataIfNeeded(
+        for entry: MusicKit.MusicPlayer.Queue.Entry,
+        song: Song?
+    ) {
+        guard resolvedApplicationSongsByEntryID[entry.id] == nil,
+              !resolvingApplicationEntryIDs.contains(entry.id),
+              let item = entry.item,
+              case let .song(queueSong) = item,
+              (queueSong.artwork == nil || queueSong.duration == nil)
+        else { return }
+
+        resolvingApplicationEntryIDs.insert(entry.id)
+
+        Task { [weak self] in
+            guard let self else { return }
+            let resolvedSong = await self.musicService.resolveCatalogSong(id: queueSong.id)
+            self.resolvingApplicationEntryIDs.remove(entry.id)
+            guard let resolvedSong,
+                  self.applicationPlayer.queue.currentEntry?.id == entry.id
+            else { return }
+            self.resolvedApplicationSongsByEntryID[entry.id] = resolvedSong
+            self.syncCurrentState()
+        }
     }
 
     private func synchronizeTrackTransition(to index: Int) async {
@@ -565,6 +601,13 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func updatePlaybackClock() {
+        if isUsingApplicationPlayer {
+            let duration = playbackDuration
+            let playbackTime = max(0, applicationPlayer.playbackTime)
+            displayPlaybackTime = duration > 0 ? min(playbackTime, duration) : playbackTime
+            return
+        }
+
         let rawTime = max(0, player.currentPlaybackTime)
         let duration = playbackDuration
         let boundedRawTime = duration > 0 ? min(rawTime, duration) : rawTime

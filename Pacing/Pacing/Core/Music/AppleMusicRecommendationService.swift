@@ -341,6 +341,13 @@ final class AppleMusicRecommendationService {
         try await startPlayback(with: .init(for: songs))
     }
 
+    /// ApplicationMusicPlayer 큐가 최소 정보만 제공할 때 커버·재생 시간을 보강한다.
+    func resolveCatalogSong(id: MusicItemID) async -> Song? {
+        var request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: [id])
+        request.limit = 1
+        return try? await request.response().items.first
+    }
+
     func play(sharedTracks: [SharedPlaylistTrack]) async throws {
         let songs = try await resolveCatalogSongs(for: sharedTracks)
         guard !songs.isEmpty else {
