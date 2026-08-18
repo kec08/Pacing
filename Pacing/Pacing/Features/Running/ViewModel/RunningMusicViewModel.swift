@@ -49,8 +49,9 @@ final class RunningMusicViewModel: ObservableObject {
     private var pendingApplicationTrackIndex: Int?
     private var activePlaylistLoadID: UUID?
     private var resolvingSongArtworkIDs: Set<String> = []
-    private var resolvedApplicationSongsByEntryID: [String: Song] = [:]
+    private var resolvedApplicationSongsByEntryKey: [String: Song] = [:]
     private var resolvingApplicationEntryIDs: Set<String> = []
+    private var applicationSongResolutionTasks: [String: Task<Void, Never>] = [:]
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -66,6 +67,7 @@ final class RunningMusicViewModel: ObservableObject {
     deinit {
         playbackClock?.cancel()
         seekSyncTask?.cancel()
+        applicationSongResolutionTasks.values.forEach { $0.cancel() }
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
     }
@@ -235,12 +237,18 @@ final class RunningMusicViewModel: ObservableObject {
            let entry = applicationPlayer.queue.currentEntry {
             let song = applicationSong(from: entry)
             let systemArtwork = matchingSystemArtwork(for: entry)
+            let queueSong = queueSongs.first { queueSong in
+                queueSong.title.caseInsensitiveCompare(entry.title) == .orderedSame
+                    && (entry.subtitle == nil
+                        || queueSong.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame)
+            }
             return PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? artworkURL(for: queueSong),
                 artwork: systemArtwork
             )
         }
@@ -426,6 +434,8 @@ final class RunningMusicViewModel: ObservableObject {
     func syncCurrentState() {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
+            let entryKey = applicationEntryKey(for: entry)
+            cancelResolutionTasks(except: entryKey)
             if let pendingIndex = pendingApplicationTrackIndex,
                queueSongs.indices.contains(pendingIndex) {
                 let pendingSong = queueSongs[pendingIndex]
@@ -468,7 +478,7 @@ final class RunningMusicViewModel: ObservableObject {
                 currentSongIndex = index
                 currentSong = queueSongs[index]
             }
-            resolveApplicationSongMetadataIfNeeded(for: entry, song: song)
+            resolveApplicationSongMetadataIfNeeded(for: entry, song: song, entryKey: entryKey)
             return
         }
 
@@ -529,7 +539,7 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func applicationSong(from entry: MusicKit.MusicPlayer.Queue.Entry) -> Song? {
-        if let resolvedSong = resolvedApplicationSongsByEntryID[entry.id] {
+        if let resolvedSong = resolvedApplicationSongsByEntryKey[applicationEntryKey(for: entry)] {
             return resolvedSong
         }
         if let contextSong = musicService.playbackContext.currentSong,
@@ -558,10 +568,11 @@ final class RunningMusicViewModel: ObservableObject {
 
     private func resolveApplicationSongMetadataIfNeeded(
         for entry: MusicKit.MusicPlayer.Queue.Entry,
-        song: Song?
+        song: Song?,
+        entryKey: String
     ) {
-        guard resolvedApplicationSongsByEntryID[entry.id] == nil,
-              !resolvingApplicationEntryIDs.contains(entry.id),
+        guard resolvedApplicationSongsByEntryKey[entryKey] == nil,
+              !resolvingApplicationEntryIDs.contains(entryKey),
               song?.artwork == nil || song?.duration == nil
         else { return }
 
@@ -575,9 +586,9 @@ final class RunningMusicViewModel: ObservableObject {
             catalogID = MusicItemID(entry.id)
         }
 
-        resolvingApplicationEntryIDs.insert(entry.id)
+        resolvingApplicationEntryIDs.insert(entryKey)
 
-        Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let songByID = await self.musicService.resolveCatalogSong(id: catalogID)
             // Queue.Entry.id가 카탈로그 Song ID가 아닌 경우 Resource 요청은
@@ -592,12 +603,29 @@ final class RunningMusicViewModel: ObservableObject {
                     artist: entry.subtitle ?? ""
                 ) ?? songByID
             }
-            self.resolvingApplicationEntryIDs.remove(entry.id)
+            self.resolvingApplicationEntryIDs.remove(entryKey)
             guard let resolvedSong,
-                  self.applicationPlayer.queue.currentEntry?.id == entry.id
+                  self.applicationPlayer.queue.currentEntry.map({ self.applicationEntryKey(for: $0) }) == entryKey
             else { return }
-            self.resolvedApplicationSongsByEntryID[entry.id] = resolvedSong
+            self.resolvedApplicationSongsByEntryKey[entryKey] = resolvedSong
             self.syncCurrentState()
+        }
+        applicationSongResolutionTasks[entryKey] = task
+    }
+
+    private func applicationEntryKey(
+        for entry: MusicKit.MusicPlayer.Queue.Entry
+    ) -> String {
+        "\(entry.id)|\(entry.title)|\(entry.subtitle ?? "")"
+    }
+
+    private func cancelResolutionTasks(except currentEntryKey: String) {
+        let staleKeys = applicationSongResolutionTasks.keys.filter { $0 != currentEntryKey }
+        for staleKey in staleKeys {
+            applicationSongResolutionTasks[staleKey]?.cancel()
+            applicationSongResolutionTasks.removeValue(forKey: staleKey)
+            resolvingApplicationEntryIDs.remove(staleKey)
+            resolvedApplicationSongsByEntryKey.removeValue(forKey: staleKey)
         }
     }
 
