@@ -197,13 +197,14 @@ final class RunningMusicViewModel: ObservableObject {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let song = applicationSong(from: entry)
+            let systemArtwork = player.nowPlayingItem?.artwork?.image(at: CGSize(width: 900, height: 900))
             return PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
                 artworkURL: song?.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? entry.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: nil
+                artwork: systemArtwork
             )
         }
 
@@ -404,12 +405,16 @@ final class RunningMusicViewModel: ObservableObject {
                 songStoreID: entry.id,
                 artworkURL: song?.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? entry.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: nil
+                artwork: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 900, height: 900))
             )
-            if let index = queueSongs.firstIndex(where: {
+            if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
+                ?? queueSongs.firstIndex(where: {
                 $0.title.caseInsensitiveCompare(entry.title) == .orderedSame &&
                 ($0.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame || entry.subtitle == nil)
-            }) {
+            })
+                ?? queueSongs.firstIndex(where: {
+                    $0.title.caseInsensitiveCompare(entry.title) == .orderedSame
+                }) {
                 isGoingForward = index >= currentSongIndex
                 currentSongIndex = index
                 currentSong = queueSongs[index]

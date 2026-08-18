@@ -75,10 +75,14 @@ final class ApplicationPlaybackContext: ObservableObject {
     }
 
     func sync(title: String, artist: String?) {
-        guard let index = songs.firstIndex(where: {
+        let exactIndex = songs.firstIndex(where: {
             $0.title.caseInsensitiveCompare(title) == .orderedSame &&
             (artist == nil || $0.artistName.caseInsensitiveCompare(artist ?? "") == .orderedSame)
-        }) else { return }
+        })
+        let index = exactIndex ?? songs.firstIndex(where: {
+            $0.title.caseInsensitiveCompare(title) == .orderedSame
+        })
+        guard let index else { return }
         currentIndex = index
         currentSong = songs[index]
     }
