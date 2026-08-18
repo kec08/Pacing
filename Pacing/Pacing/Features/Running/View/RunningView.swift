@@ -795,8 +795,10 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
+                            // 플레이리스트에서 받은 Song은 앨범 아트를 이미 포함한다.
+                            // ApplicationMusicPlayer 재생 여부로 이 경로를 막으면
+                            // 빈 큐 엔트리의 placeholder만 표시되므로 항상 우선 사용한다.
                             } else if !isActiveListenGuest,
-                                      !musicVM.isUsingApplicationPlayer,
                                       !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
