@@ -50,6 +50,8 @@ final class RunningMusicViewModel: ObservableObject {
     private var activePlaylistLoadID: UUID?
     private var resolvingSongArtworkIDs: Set<String> = []
     private var resolvedApplicationSongsByEntryKey: [String: Song] = [:]
+    private var resolvedApplicationArtworkURLsByEntryKey: [String: String] = [:]
+    private var attemptedApplicationArtworkEntryKeys: Set<String> = []
     private var resolvingApplicationEntryIDs: Set<String> = []
     private var applicationSongResolutionTasks: [String: Task<Void, Never>] = [:]
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
@@ -248,6 +250,7 @@ final class RunningMusicViewModel: ObservableObject {
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? resolvedApplicationArtworkURLsByEntryKey[applicationEntryKey(for: entry)]
                     ?? artworkURL(for: queueSong),
                 artwork: systemArtwork
             )
@@ -463,7 +466,8 @@ final class RunningMusicViewModel: ObservableObject {
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? resolvedApplicationArtworkURLsByEntryKey[entryKey],
                 artwork: matchingSystemArtwork(for: entry)
             )
             if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
@@ -571,9 +575,14 @@ final class RunningMusicViewModel: ObservableObject {
         song: Song?,
         entryKey: String
     ) {
-        guard resolvedApplicationSongsByEntryKey[entryKey] == nil,
+        if let artworkURL = song?.artwork?.url(width: 900, height: 900)?.absoluteString {
+            resolvedApplicationArtworkURLsByEntryKey[entryKey] = artworkURL
+        }
+
+        guard resolvedApplicationArtworkURLsByEntryKey[entryKey] == nil,
+              !attemptedApplicationArtworkEntryKeys.contains(entryKey),
               !resolvingApplicationEntryIDs.contains(entryKey),
-              song?.artwork == nil || song?.duration == nil
+              resolvedApplicationSongsByEntryKey[entryKey] == nil || song?.artwork == nil
         else { return }
 
         let catalogID: MusicItemID
@@ -587,6 +596,7 @@ final class RunningMusicViewModel: ObservableObject {
         }
 
         resolvingApplicationEntryIDs.insert(entryKey)
+        attemptedApplicationArtworkEntryKeys.insert(entryKey)
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -603,11 +613,24 @@ final class RunningMusicViewModel: ObservableObject {
                     artist: entry.subtitle ?? ""
                 ) ?? songByID
             }
+            let resolvedArtworkURL: String?
+            if let songArtworkURL = resolvedSong?.artwork?.url(width: 900, height: 900)?.absoluteString {
+                resolvedArtworkURL = songArtworkURL
+            } else {
+                resolvedArtworkURL = await self.musicService.resolvedRecentSongArtworkURL(
+                    title: entry.title,
+                    artistName: entry.subtitle ?? ""
+                )
+            }
             self.resolvingApplicationEntryIDs.remove(entryKey)
-            guard let resolvedSong,
-                  self.applicationPlayer.queue.currentEntry.map({ self.applicationEntryKey(for: $0) }) == entryKey
+            guard self.applicationPlayer.queue.currentEntry.map({ self.applicationEntryKey(for: $0) }) == entryKey
             else { return }
-            self.resolvedApplicationSongsByEntryKey[entryKey] = resolvedSong
+            if let resolvedSong {
+                self.resolvedApplicationSongsByEntryKey[entryKey] = resolvedSong
+            }
+            if let resolvedArtworkURL {
+                self.resolvedApplicationArtworkURLsByEntryKey[entryKey] = resolvedArtworkURL
+            }
             self.syncCurrentState()
         }
         applicationSongResolutionTasks[entryKey] = task
@@ -626,6 +649,8 @@ final class RunningMusicViewModel: ObservableObject {
             applicationSongResolutionTasks.removeValue(forKey: staleKey)
             resolvingApplicationEntryIDs.remove(staleKey)
             resolvedApplicationSongsByEntryKey.removeValue(forKey: staleKey)
+            resolvedApplicationArtworkURLsByEntryKey.removeValue(forKey: staleKey)
+            attemptedApplicationArtworkEntryKeys.remove(staleKey)
         }
     }
 
