@@ -51,6 +51,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private var applicationQueueObserver: AnyCancellable?
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
+    private var playbackContextObserver: AnyCancellable?
     private var isStartingPlayback = false
     private var pendingPlaybackTrackID: String?
 
@@ -594,6 +595,15 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
                 self?.syncCurrentTrack()
             }
+
+        // 미니 플레이어의 다음/이전 버튼은 이 뷰모델 밖에서 실행된다.
+        // 공통 재생 컨텍스트를 직접 구독해 목록의 핑크 강조가 현재 곡과
+        // 동시에 이동하도록 한다.
+        playbackContextObserver = musicService.playbackContext.$currentSong
+            .receive(on: RunLoop.main)
+            .sink { [weak self] song in
+                self?.applyPlaybackContext(song)
+            }
     }
 
     private func bindApplicationQueue() {
@@ -622,6 +632,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
         if let entry = applicationPlayer.queue.currentEntry,
            applicationPlayer.state.playbackStatus != .stopped {
+            musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
             nowPlayingTitle = entry.title
             nowPlayingArtist = entry.subtitle ?? summary.ownerNickname
             nowPlayingArtwork = nil
@@ -677,6 +688,23 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
         playingTrackID = nil
         pendingPlaybackTrackID = nil
+    }
+
+    private func applyPlaybackContext(_ song: Song?) {
+        guard let song else { return }
+
+        nowPlayingTitle = song.title
+        nowPlayingArtist = song.artistName
+        if let matchedTrack = tracks.first(where: {
+            $0.title.caseInsensitiveCompare(song.title) == .orderedSame
+                && $0.artistName.caseInsensitiveCompare(song.artistName) == .orderedSame
+        }) {
+            playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
+        } else {
+            playingTrackID = nil
+            pendingPlaybackTrackID = nil
+        }
     }
 
     func togglePlayPause() {

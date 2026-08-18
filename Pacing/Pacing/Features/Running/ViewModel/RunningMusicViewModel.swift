@@ -187,7 +187,9 @@ final class RunningMusicViewModel: ObservableObject {
         return currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
     }
 
-    private var isUsingApplicationPlayer: Bool {
+    // 음악 탭에서 시작한 ApplicationMusicPlayer 재생은 엔트리 메타데이터가
+    // 가장 최신이므로, 러닝 시트도 동일한 스냅샷을 우선 렌더링한다.
+    var isUsingApplicationPlayer: Bool {
         applicationPlayer.queue.currentEntry != nil && applicationPlayer.state.playbackStatus != .stopped
     }
 
@@ -391,8 +393,11 @@ final class RunningMusicViewModel: ObservableObject {
             currentSong = musicService.playbackContext.currentSong
             pendingTrackPersistentID = nil
             isPlaying = applicationPlayer.state.playbackStatus == .playing
-            displayPlaybackTime = 0
             applicationPlaybackDuration = song?.duration ?? 0
+            // pause/state 알림마다 0초를 다시 대입하면 실제 재생 위치가 잠깐
+            // 처음으로 튀었다가 폴링 주기에 맞춰 복귀한다. 플레이어의 현재 값을
+            // 즉시 반영해 일시정지와 시킹 모두 같은 위치를 유지한다.
+            updatePlaybackClock()
             nowPlayingSnapshot = PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",

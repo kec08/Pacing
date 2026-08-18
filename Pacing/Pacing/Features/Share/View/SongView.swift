@@ -627,6 +627,12 @@ final class SongNowPlayingController: ObservableObject {
            applicationPlayer.state.playbackStatus != .stopped {
             let nextTitle = entry.title
             let nextArtist = entry.subtitle ?? "Apple Music"
+            // 앨범/플레이리스트 상세 행의 강조 상태는 이 공통 컨텍스트를
+            // 구독한다. 미니 플레이어 조작도 같은 현재 곡으로 즉시 반영한다.
+            AppleMusicRecommendationService.shared.playbackContext.sync(
+                title: nextTitle,
+                artist: entry.subtitle
+            )
             let didTrackChange = title != nextTitle || artist != nextArtist
             title = nextTitle
             artist = nextArtist

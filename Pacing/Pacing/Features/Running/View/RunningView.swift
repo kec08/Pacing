@@ -795,7 +795,9 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
+                            } else if !isActiveListenGuest,
+                                      !musicVM.isUsingApplicationPlayer,
+                                      !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
