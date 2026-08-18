@@ -11,6 +11,95 @@ admin.initializeApp();
 const firestore = admin.firestore();
 const realtimeDatabase = admin.database();
 
+function profileVisibilityAllows(profile, viewerUID, friendUIDs) {
+  if (!profile || profile.id === viewerUID) return true;
+
+  // 공개 범위 필드가 도입되기 전 사용자 프로필은 기존 동작을 유지한다.
+  const visibility = profile.get("profileVisibility") || "public";
+  if (visibility === "public") return true;
+  if (visibility === "friendsOnly") return friendUIDs.has(profile.id);
+  return false;
+}
+
+function publicProfileData(profile) {
+  const data = {
+    id: profile.id,
+    nickname: profile.get("nickname") || "러너",
+    statusText: profile.get("statusText") || "최근 활동 없음",
+  };
+  const profileImageBase64 = profile.get("profileImageBase64");
+  if (profileImageBase64) data.profileImageBase64 = profileImageBase64;
+  return data;
+}
+
+async function friendUIDsFor(uid) {
+  const snapshot = await firestore.collection("users").doc(uid).collection("friends").get();
+  return new Set(snapshot.docs.map((document) => document.id));
+}
+
+/**
+ * Returns basic profile identity for a direct profile screen and separately
+ * reports whether detailed activity is visible. Search/recommend never return
+ * private profiles, so this is only reachable from a known profile route.
+ */
+exports.getVisibleProfile = onCall(async (request) => {
+  const viewerUID = request.auth?.uid;
+  const targetUID = request.data?.uid;
+  if (!viewerUID) {
+    throw new HttpsError("unauthenticated", "로그인한 사용자만 프로필을 볼 수 있어요.");
+  }
+  if (!targetUID || typeof targetUID !== "string") {
+    throw new HttpsError("invalid-argument", "프로필 사용자 ID가 필요해요.");
+  }
+
+  const [profile, friendUIDs] = await Promise.all([
+    firestore.collection("users").doc(targetUID).get(),
+    friendUIDsFor(viewerUID),
+  ]);
+  if (!profile.exists) {
+    return { visible: false };
+  }
+  return {
+    visible: profileVisibilityAllows(profile, viewerUID, friendUIDs),
+    profile: publicProfileData(profile),
+  };
+});
+
+/**
+ * Searches or recommends profiles after applying profile visibility on the
+ * server. The response deliberately excludes height, weight and activity data.
+ */
+exports.listVisibleProfiles = onCall(async (request) => {
+  const viewerUID = request.auth?.uid;
+  const mode = request.data?.mode;
+  const requestedLimit = Number(request.data?.limit);
+  const limit = Math.min(Math.max(Number.isFinite(requestedLimit) ? requestedLimit : 10, 1), 20);
+  if (!viewerUID) {
+    throw new HttpsError("unauthenticated", "로그인한 사용자만 프로필을 검색할 수 있어요.");
+  }
+  if (mode !== "search" && mode !== "recommended") {
+    throw new HttpsError("invalid-argument", "지원하지 않는 프로필 조회 방식이에요.");
+  }
+
+  const friendUIDs = await friendUIDsFor(viewerUID);
+  let query = firestore.collection("users");
+  if (mode === "search") {
+    const keyword = typeof request.data?.query === "string" ? request.data.query.trim() : "";
+    if (!keyword) return { profiles: [] };
+    query = query.orderBy("nickname").startAt(keyword).endAt(`${keyword}\uf8ff`);
+  } else {
+    query = query.orderBy("createdAt", "desc");
+  }
+
+  // 공개 범위 필터로 일부 문서가 제외될 수 있으므로 필요한 개수보다 넉넉히 읽는다.
+  const snapshot = await query.limit(Math.min(limit * 4, 80)).get();
+  const profiles = snapshot.docs
+    .filter((profile) => profileVisibilityAllows(profile, viewerUID, friendUIDs))
+    .slice(0, limit)
+    .map(publicProfileData);
+  return { profiles };
+});
+
 async function deleteFirestoreDocuments(documents) {
   const chunks = [];
   for (let index = 0; index < documents.length; index += 400) {
@@ -128,23 +217,29 @@ exports.acceptFriendRequest = onCall(async (request) => {
   });
 
   try {
-    await firestore.runTransaction(async (transaction) => {
+    const result = await firestore.runTransaction(async (transaction) => {
       const friendRequest = await transaction.get(requestRef);
       if (!friendRequest.exists) {
         throw new HttpsError("not-found", "친구 요청을 찾을 수 없어요.");
       }
 
       const data = friendRequest.data();
-      if (data.toUID !== uid || data.status !== "pending") {
+      if (data.toUID !== uid) {
         throw new HttpsError("permission-denied", "수락할 수 없는 친구 요청이에요.");
+      }
+      // 사용자가 수락 버튼을 연속 탭하거나 네트워크가 재시도해도, 이미 완료된
+      // 동일 요청은 실패가 아닌 성공으로 응답한다. 트랜잭션이 친구 문서와 상태를
+      // 함께 기록하므로 accepted 상태는 상호 친구 관계가 완성된 상태를 뜻한다.
+      if (data.status === "accepted") {
+        return { accepted: true, alreadyAccepted: true };
+      }
+      if (data.status !== "pending" || typeof data.fromUID !== "string" || !data.fromUID) {
+        throw new HttpsError("failed-precondition", "처리할 수 없는 친구 요청이에요.");
       }
 
       const senderRef = firestore.collection("users").doc(data.fromUID);
       const recipientRef = firestore.collection("users").doc(uid);
-      const [sender, recipient] = await Promise.all([
-        transaction.get(senderRef),
-        transaction.get(recipientRef),
-      ]);
+      const [sender, recipient] = await transaction.getAll(senderRef, recipientRef);
 
       transaction.set(
         recipientRef.collection("friends").doc(data.fromUID),
@@ -157,9 +252,10 @@ exports.acceptFriendRequest = onCall(async (request) => {
         { merge: true },
       );
       transaction.update(requestRef, { status: "accepted" });
+      return { accepted: true, alreadyAccepted: false };
     });
 
-    return { accepted: true };
+    return result;
   } catch (error) {
     if (error instanceof HttpsError) throw error;
     logger.error("Friend request acceptance failed", {

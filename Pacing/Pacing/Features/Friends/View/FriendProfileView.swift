@@ -30,9 +30,13 @@ struct FriendProfileView: View {
                 VStack(spacing: 24) {
                     profileHeader
                     relationshipAction
-                    statsSection
-                    recentRunsSection
-                    recentSongsSection
+                    if vm.canViewDetails {
+                        statsSection
+                        recentRunsSection
+                        recentSongsSection
+                    } else {
+                        privateProfileNotice
+                    }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 18)
@@ -65,6 +69,12 @@ struct FriendProfileView: View {
                             .padding(.vertical, 8)
                     }
                 }
+            } else if !vm.canViewActivity {
+                privateActivityState(
+                    systemImage: "lock.fill",
+                    title: "친구가 되면 러닝을 볼 수 있어요",
+                    description: "친구 요청을 수락하면 최근 러닝 기록이 여기에 표시돼요."
+                )
             } else if vm.recentRuns.isEmpty {
                 ContentUnavailableView(
                     "최근 러닝이 없어요",
@@ -152,10 +162,14 @@ struct FriendProfileView: View {
             .foregroundStyle(relationshipForeground)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .glassRounded(cornerRadius: 16, tint: relationshipTint)
+            .glassRounded(
+                cornerRadius: 16,
+                tint: relationshipTint,
+                stroke: relationshipBorder
+            )
         }
         .buttonStyle(.plain)
-        .disabled(!vm.canTapAction)
+        .allowsHitTesting(vm.canTapAction)
         .animation(.easeInOut(duration: 0.2), value: vm.relationship)
     }
 
@@ -184,12 +198,16 @@ struct FriendProfileView: View {
     private var relationshipTint: Color {
         switch vm.relationship {
         case .friend:
-            return Color.backgroundSecondary
+            return Color.main500.opacity(0.10)
         case .requestPending:
             return Color.gray100.opacity(0.82)
         case .none:
             return Color.main500.opacity(0.13)
         }
+    }
+
+    private var relationshipBorder: Color {
+        vm.relationship == .friend ? Color.main500.opacity(0.34) : Color.surfaceBorder
     }
 
     private var statsSection: some View {
@@ -217,6 +235,25 @@ struct FriendProfileView: View {
         .padding(.vertical, 6)
     }
 
+    private var privateProfileNotice: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 30, weight: .semibold))
+                .foregroundStyle(Color.textSecondary)
+
+            Text("비공개 프로필입니다")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(Color.textPrimary)
+
+            Text("이 친구가 프로필을 비공개로 설정했어요.")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(Color.textSecondary)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 44)
+    }
+
     private var statDivider: some View {
         Rectangle()
             .fill(Color.gray300.opacity(0.7))
@@ -237,6 +274,12 @@ struct FriendProfileView: View {
                             .padding(.vertical, 8)
                     }
                 }
+            } else if !vm.canViewActivity {
+                privateActivityState(
+                    systemImage: "lock.fill",
+                    title: "친구가 되면 음악을 볼 수 있어요",
+                    description: "친구 요청을 수락하면 최근 들은 노래가 여기에 표시돼요."
+                )
             } else if vm.recentSongs.isEmpty {
                 VStack(spacing: 10) {
                     Image(systemName: "music.note")
@@ -269,6 +312,20 @@ struct FriendProfileView: View {
             get: { vm.errorMessage != nil },
             set: { if !$0 { vm.errorMessage = nil } }
         )
+    }
+
+    private func privateActivityState(
+        systemImage: String,
+        title: String,
+        description: String
+    ) -> some View {
+        ContentUnavailableView(
+            title,
+            systemImage: systemImage,
+            description: Text(description)
+        )
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 24)
     }
 }
 
@@ -467,7 +524,7 @@ private struct FriendProfileRecentRunRow: View {
                     HStack(spacing: 10) {
                         Label(formattedDistance(run.distance), systemImage: "figure.run")
                         Text(formattedDuration(run.duration))
-                        Text(formattedPace(run.avgPace) + "/km")
+                        Text(formattedPace(run.displayPace) + "/km")
                     }
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(Color.textPrimary)
@@ -507,10 +564,7 @@ private struct FriendProfileRecentRunRow: View {
     }
 
     private func formattedPace(_ pace: Double) -> String {
-        guard pace > 0 else { return "--'--\"" }
-        let minutes = Int(pace)
-        let seconds = Int((pace - Double(minutes)) * 60)
-        return String(format: "%d'%02d\"", minutes, seconds)
+        RunRecord.formattedPace(pace)
     }
 }
 
@@ -533,7 +587,8 @@ private extension View {
 
     func glassRounded(
         cornerRadius: CGFloat,
-        tint: Color = Color.backgroundPrimary.opacity(0.58)
+        tint: Color = Color.backgroundPrimary.opacity(0.58),
+        stroke: Color = Color.surfaceBorder
     ) -> some View {
         background {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -544,7 +599,7 @@ private extension View {
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                        .stroke(Color.surfaceBorder, lineWidth: 1)
+                        .stroke(stroke, lineWidth: 1)
                 }
                 .shadow(color: Color.main500.opacity(0.07), radius: 10, y: 6)
         }

@@ -16,6 +16,8 @@ struct MainTabView: View {
     @StateObject private var locationManager = LocationManager.shared
     @State private var selection: MainTab = .home
     @State private var didStartBroadcast = false
+    @State private var presenceErrorMessage: String?
+    @State private var lastPresenceErrorDate: Date?
 
     var body: some View {
         TabView(selection: $selection) {
@@ -64,6 +66,14 @@ struct MainTabView: View {
         .onDisappear {
             stopPresenceBroadcast()
         }
+        .alert("위치 공유 오류", isPresented: Binding(
+            get: { presenceErrorMessage != nil },
+            set: { if !$0 { presenceErrorMessage = nil } }
+        )) {
+            Button("확인", role: .cancel) { presenceErrorMessage = nil }
+        } message: {
+            Text(presenceErrorMessage ?? "현재 위치를 공유하지 못했어요.")
+        }
     }
 
     private func startPresenceBroadcast() {
@@ -78,6 +88,12 @@ struct MainTabView: View {
             return (item?.title ?? "", item?.artist ?? "")
         } profileImageProvider: {
             UserDefaults.standard.string(forKey: "profileImageBase64")
+        } onError: { error in
+            DispatchQueue.main.async {
+                guard lastPresenceErrorDate?.addingTimeInterval(30) ?? .distantPast < .now else { return }
+                lastPresenceErrorDate = .now
+                presenceErrorMessage = "현재 위치를 공유하지 못했어요. \(error.localizedDescription)"
+            }
         }
         didStartBroadcast = true
     }

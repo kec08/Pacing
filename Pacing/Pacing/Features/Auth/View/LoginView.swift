@@ -12,35 +12,39 @@ struct LoginView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                Spacer()
+            ZStack {
+                Color.backgroundSecondary
+                    .ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    Image("PacingLoginAppIcon")
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 82, height: 82)
-                        .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+                    Spacer()
 
-                    Spacer().frame(height: 20)
+                    VStack(spacing: 0) {
+                        Image("PacingLoginAppIcon")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(width: 82, height: 82)
+                            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
 
-                    Text("Pacing")
-                        .font(.system(size: 36, weight: .bold))
-                        .foregroundStyle(Color.textPrimary)
+                        Spacer().frame(height: 20)
 
-                    Spacer().frame(height: 8)
+                        Text("Pacing")
+                            .font(.system(size: 36, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
 
-                    Text("같은 비트, 같은 페이스")
-                        .font(.system(size: 16))
-                        .foregroundStyle(Color.textSecondary)
-                }
+                        Spacer().frame(height: 8)
 
-                Spacer()
+                        Text("같은 비트, 같은 페이스")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color.textSecondary)
+                    }
 
-                if authVM.isLoading {
+                    Spacer()
+
+                    if authVM.isLoading {
                     ProgressView()
                         .padding(.bottom, 48)
-                } else {
+                    } else {
                     VStack(spacing: 12) {
                         Button {
                             authVM.errorMessage = nil
@@ -90,7 +94,7 @@ struct LoginView: View {
                                 Text("Google로 계속하기")
                             }
                             .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(Color.textPrimary)
+                            .foregroundStyle(Color.black)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
                             .background(Color.white)
@@ -148,17 +152,18 @@ struct LoginView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
-                }
+                    }
 
-                if let error = authVM.errorMessage {
+                    if let error = authVM.errorMessage {
                     Text(error)
                         .font(.system(size: 13))
                         .foregroundStyle(Color.accent500)
                         .padding(.horizontal, 24)
                         .padding(.bottom, 16)
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .background(Color.backgroundPrimary)
             .navigationDestination(isPresented: $navigateToOnboarding) {
                 OnboardingPermissionView()
                     .navigationBarBackButtonHidden(true)

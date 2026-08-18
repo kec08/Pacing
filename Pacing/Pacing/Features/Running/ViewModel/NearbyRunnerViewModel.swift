@@ -24,6 +24,7 @@ final class NearbyRunnerViewModel: ObservableObject {
     @Published private(set) var activeFriendRunners: [NearbyRunner] = []
     @Published var selectedFilter: RunnerFilter = .nearby
     @Published var isObserving: Bool = false
+    @Published private(set) var loadError: String?
 
     private let radiusMeters: Double = 1000
     private var myUID: String = ""
@@ -35,11 +36,16 @@ final class NearbyRunnerViewModel: ObservableObject {
     func startObserving(uid: String) {
         myUID = uid
         isObserving = true
+        loadError = nil
         Task { await loadFriendIDs(uid: uid) }
         RealtimeDBService.shared.observeActiveRunners { [weak self] runners in
             Task { @MainActor [weak self] in
                 self?.allRunners = runners
                 self?.filterRunners()
+            }
+        } onError: { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.loadError = "주변 러너 정보를 불러오지 못했어요. 네트워크 연결을 확인해 주세요."
             }
         }
     }
@@ -49,6 +55,7 @@ final class NearbyRunnerViewModel: ObservableObject {
         isObserving = false
         nearbyRunners = []
         activeFriendRunners = []
+        loadError = nil
     }
 
     func updateMyLocation(_ coord: CLLocationCoordinate2D) {
@@ -118,6 +125,7 @@ final class NearbyRunnerViewModel: ObservableObject {
         } catch {
             friendIDs = []
             friendProfileImages = [:]
+            loadError = "친구 위치를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
             filterRunners()
         }
     }

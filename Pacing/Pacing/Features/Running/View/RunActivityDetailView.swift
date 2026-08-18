@@ -62,7 +62,7 @@ struct RunActivityDetailView: View {
 
     private var metricsSection: some View {
         HStack(alignment: .top, spacing: 12) {
-            compactMetric(value: formattedPace(record.avgPace), label: "평균 페이스")
+            compactMetric(value: formattedPace(record.displayPace), label: "평균 페이스")
             compactMetric(value: formattedDuration(record.duration), label: "시간")
             compactMetric(value: "\(estimatedCalories)", label: "칼로리")
         }
@@ -160,7 +160,7 @@ struct RunActivityDetailView: View {
         if !record.lapPaces.isEmpty { return record.lapPaces }
 
         let completedKilometers = Int(record.distance.rounded(.down))
-        guard completedKilometers > 0, record.avgPace > 0 else { return [] }
+        guard completedKilometers > 0, record.isPaceValid else { return [] }
 
         return (1...completedKilometers).map {
             RunLapPace(kilometer: $0, pace: record.avgPace)

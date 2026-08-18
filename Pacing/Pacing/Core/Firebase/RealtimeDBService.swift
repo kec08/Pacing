@@ -3,6 +3,8 @@ import FirebaseDatabase
 import CoreLocation
 
 struct ActiveRunner: Identifiable {
+    static let maximumAge: TimeInterval = 120
+
     let id: String
     let nickname: String
     let coordinate: CLLocationCoordinate2D
@@ -10,6 +12,10 @@ struct ActiveRunner: Identifiable {
     let artist: String
     let profileImageBase64: String?
     let updatedAt: TimeInterval
+
+    func isFresh(referenceDate: Date = .now) -> Bool {
+        updatedAt > 0 && referenceDate.timeIntervalSince1970 * 1_000 - updatedAt <= Self.maximumAge * 1_000
+    }
 }
 
 final class RealtimeDBService {
@@ -17,6 +23,7 @@ final class RealtimeDBService {
     private let db = Database.database(url: "https://pacing-a8639-default-rtdb.firebaseio.com").reference()
     private var broadcastTimer: Timer?
     private var observeHandle: DatabaseHandle?
+    private var broadcastErrorHandler: ((Error) -> Void)?
 
     private init() {}
 
@@ -26,11 +33,15 @@ final class RealtimeDBService {
         nickname: String,
         locationProvider: @escaping () -> CLLocationCoordinate2D?,
         songProvider: @escaping () -> (title: String, artist: String),
-        profileImageProvider: @escaping () -> String?
+        profileImageProvider: @escaping () -> String?,
+        onError: @escaping (Error) -> Void = { _ in }
     ) {
         guard !uid.isEmpty else { return }
+        broadcastErrorHandler = onError
         stopBroadcast(uid: uid)
-        db.child("activeRunners").child(uid).onDisconnectRemoveValue()
+        db.child("activeRunners").child(uid).onDisconnectRemoveValue { [weak self] error, _ in
+            if let error { self?.broadcastErrorHandler?(error) }
+        }
 
         broadcastTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             let coord = locationProvider()
@@ -58,7 +69,10 @@ final class RealtimeDBService {
         song: (title: String, artist: String),
         profileImageBase64: String?
     ) {
-        guard !uid.isEmpty else { return }
+        guard !uid.isEmpty,
+              let coord,
+              CLLocationCoordinate2DIsValid(coord)
+        else { return }
         var data: [String: Any] = [
             "nickname": nickname,
             "currentSongTitle": song.title,
@@ -68,11 +82,11 @@ final class RealtimeDBService {
         if let profileImageBase64, !profileImageBase64.isEmpty {
             data["profileImageBase64"] = profileImageBase64
         }
-        if let coord = coord {
-            data["latitude"] = coord.latitude
-            data["longitude"] = coord.longitude
+        data["latitude"] = coord.latitude
+        data["longitude"] = coord.longitude
+        db.child("activeRunners").child(uid).updateChildValues(data) { [weak self] error, _ in
+            if let error { self?.broadcastErrorHandler?(error) }
         }
-        db.child("activeRunners").child(uid).updateChildValues(data)
     }
 
     // MARK: - 브로드캐스트 중지
@@ -84,8 +98,11 @@ final class RealtimeDBService {
     }
 
     // MARK: - 주변 러너 구독
-    func observeActiveRunners(onChange: @escaping ([ActiveRunner]) -> Void) {
-        observeHandle = db.child("activeRunners").observe(.value) { snapshot in
+    func observeActiveRunners(
+        onChange: @escaping ([ActiveRunner]) -> Void,
+        onError: @escaping (Error) -> Void = { _ in }
+    ) {
+        observeHandle = db.child("activeRunners").observe(.value, with: { snapshot in
             var runners: [ActiveRunner] = []
             for child in snapshot.children {
                 guard
@@ -93,8 +110,12 @@ final class RealtimeDBService {
                     let d = snap.value as? [String: Any]
                 else { continue }
 
-                let lat = d["latitude"] as? Double ?? 0
-                let lng = d["longitude"] as? Double ?? 0
+                guard
+                    let lat = Self.doubleValue(d["latitude"]),
+                    let lng = Self.doubleValue(d["longitude"]),
+                    let updatedAt = Self.doubleValue(d["updatedAt"]),
+                    CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lng))
+                else { continue }
 
                 let runner = ActiveRunner(
                     id: snap.key,
@@ -103,12 +124,19 @@ final class RealtimeDBService {
                     songTitle: d["currentSongTitle"] as? String ?? "",
                     artist: d["currentArtist"] as? String ?? "",
                     profileImageBase64: d["profileImageBase64"] as? String,
-                    updatedAt: d["updatedAt"] as? TimeInterval ?? 0
+                    updatedAt: updatedAt
                 )
-                runners.append(runner)
+                if runner.isFresh() {
+                    runners.append(runner)
+                }
             }
             onChange(runners)
-        }
+        }, withCancel: onError)
+    }
+
+    private static func doubleValue(_ value: Any?) -> Double? {
+        if let number = value as? NSNumber { return number.doubleValue }
+        return value as? Double
     }
 
     // MARK: - 구독 해제
@@ -123,7 +151,9 @@ final class RealtimeDBService {
     @discardableResult
     func createListenSession(
         hostUID: String, hostNickname: String,
+        hostProfileImageBase64: String,
         guestUID: String, guestNickname: String,
+        guestProfileImageBase64: String,
         songStoreID: String, songTitle: String, artistName: String,
         artworkURL: String = "",
         artworkData: String = "",
@@ -136,8 +166,10 @@ final class RealtimeDBService {
         let data: [String: Any] = [
             "hostUID": hostUID,
             "hostNickname": hostNickname,
+            "hostProfileImageBase64": hostProfileImageBase64,
             "guestUID": guestUID,
             "guestNickname": guestNickname,
+            "guestProfileImageBase64": guestProfileImageBase64,
             "songStoreID": songStoreID,
             "songTitle": songTitle,
             "artistName": artistName,
@@ -205,8 +237,10 @@ final class RealtimeDBService {
                 id: sessionID,
                 hostUID: d["hostUID"] as? String ?? "",
                 hostNickname: d["hostNickname"] as? String ?? "",
+                hostProfileImageBase64: d["hostProfileImageBase64"] as? String ?? "",
                 guestUID: d["guestUID"] as? String ?? "",
                 guestNickname: d["guestNickname"] as? String ?? "",
+                guestProfileImageBase64: d["guestProfileImageBase64"] as? String ?? "",
                 songStoreID: d["songStoreID"] as? String ?? "",
                 songTitle: d["songTitle"] as? String ?? "",
                 artistName: d["artistName"] as? String ?? "",
@@ -243,8 +277,10 @@ final class RealtimeDBService {
                     id: child.key,
                     hostUID: d["hostUID"] as? String ?? "",
                     hostNickname: d["hostNickname"] as? String ?? "",
+                    hostProfileImageBase64: d["hostProfileImageBase64"] as? String ?? "",
                     guestUID: d["guestUID"] as? String ?? "",
                     guestNickname: d["guestNickname"] as? String ?? "",
+                    guestProfileImageBase64: d["guestProfileImageBase64"] as? String ?? "",
                     songStoreID: d["songStoreID"] as? String ?? "",
                     songTitle: d["songTitle"] as? String ?? "",
                     artistName: d["artistName"] as? String ?? "",
@@ -326,8 +362,10 @@ final class RealtimeDBService {
                                 id: snap.key,
                                 hostUID: d["hostUID"] as? String ?? "",
                                 hostNickname: d["hostNickname"] as? String ?? "",
+                                hostProfileImageBase64: d["hostProfileImageBase64"] as? String ?? "",
                                 guestUID: d["guestUID"] as? String ?? "",
                                 guestNickname: d["guestNickname"] as? String ?? "",
+                                guestProfileImageBase64: d["guestProfileImageBase64"] as? String ?? "",
                                 songStoreID: d["songStoreID"] as? String ?? "",
                                 songTitle: d["songTitle"] as? String ?? "",
                                 artistName: d["artistName"] as? String ?? "",

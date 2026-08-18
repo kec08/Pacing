@@ -629,6 +629,12 @@ final class SongNowPlayingController: ObservableObject {
            applicationPlayer.state.playbackStatus != .stopped {
             let nextTitle = entry.title
             let nextArtist = entry.subtitle ?? "Apple Music"
+            // 앨범/플레이리스트 상세 행의 강조 상태는 이 공통 컨텍스트를
+            // 구독한다. 미니 플레이어 조작도 같은 현재 곡으로 즉시 반영한다.
+            AppleMusicRecommendationService.shared.playbackContext.sync(
+                title: nextTitle,
+                artist: entry.subtitle
+            )
             let didTrackChange = title != nextTitle || artist != nextArtist
             title = nextTitle
             artist = nextArtist
@@ -1167,7 +1173,10 @@ final class ArtworkImageStore {
                 return nil
             }
 
-            return downsampledImage(from: data)
+            // Apple Music artwork 응답은 기기/콘텐츠에 따라 ImageIO 썸네일 생성이
+            // 실패할 수 있다. 음악 탭에서 사용하는 UIImage 디코딩을 최종 fallback으로
+            // 사용해 유효한 artwork URL이 placeholder로 끝나지 않게 한다.
+            return downsampledImage(from: data) ?? UIImage(data: data)
         } catch {
             return nil
         }

@@ -14,6 +14,7 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var playingSongID: String?
     @Published var playbackError: String?
     @Published var isLoading: Bool = false
+    @Published var canViewDetails: Bool = true
     @Published var isUpdatingRelationship: Bool = false
     @Published var errorMessage: String?
 
@@ -28,25 +29,56 @@ final class FriendProfileViewModel: ObservableObject {
     func load() async {
         isLoading = true
         errorMessage = nil
+        canViewDetails = true
+        defer { isLoading = false }
 
         do {
-            async let profileTask = service.fetchFriendUserProfile(uid: friend.id, source: .friend)
+            // 사용자 기본 프로필과 현재 사용자의 친구 관계는 공개/본인 데이터이므로
+            // 먼저 조회한다. 친구 전용 활동 데이터는 관계가 확인된 뒤에만 요청한다.
+            let profileAccess = try await service.fetchFriendUserProfile(uid: friend.id, source: .friend)
+            friend = profileAccess.user
+            canViewDetails = profileAccess.canViewDetails
+            relationship = try await fetchRelationship()
+
+            guard relationship == .friend, canViewDetails else {
+                stats = .empty
+                recentRuns = []
+                recentSongs = []
+                recentSongArtworkURLs = [:]
+                return
+            }
+
             async let statsTask = service.fetchFriendProfileStats(uid: friend.id)
             async let runsTask = service.fetchRunHistory(uid: friend.id, limit: 5)
             async let songsTask = service.fetchRecentSongs(uid: friend.id, limit: 5)
-            async let relationshipTask = fetchRelationship()
 
-            friend = try await profileTask
             stats = try await statsTask
             recentRuns = try await runsTask
             recentSongs = try await songsTask
             recentSongArtworkURLs = await resolveArtworkURLs(for: recentSongs)
-            relationship = try await relationshipTask
         } catch {
+            if error is ProfileVisibilityError {
+                canViewDetails = false
+                stats = .empty
+                recentRuns = []
+                recentSongs = []
+                recentSongArtworkURLs = [:]
+                return
+            }
+
+            // 비친구 프로필은 공개 정보와 친구 추가 UI만 제공하면 된다. 이 상태에서
+            // 관계·활동 조회가 일시적으로 실패해도 권한 제한을 오류로 노출하지 않고
+            // 잠금 상태를 유지한다.
+            guard relationship == .friend else {
+                stats = .empty
+                recentRuns = []
+                recentSongs = []
+                recentSongArtworkURLs = [:]
+                return
+            }
+
             errorMessage = "친구 프로필을 불러오지 못했어요."
         }
-
-        isLoading = false
     }
 
     private func resolveArtworkURLs(for songs: [FriendRecentSong]) async -> [String: String] {
@@ -186,7 +218,8 @@ final class FriendProfileViewModel: ObservableObject {
     }
 
     var activityText: String {
-        FriendActivityText.runningStatus(lastRunDate: stats.lastRunDate)
+        guard canViewDetails else { return friend.statusText }
+        return FriendActivityText.runningStatus(lastRunDate: stats.lastRunDate)
     }
 
     var isTodayActivity: Bool {
@@ -206,5 +239,9 @@ final class FriendProfileViewModel: ObservableObject {
 
     var canTapAction: Bool {
         relationship != .friend && !isUpdatingRelationship
+    }
+
+    var canViewActivity: Bool {
+        relationship == .friend
     }
 }

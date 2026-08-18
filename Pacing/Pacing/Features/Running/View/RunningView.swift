@@ -783,13 +783,17 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
+                            // 선택한 플레이리스트의 곡 목록은 ApplicationMusicPlayer 재생 중에도
+                            // 기존처럼 스크롤해 다음/이전 곡으로 전환할 수 있어야 한다.
+                            } else if !isActiveListenGuest,
+                                      !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
-                                        musicVM.isGoingForward = newIndex > musicVM.currentSongIndex
+                                        let previousIndex = musicVM.currentSongIndex
+                                        musicVM.isGoingForward = newIndex > previousIndex
                                         musicVM.currentSongIndex = newIndex
-                                        Task { await musicVM.play(at: newIndex) }
+                                        Task { await musicVM.play(at: newIndex, from: previousIndex) }
                                     }
                                 )) {
                                     ForEach(musicVM.queueSongs.indices, id: \.self) { idx in
@@ -818,10 +822,14 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
+                            } else if let artwork = musicVM.currentMusicArtwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
                             } else if let artworkURL = displaySnapshot?.artworkURL {
                                 RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
                                     .frame(width: artSize, height: artSize)
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id(displaySnapshot?.songStoreID)
                             } else {
                                 artworkPlaceholder
                                     .frame(width: artSize, height: artSize)
@@ -925,9 +933,14 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(
+                                        isActiveListenGuest || !musicVM.canSkipToPrevious
+                                            ? Color.textSecondary.opacity(0.35)
+                                            : .primary
+                                    )
                             }
-                            .disabled(isActiveListenGuest)
+                            .disabled(isActiveListenGuest || !musicVM.canSkipToPrevious)
+                            .accessibilityLabel("이전 곡")
 
                             Button {
                                 if shouldRunLocalPlaybackClock {
@@ -947,9 +960,14 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(
+                                        isActiveListenGuest || !musicVM.canSkipToNext
+                                            ? Color.textSecondary.opacity(0.35)
+                                            : .primary
+                                    )
                             }
-                            .disabled(isActiveListenGuest)
+                            .disabled(isActiveListenGuest || !musicVM.canSkipToNext)
+                            .accessibilityLabel("다음 곡")
                         }
                         .padding(.top, 20)
 
@@ -1100,7 +1118,7 @@ struct RunningView: View {
                     .padding(.vertical, 16)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
+                    LazyHStack(spacing: 14) {
                         ForEach(musicVM.playlists, id: \.id) { playlist in
                             Button {
                                 Task { await musicVM.play(playlist: playlist) }
@@ -1143,10 +1161,12 @@ struct RunningView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+                .frame(height: 126)
             }
 
             Spacer().frame(height: 8)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.1), radius: 10, y: 4)
@@ -1246,6 +1266,9 @@ struct RunningView: View {
                                 .foregroundStyle(Color.main500)
                         }
                 }
+            }
+            .task(id: song.id) {
+                await musicVM.loadArtworkURLIfNeeded(for: song)
             }
             .overlay {
                 if isCurrentTrack {
@@ -1838,7 +1861,9 @@ struct RunningView: View {
             // 같이 듣기 버튼
             Button {
                 showNearbySheet = false
-                listenVM.sendRequest(to: runner, musicVM: musicVM)
+                Task {
+                    await listenVM.sendRequest(to: runner, musicVM: musicVM)
+                }
             } label: {
                 Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
                     .font(.system(size: 13, weight: .medium))

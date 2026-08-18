@@ -19,6 +19,25 @@ struct RunRecord: Identifiable {
 }
 
 extension RunRecord {
+    static let minimumValidDistance: Double = 0.10
+    static let maximumValidPace: Double = 30.0
+
+    var isPaceValid: Bool {
+        distance.isFinite && duration > 0 && avgPace.isFinite
+            && distance >= Self.minimumValidDistance
+            && avgPace > 0
+            && avgPace <= Self.maximumValidPace
+    }
+
+    var displayPace: Double { isPaceValid ? avgPace : 0 }
+
+    static func formattedPace(_ pace: Double) -> String {
+        guard pace.isFinite, pace > 0, pace <= maximumValidPace else { return "--'--\"" }
+        let minutes = Int(pace)
+        let seconds = Int((pace - Double(minutes)) * 60)
+        return String(format: "%d'%02d\"", minutes, seconds)
+    }
+
     static let dummies: [RunRecord] = {
         let cal = Calendar.current
         let now = Date()
@@ -45,8 +64,10 @@ struct ListenSession: Identifiable {
     let id: String
     let hostUID: String
     let hostNickname: String
+    var hostProfileImageBase64: String = ""
     let guestUID: String
     let guestNickname: String
+    var guestProfileImageBase64: String = ""
     var songStoreID: String
     var songTitle: String
     var artistName: String
@@ -68,5 +89,9 @@ struct ListenSession: Identifiable {
 
     func partnerUID(for currentUID: String) -> String {
         currentUID == hostUID ? guestUID : hostUID
+    }
+
+    func profileImageBase64(for uid: String) -> String {
+        uid == hostUID ? hostProfileImageBase64 : guestProfileImageBase64
     }
 }

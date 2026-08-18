@@ -44,10 +44,18 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     // MARK: - 같이 듣기 요청 보내기
-    func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) {
+    func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) async {
+        let cachedProfileImage = UserDefaults.standard.string(forKey: "profileImageBase64") ?? ""
+        let latestProfileImage = (try? await FirestoreService.shared.fetchUserProfile(uid: myUID))?["profileImageBase64"] as? String
+        let hostProfileImageBase64 = latestProfileImage?.isEmpty == false ? latestProfileImage! : cachedProfileImage
+        if !hostProfileImageBase64.isEmpty {
+            UserDefaults.standard.set(hostProfileImageBase64, forKey: "profileImageBase64")
+        }
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
+            hostProfileImageBase64: hostProfileImageBase64,
             guestUID: runner.id, guestNickname: runner.nickname,
+            guestProfileImageBase64: runner.profileImageBase64 ?? "",
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",
@@ -56,7 +64,9 @@ final class ListenTogetherViewModel: ObservableObject {
 
         activeSession = ListenSession(
             id: sessionID, hostUID: myUID, hostNickname: myNickname,
+            hostProfileImageBase64: hostProfileImageBase64,
             guestUID: runner.id, guestNickname: runner.nickname,
+            guestProfileImageBase64: runner.profileImageBase64 ?? "",
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",

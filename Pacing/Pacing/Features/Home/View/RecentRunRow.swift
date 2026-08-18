@@ -23,7 +23,7 @@ struct RecentRunRow: View {
                         Text(vm.formatDuration(run.duration))
                             .font(.system(size: 14))
                             .foregroundStyle(Color.textSecondary)
-                        Text(vm.formatPace(run.avgPace) + "/km")
+                        Text(vm.formatPace(run.displayPace) + "/km")
                             .font(.system(size: 14))
                             .foregroundStyle(Color.textSecondary)
                     }

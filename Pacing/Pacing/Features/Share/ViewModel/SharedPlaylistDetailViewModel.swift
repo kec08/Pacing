@@ -51,6 +51,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private var applicationQueueObserver: AnyCancellable?
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
+    private var playbackContextObserver: AnyCancellable?
+    private var isStartingPlayback = false
+    private var pendingPlaybackTrackID: String?
 
     init(sharedPlaylist: SharedPlaylistSummary) {
         self.source = .shared(sharedPlaylist)
@@ -172,6 +175,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                     let isSaved = try await firestoreService.isSavedSharedPlaylist(uid: uid, playlistID: summary.id)
                     appSaveState = isSaved ? .saved : .idle
                 }
+                canSaveToAppleMusic = (try? await musicService.currentSubscription())?.canPlayCatalogContent ?? false
             case .recommendation(let playlist):
                 let loadedTracks = try await musicService.loadTracks(for: playlist)
                 tracks = loadedTracks
@@ -265,15 +269,16 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func playAll() async {
-        if let firstTrack = tracks.first {
-            playingTrackID = firstTrack.id
-        }
+        let firstTrackID = tracks.first?.id
+        pendingPlaybackTrackID = firstTrackID
+        playingTrackID = firstTrackID
+        isStartingPlayback = true
         isPlaying = true
 
         do {
             switch source {
             case .shared:
-                try await musicService.play(sharedTracks: tracks)
+                try await musicService.play(sharedTracks: tracks, title: summary.title)
             case .recommendation(let playlist):
                 try await musicService.play(playlist: playlist)
             case .album(let album):
@@ -282,22 +287,56 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 try await musicService.play(station: station)
                 playingTrackID = nil
             }
+            // 큐 교체 직후에는 이전 플레이어 상태 알림이 먼저 도착할 수 있다.
+            // 재생이 실제로 시작된 뒤 첫 곡 표시를 다시 확정한다.
+            if !isStationSource {
+                playingTrackID = firstTrackID
+            }
+            isStartingPlayback = false
         } catch {
+            isStartingPlayback = false
             isPlaying = false
             playingTrackID = nil
+            pendingPlaybackTrackID = nil
             errorMessage = "재생을 시작하지 못했어요."
         }
     }
 
     func play(track: SharedPlaylistTrack) async {
+        pendingPlaybackTrackID = track.id
         playingTrackID = track.id
+        isPlaying = true
+        isStartingPlayback = true
 
         do {
-            try await musicService.play(sharedTracks: tracks, startingAt: track.id)
+            try await musicService.play(sharedTracks: tracks, startingAt: track.id, title: summary.title)
+            playingTrackID = track.id
+            isStartingPlayback = false
         } catch {
+            isStartingPlayback = false
             playingTrackID = nil
+            pendingPlaybackTrackID = nil
             errorMessage = "곡 재생을 시작하지 못했어요."
         }
+    }
+
+    func isCurrentTrack(_ track: SharedPlaylistTrack) -> Bool {
+        guard isPlaying || isStartingPlayback else { return false }
+        // 클릭 직후에는 ApplicationMusicPlayer의 현재 엔트리 알림보다
+        // 선택 상태가 먼저 화면에 반영될 수 있으므로 낙관적 선택 ID를 우선한다.
+        if playingTrackID == track.id {
+            return true
+        }
+        if let contextSong = musicService.playbackContext.currentSong {
+            let titleMatches = track.title.caseInsensitiveCompare(contextSong.title) == .orderedSame
+            let artistMatches = track.artistName.caseInsensitiveCompare(contextSong.artistName) == .orderedSame
+            return titleMatches && (artistMatches || contextSong.artistName.isEmpty)
+        }
+        if !nowPlayingTitle.isEmpty {
+            return track.title.caseInsensitiveCompare(nowPlayingTitle) == .orderedSame &&
+                (nowPlayingArtist.isEmpty || track.artistName.caseInsensitiveCompare(nowPlayingArtist) == .orderedSame)
+        }
+        return playingTrackID == track.id
     }
 
     func savePrimaryPlaylist() async {
@@ -319,16 +358,53 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     func savePlaylist() async {
         guard let uid = Auth.auth().currentUser?.uid else { return }
         guard appSaveState != .saving && appSaveState != .saved else { return }
+        guard canSaveToAppleMusic else {
+            errorMessage = "Apple Music 보관함에 저장할 수 없는 상태예요."
+            return
+        }
 
         appSaveState = .saving
 
         do {
-            try await firestoreService.saveSharedPlaylistToLibrary(uid: uid, summary: summary)
+            let libraryPlaylistID: String
+            if let pendingLibraryPlaylistID = pendingLibraryPlaylistID(for: uid) {
+                libraryPlaylistID = pendingLibraryPlaylistID
+            } else {
+                libraryPlaylistID = try await musicService.createLibraryPlaylist(
+                    name: summary.title,
+                    authorDisplayName: summary.ownerNickname,
+                    sharedTracks: tracks
+                )
+                // Apple Music 생성 뒤 Firestore 기록만 실패한 경우 재시도해도
+                // 동일 플레이리스트가 중복 생성되지 않도록 임시 식별자를 보관한다.
+                UserDefaults.standard.set(libraryPlaylistID, forKey: pendingLibraryPlaylistIDKey(for: uid))
+            }
+            try await firestoreService.saveSharedPlaylistToLibrary(
+                uid: uid,
+                summary: summary,
+                appleMusicLibraryPlaylistID: libraryPlaylistID
+            )
+            UserDefaults.standard.removeObject(forKey: pendingLibraryPlaylistIDKey(for: uid))
+            didSaveToAppleMusic = true
             appSaveState = .saved
         } catch {
             appSaveState = .idle
-            errorMessage = "플레이리스트를 저장하지 못했어요."
+            errorMessage = "Apple Music 플레이리스트를 저장하지 못했어요."
         }
+    }
+
+    private func pendingLibraryPlaylistID(for uid: String) -> String? {
+        let value = UserDefaults.standard.string(forKey: pendingLibraryPlaylistIDKey(for: uid))
+        guard let value,
+              !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return nil
+        }
+        return value
+    }
+
+    private func pendingLibraryPlaylistIDKey(for uid: String) -> String {
+        "pendingAppleMusicPlaylistID_\(uid)_\(summary.id)"
     }
 
     func saveToAppleMusic() async {
@@ -526,6 +602,15 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
                 self?.syncCurrentTrack()
             }
+
+        // 미니 플레이어의 다음/이전 버튼은 이 뷰모델 밖에서 실행된다.
+        // 공통 재생 컨텍스트를 직접 구독해 목록의 핑크 강조가 현재 곡과
+        // 동시에 이동하도록 한다.
+        playbackContextObserver = musicService.playbackContext.$currentSong
+            .receive(on: RunLoop.main)
+            .sink { [weak self] song in
+                self?.applyPlaybackContext(song)
+            }
     }
 
     private func bindApplicationQueue() {
@@ -554,6 +639,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
         if let entry = applicationPlayer.queue.currentEntry,
            applicationPlayer.state.playbackStatus != .stopped {
+            musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
             nowPlayingTitle = entry.title
             nowPlayingArtist = entry.subtitle ?? summary.ownerNickname
             nowPlayingArtwork = nil
@@ -565,6 +651,11 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 ($0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame || currentArtist.isEmpty)
             }) {
                 playingTrackID = matchedTrack.id
+                pendingPlaybackTrackID = nil
+            } else {
+                // 이전에 선택한 곡이 남아 있으면 다음 곡으로 넘어가도 핑크 표시가 고정된다.
+                playingTrackID = nil
+                pendingPlaybackTrackID = nil
             }
             return
         }
@@ -573,8 +664,9 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             nowPlayingTitle = ""
             nowPlayingArtist = ""
             nowPlayingArtwork = nil
-            if !isPlaying {
+            if !isPlaying && !isStartingPlayback {
                 playingTrackID = nil
+                pendingPlaybackTrackID = nil
             }
             return
         }
@@ -586,6 +678,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         let currentStoreID = item.playbackStoreID.trimmingCharacters(in: .whitespacesAndNewlines)
         if let matchedTrack = tracks.first(where: { $0.songStoreID == currentStoreID && !currentStoreID.isEmpty }) {
             playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
             return
         }
 
@@ -596,11 +689,31 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             $0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame
         }) {
             playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
             return
         }
 
-        if !isPlaying {
+        playingTrackID = nil
+        pendingPlaybackTrackID = nil
+    }
+
+    private func applyPlaybackContext(_ song: Song?) {
+        guard let song else { return }
+
+        isPlaying = applicationPlayer.state.playbackStatus == .playing || isStartingPlayback
+        nowPlayingTitle = song.title
+        nowPlayingArtist = song.artistName
+        if let matchedTrack = tracks.first(where: {
+            $0.title.caseInsensitiveCompare(song.title) == .orderedSame
+                && $0.artistName.caseInsensitiveCompare(song.artistName) == .orderedSame
+        }) ?? tracks.first(where: {
+            $0.title.caseInsensitiveCompare(song.title) == .orderedSame
+        }) {
+            playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
+        } else {
             playingTrackID = nil
+            pendingPlaybackTrackID = nil
         }
     }
 
@@ -614,7 +727,16 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func skipToNext() {
-        systemPlayer.skipToNextItem()
-        syncCurrentTrack()
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            Task { [weak self] in
+                guard let self else { return }
+                try? await self.applicationPlayer.skipToNextEntry()
+                self.syncCurrentTrack()
+            }
+        } else {
+            systemPlayer.skipToNextItem()
+            syncCurrentTrack()
+        }
     }
 }

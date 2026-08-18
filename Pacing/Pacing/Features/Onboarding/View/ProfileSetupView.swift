@@ -253,14 +253,17 @@ struct ProfileSetupView: View {
 
         let d = UserDefaults.standard
         d.set(nickname, forKey: "nickname")
-        d.set(height,   forKey: "height")
-        d.set(weight,   forKey: "weight")
+        d.set(height, forKey: "height")
+        d.set(weight, forKey: "weight")
         if let img = imageBase64 { d.set(img, forKey: "profileImageBase64") }
 
         if let uid = Auth.auth().currentUser?.uid {
             try? await FirestoreService.shared.saveUserProfile(
-                uid: uid, nickname: nickname, height: height, weight: weight,
-                profileImageBase64: imageBase64
+                uid: uid, nickname: nickname,
+                height: height,
+                weight: weight,
+                profileImageBase64: imageBase64,
+                initialProfileVisibility: .public
             )
         }
 

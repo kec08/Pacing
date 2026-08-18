@@ -57,6 +57,73 @@ final class PacingTests: XCTestCase {
             )
         )
     }
+
+    func testActiveRunnerFreshnessExpiresAfterTwoMinutes() {
+        let referenceDate = Date(timeIntervalSince1970: 1_000)
+        let freshRunner = ActiveRunner(
+            id: "fresh", nickname: "러너", coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+            songTitle: "", artist: "", profileImageBase64: nil, updatedAt: 881_000
+        )
+        let staleRunner = ActiveRunner(
+            id: "stale", nickname: "러너", coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+            songTitle: "", artist: "", profileImageBase64: nil, updatedAt: 879_000
+        )
+
+        XCTAssertTrue(freshRunner.isFresh(referenceDate: referenceDate))
+        XCTAssertFalse(staleRunner.isFresh(referenceDate: referenceDate))
+    }
+
+    func testPaceRemainsHiddenUntilMeaningfulDistanceIsRecorded() {
+        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0, elapsedSeconds: 30))
+        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.019, elapsedSeconds: 30))
+        XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.02, elapsedSeconds: 30))
+    }
+
+    func testPacePolicyRejectsStationaryGPSDriftAndAcceptsRunningSegment() {
+        XCTAssertFalse(
+            RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: 4,
+                timeInterval: 10,
+                previousHorizontalAccuracy: 5,
+                currentHorizontalAccuracy: 5
+            )
+        )
+        XCTAssertTrue(
+            RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: 6,
+                timeInterval: 3,
+                previousHorizontalAccuracy: 5,
+                currentHorizontalAccuracy: 5
+            )
+        )
+    }
+
+    func testRunRecordHidesPaceForShortDistanceAndExcludesExtremePace() {
+        let shortDistance = RunRecord(
+            id: "short", startedAt: .now, duration: 314, distance: 0.01, avgPace: 523.3,
+            routeCoordinates: [], lapPaces: []
+        )
+        let extremePace = RunRecord(
+            id: "extreme", startedAt: .now, duration: 300, distance: 0.20, avgPace: 30.01,
+            routeCoordinates: [], lapPaces: []
+        )
+
+        XCTAssertFalse(shortDistance.isPaceValid)
+        XCTAssertFalse(extremePace.isPaceValid)
+        XCTAssertEqual(shortDistance.displayPace, 0)
+        XCTAssertEqual(RunRecord.formattedPace(shortDistance.displayPace), "--'--\"")
+    }
+
+    func testRunRecordAcceptsPaceAtValidationBoundaries() {
+        let validRecord = RunRecord(
+            id: "valid", startedAt: .now, duration: 180, distance: 0.10, avgPace: 30.0,
+            routeCoordinates: [], lapPaces: []
+        )
+
+        XCTAssertTrue(validRecord.isPaceValid)
+        XCTAssertEqual(RunRecord.formattedPace(validRecord.displayPace), "30'00\"")
+    }
+
     func testEmailValidatorRejectsInvalidEmail() {
         XCTAssertEqual(
             AuthInputValidator.emailError(for: "pacing.example.com"),
