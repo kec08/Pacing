@@ -386,6 +386,12 @@ final class AppleMusicRecommendationService {
         return try? await request.response().items.first
     }
 
+    /// 재생 큐 엔트리 ID가 카탈로그 ID가 아닌 경우 제목·아티스트로 현재 곡을
+    /// 다시 찾는다. 러닝 시트의 앨범 아트 보강에 사용한다.
+    func resolveCatalogSong(title: String, artist: String) async -> Song? {
+        try? await searchCatalogSong(title: title, artist: artist)
+    }
+
     func play(sharedTracks: [SharedPlaylistTrack]) async throws {
         let songs = try await resolveCatalogSongs(for: sharedTracks)
         guard !songs.isEmpty else {

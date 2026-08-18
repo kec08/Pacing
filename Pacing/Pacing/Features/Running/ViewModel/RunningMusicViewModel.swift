@@ -530,7 +530,19 @@ final class RunningMusicViewModel: ObservableObject {
 
         Task { [weak self] in
             guard let self else { return }
-            let resolvedSong = await self.musicService.resolveCatalogSong(id: catalogID)
+            let songByID = await self.musicService.resolveCatalogSong(id: catalogID)
+            // Queue.Entry.id가 카탈로그 Song ID가 아닌 경우 Resource 요청은
+            // 빈 결과를 반환한다. 이때는 실제 표시 중인 제목·아티스트로
+            // 검색해 현재 재생 곡의 아트워크를 반드시 보강한다.
+            let resolvedSong: Song?
+            if let songByID, songByID.artwork != nil {
+                resolvedSong = songByID
+            } else {
+                resolvedSong = await self.musicService.resolveCatalogSong(
+                    title: entry.title,
+                    artist: entry.subtitle ?? ""
+                ) ?? songByID
+            }
             self.resolvingApplicationEntryIDs.remove(entry.id)
             guard let resolvedSong,
                   self.applicationPlayer.queue.currentEntry?.id == entry.id
