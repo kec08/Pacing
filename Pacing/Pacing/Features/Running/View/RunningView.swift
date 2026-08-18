@@ -795,11 +795,9 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            // 러닝에서 직접 관리하는 큐만 슬라이드로 표시한다.
-                            // 음악 탭에서 시작한 ApplicationMusicPlayer 재생은
-                            // 현재 엔트리 snapshot의 artwork를 사용해야 이전 큐와 섞이지 않는다.
+                            // 선택한 플레이리스트의 곡 목록은 ApplicationMusicPlayer 재생 중에도
+                            // 기존처럼 스크롤해 다음/이전 곡으로 전환할 수 있어야 한다.
                             } else if !isActiveListenGuest,
-                                      !musicVM.isUsingApplicationPlayer,
                                       !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
