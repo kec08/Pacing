@@ -5,11 +5,11 @@ struct MyView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var vm = MyViewModel()
     @State private var showPicker = false
-    @State private var showAllHistory = false
     @State private var showLogoutAlert = false
     @State private var showAccountDeletionAlert = false
     @State private var showAccountDeletion = false
     @State private var showAppearanceSettings = false
+    @State private var showAllHistory = false
 
     var body: some View {
         NavigationStack {
@@ -506,11 +506,7 @@ struct MyView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 32)
             } else {
-                let displayedHistory = showAllHistory
-                    ? vm.filteredRunHistory
-                    : Array(vm.filteredRunHistory.prefix(5))
-
-                ForEach(displayedHistory) { record in
+                ForEach(displayedRunHistory) { record in
                     NavigationLink {
                         RunActivityDetailView(record: record)
                     } label: {
@@ -523,22 +519,21 @@ struct MyView: View {
 
                 if vm.filteredRunHistory.count > 5 {
                     Button {
-                        withAnimation(.easeInOut(duration: 0.25)) {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             showAllHistory.toggle()
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Text(showAllHistory ? "접기" : "더보기 (\(vm.filteredRunHistory.count - 5)개)")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(Color.main500)
+                        HStack(spacing: 6) {
+                            Text(showAllHistory ? "접기" : "모두보기")
                             Image(systemName: showAllHistory ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(Color.main500)
                         }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Color.main500)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 12)
                     }
-                    .accessibilityLabel(showAllHistory ? "최근 활동 접기" : "최근 활동 더보기")
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(showAllHistory ? "최근 활동 접기" : "최근 활동 모두 보기")
                 }
             }
         }
@@ -552,8 +547,8 @@ struct MyView: View {
                 ForEach(vm.availableHistoryMonths) { month in
                     Button {
                         withAnimation(.easeInOut(duration: 0.2)) {
-                            vm.selectHistoryMonth(month)
                             showAllHistory = false
+                            vm.selectHistoryMonth(month)
                         }
                     } label: {
                         Text(month.label)
@@ -574,15 +569,25 @@ struct MyView: View {
         .accessibilityLabel("최근 활동 월 선택")
     }
 
+    private var displayedRunHistory: [RunRecord] {
+        showAllHistory ? vm.filteredRunHistory : Array(vm.filteredRunHistory.prefix(5))
+    }
+
     // MARK: - Settings Section
     private var settingsSection: some View {
         VStack(spacing: 0) {
-            settingsRow(icon: "circle.lefthalf.filled", label: "화면 모드 변경") {
+            Button {
                 showAppearanceSettings = true
             }
-
-            Divider()
-                .padding(.leading, 56)
+            label: {
+                Text("테마")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(Color.textPrimary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 16)
+            }
+            .buttonStyle(.plain)
 
             Button {
                 showLogoutAlert = true

@@ -102,14 +102,6 @@ struct RunningView: View {
                 }
             }
             .mapStyle(.standard)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 1)
-                    .onChanged { _ in stopFollowingUser() }
-            )
-            .simultaneousGesture(
-                MagnifyGesture()
-                    .onChanged { _ in stopFollowingUser() }
-            )
             .ignoresSafeArea()
 
             // 맵 버튼 오버레이
@@ -144,21 +136,19 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                toggleUserLocationFollowing()
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(isFollowingUser ? Color.main500 : Color.textPrimary)
+                                    .foregroundStyle(Color.main500)
                                     .frame(width: 40, height: 40)
                                     .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
-                            .accessibilityLabel(isFollowingUser ? "내 위치 자동 추적 끄기" : "내 위치 자동 추적 켜기")
-                            .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
                         } else {
-                            // 러닝 중: 통계 패널 아래에 배치하고 항상 내 위치 버튼만 표시한다.
+                            // 러닝 중: 항상 내 위치 버튼 표시 (추적 중이면 파란색)
                             Button {
-                                toggleUserLocationFollowing()
+                                focusOnMyLocation()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -167,19 +157,16 @@ struct RunningView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
-                            .accessibilityLabel(isFollowingUser ? "내 위치 자동 추적 끄기" : "내 위치 자동 추적 켜기")
-                            .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
                         }
                     }
                     .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                     .padding(.trailing, 16)
-                    .padding(.top, viewModel.state == .idle ? 220 : 300)
+                    .padding(.top, 220)
                     .animation(.spring(duration: 0.3), value: viewModel.state)
                     .animation(.spring(duration: 0.3), value: isFollowingUser)
                 }
                 Spacer()
             }
-            .zIndex(2)
 
             VStack(spacing: 0) {
                 // 뮤직 카드: idle 상태에서만 표시
@@ -193,7 +180,6 @@ struct RunningView: View {
                     runningStatsOverlay
                         .padding(.top, 60)
                         .padding(.horizontal, 0)
-                        .zIndex(1)
                 }
 
                 Spacer()
@@ -274,13 +260,15 @@ struct RunningView: View {
             if !hasCenteredOnInitialLocation {
                 hasCenteredOnInitialLocation = true
                 recenterCamera(distance: mapZoomDistance)
-            } else if isFollowingUser {
+            } else if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             }
             nearbyVM.updateMyLocation(loc.coordinate)
         }
         .onMapCameraChange(frequency: .continuous) { context in
+            guard !isProgrammaticMove else { return }
             mapZoomDistance = context.camera.distance
+            isFollowingUser = false
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
@@ -1377,11 +1365,12 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        // 라이트 모드에서는 지도 위 정보가 선명하게 보이도록 흰 표면을 사용하고,
-        // 다크 모드에서는 기존 버건디 표면을 유지한다.
-        let cardSurface = colorScheme == .light ? Color.white : Color.main200
-        let cardBg = Color.main500.opacity(0.05)
-        let nameColor = runner.isMe ? Color.main500 : Color.textPrimary
+        // 내 재생 곡 카드는 라이트 모드에서 흰색으로, 다크 모드에서는 음표 배지와 같은 브랜드 표면으로 표시한다.
+        let cardSurface: Color = runner.isMe
+            ? (colorScheme == .dark ? Color.main200 : .white)
+            : Color(.systemBackground)
+        let cardBg: Color = runner.isMe && colorScheme == .dark ? Color.main500.opacity(0.05) : Color.clear
+        let nameColor: Color = runner.isMe ? Color.main500 : Color(.label)
 
         Button {
             collapsedPinIDs.formSymmetricDifference([runner.id])
@@ -1409,12 +1398,12 @@ struct RunningView: View {
                                 if !runner.songTitle.isEmpty {
                                     Text(runner.songTitle)
                                         .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(Color.textPrimary)
+                                        .foregroundStyle(Color(.label))
                                         .lineLimit(1)
                                     if !runner.artist.isEmpty {
                                         Text(runner.artist)
                                             .font(.system(size: 11))
-                                            .foregroundStyle(Color.textSecondary)
+                                            .foregroundStyle(Color(.secondaryLabel))
                                             .lineLimit(1)
                                     }
                                 }
@@ -1450,8 +1439,7 @@ struct RunningView: View {
                     if !runner.songTitle.isEmpty {
                         ZStack {
                             Circle()
-                                // 내·친구 핀 모두 카드와 같은 버건디 음표 배지를 사용한다.
-                                .fill(Color.main200)
+                                .fill(runner.isMe ? cardSurface : Color(.systemBackground))
                                 .frame(width: 18, height: 18)
                             Image(systemName: "music.note")
                                 .font(.system(size: 8, weight: .bold))
@@ -1473,12 +1461,11 @@ struct RunningView: View {
     private func incomingRequestBanner(session: ListenSession) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                listenParticipantAvatar(
-                    name: session.hostNickname,
-                    profileImageBase64: session.hostProfileImageBase64,
-                    size: 36,
-                    fallbackColor: Color.main500
-                )
+                ZStack {
+                    Circle().fill(Color.main500).frame(width: 36, height: 36)
+                    Text(String(session.hostNickname.prefix(1)))
+                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
+                }
                 VStack(alignment: .leading, spacing: 2) {
                     Text("같이 듣기 요청")
                         .font(.system(size: 12, weight: .semibold))
@@ -1520,6 +1507,10 @@ struct RunningView: View {
         .padding(14)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.55), lineWidth: 1)
+        )
         .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
         .padding(.horizontal, 16)
         .padding(.top, 56)
@@ -1534,8 +1525,6 @@ struct RunningView: View {
                     let myUID = Auth.auth().currentUser?.uid ?? ""
                     let partnerName = session.hostUID == myUID ? session.guestNickname : session.hostNickname
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
-                    let myProfileImageBase64 = session.profileImageBase64(for: myUID)
-                    let partnerProfileImageBase64 = session.profileImageBase64(for: session.partnerUID(for: myUID))
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
                     VStack(spacing: 18) {
@@ -1547,7 +1536,6 @@ struct RunningView: View {
                             VStack(spacing: 6) {
                                 listenParticipantCard(
                                     name: myName,
-                                    profileImageBase64: myProfileImageBase64,
                                     isMe: true,
                                     role: listenVM.isHost ? "호스트" : "게스트",
                                     song: session.songTitle,
@@ -1556,7 +1544,6 @@ struct RunningView: View {
                                 )
                                 listenParticipantCard(
                                     name: partnerName,
-                                    profileImageBase64: partnerProfileImageBase64,
                                     isMe: false,
                                     role: listenVM.isHost ? "게스트" : "호스트",
                                     song: session.songTitle,
@@ -1614,23 +1601,16 @@ struct RunningView: View {
         .presentationBackground(Color(.systemBackground))
     }
 
-    private func listenParticipantCard(
-        name: String,
-        profileImageBase64: String,
-        isMe: Bool,
-        role: String,
-        song: String,
-        artist: String,
-        duration: Int
-    ) -> some View {
+    private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
         HStack(spacing: 14) {
-            listenParticipantAvatar(
-                name: name,
-                profileImageBase64: profileImageBase64,
-                size: 42,
-                fallbackColor: isMe ? Color.main500 : Color.main500.opacity(0.12),
-                fallbackTextColor: isMe ? .white : Color.main500
-            )
+            ZStack {
+                Circle()
+                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
+                    .frame(width: 42, height: 42)
+                Text(String(name.prefix(1)))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isMe ? .white : Color.main500)
+            }
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1663,30 +1643,6 @@ struct RunningView: View {
             Spacer()
         }
         .padding(.vertical, 10)
-    }
-
-    @ViewBuilder
-    private func listenParticipantAvatar(
-        name: String,
-        profileImageBase64: String,
-        size: CGFloat,
-        fallbackColor: Color,
-        fallbackTextColor: Color = .white
-    ) -> some View {
-        if let data = Data(base64Encoded: profileImageBase64), let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFill()
-                .frame(width: size, height: size)
-                .clipShape(Circle())
-        } else {
-            ZStack {
-                Circle().fill(fallbackColor).frame(width: size, height: size)
-                Text(String(name.prefix(1)))
-                    .font(.system(size: size * 0.4, weight: .bold))
-                    .foregroundStyle(fallbackTextColor)
-            }
-        }
     }
 
     private func listenAlbumHeader(session: ListenSession) -> some View {
@@ -1829,17 +1785,13 @@ struct RunningView: View {
                 if nearbyVM.nearbyRunners.isEmpty {
                     Spacer()
                     VStack(spacing: 12) {
-                        Image(systemName: nearbyVM.loadError == nil
-                              ? (nearbyVM.selectedFilter == .friends ? "person.2.slash" : "figure.run")
-                              : "exclamationmark.triangle")
+                        Image(systemName: nearbyVM.selectedFilter == .friends ? "person.2.slash" : "figure.run")
                             .font(.system(size: 48))
                             .foregroundStyle(.secondary)
-                        Text(nearbyVM.loadError ?? (nearbyVM.selectedFilter == .friends ? "친구가 없어요" : "주변에 러너가 없어요"))
+                        Text(nearbyVM.selectedFilter == .friends ? "친구가 없어요" : "주변에 러너가 없어요")
                             .font(.system(size: 16))
                             .foregroundStyle(.secondary)
-                        Text(nearbyVM.loadError == nil
-                             ? (nearbyVM.selectedFilter == .friends ? "친구를 추가하면 여기서 볼 수 있어요" : "1km 반경 내 러닝 중인 사람이 없어요")
-                             : "잠시 후 다시 시도해 주세요.")
+                        Text(nearbyVM.selectedFilter == .friends ? "친구를 추가하면 여기서 볼 수 있어요" : "1km 반경 내 러닝 중인 사람이 없어요")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
@@ -1909,7 +1861,7 @@ struct RunningView: View {
             // 같이 듣기 버튼
             Button {
                 showNearbySheet = false
-                Task { await listenVM.sendRequest(to: runner, musicVM: musicVM) }
+                listenVM.sendRequest(to: runner, musicVM: musicVM)
             } label: {
                 Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
                     .font(.system(size: 13, weight: .medium))
@@ -1955,19 +1907,6 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
-    }
-
-    private func toggleUserLocationFollowing() {
-        if isFollowingUser {
-            stopFollowingUser()
-        } else {
-            focusOnMyLocation()
-        }
-    }
-
-    private func stopFollowingUser() {
-        guard isFollowingUser else { return }
-        isFollowingUser = false
     }
 
     private func refreshMyProfileImage() {

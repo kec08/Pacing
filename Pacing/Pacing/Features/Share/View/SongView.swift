@@ -318,9 +318,9 @@ struct SongView: View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 ForEach(0..<2, id: \.self) { _ in
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 12) {
                         SkeletonBlock(width: 188, height: 188, cornerRadius: 18)
-                        SkeletonBlock(width: 132, height: 16, cornerRadius: 8)
+                        SkeletonBlock(width: 118, height: 16, cornerRadius: 8)
                         SkeletonBlock(width: 76, height: 13, cornerRadius: 7)
                     }
                     .frame(width: 188, alignment: .leading)
@@ -455,53 +455,55 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func togglePlayPause() {
-        if applicationPlayer.queue.currentEntry != nil,
-           applicationPlayer.state.playbackStatus != .stopped {
-            if applicationPlayer.state.playbackStatus == .playing {
-                applicationPlayer.pause()
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                if applicationPlayer.state.playbackStatus == .playing {
+                    applicationPlayer.pause()
+                } else {
+                    do {
+                        try await applicationPlayer.play()
+                    } catch {
+                        return
+                    }
+                }
+            } else if isPlaying {
+                player.pause()
             } else {
-                Task { try? await applicationPlayer.play() }
+                player.play()
             }
             refresh()
-            return
         }
-
-        if isPlaying {
-            player.pause()
-        } else {
-            player.play()
-        }
-        refresh()
-    }
-
-    func skipToNext() {
-        if applicationPlayer.queue.currentEntry != nil,
-           applicationPlayer.state.playbackStatus != .stopped {
-            Task { [weak self] in
-                guard let self else { return }
-                try? await self.applicationPlayer.skipToNextEntry()
-                self.refresh()
-            }
-            return
-        }
-
-        player.skipToNextItem()
-        refresh()
     }
 
     func skipToPrevious() {
-        if applicationPlayer.queue.currentEntry != nil,
-           applicationPlayer.state.playbackStatus != .stopped {
-            Task { [weak self] in
-                guard let self else { return }
-                try? await self.applicationPlayer.skipToPreviousEntry()
-                self.refresh()
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                do {
+                    try await applicationPlayer.skipToPreviousEntry()
+                } catch {
+                    return
+                }
+            } else {
+                player.skipToPreviousItem()
             }
-            return
+            refresh()
         }
+    }
 
-        player.skipToPreviousItem()
-        refresh()
+    func skipToNext() {
+        Task {
+            if applicationPlayer.queue.currentEntry != nil {
+                do {
+                    try await applicationPlayer.skipToNextEntry()
+                } catch {
+                    // 단일 곡 또는 마지막 곡에서는 다음 항목이 없으므로 재생을 종료한다.
+                    applicationPlayer.pause()
+                }
+            } else {
+                player.skipToNextItem()
+            }
+            refresh()
+        }
     }
 
     func updateCollapseProgress(_ progress: CGFloat) {
@@ -669,7 +671,6 @@ final class SongNowPlayingController: ObservableObject {
 private struct SongNowPlayingOverlay: View {
     @ObservedObject var controller: SongNowPlayingController
     let expandedWidth: CGFloat
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         morphingOverlay
@@ -757,13 +758,14 @@ private struct SongNowPlayingOverlay: View {
 
                 Spacer(minLength: 8)
 
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Button {
                         controller.skipToPrevious()
                     } label: {
                         Image(systemName: "backward.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(controlForegroundColor)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
 
@@ -771,8 +773,9 @@ private struct SongNowPlayingOverlay: View {
                         controller.togglePlayPause()
                     } label: {
                         Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(controlForegroundColor)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
 
@@ -780,8 +783,9 @@ private struct SongNowPlayingOverlay: View {
                         controller.skipToNext()
                     } label: {
                         Image(systemName: "forward.fill")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(controlForegroundColor)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.black.opacity(0.82))
+                            .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
                 }
@@ -815,10 +819,6 @@ private struct SongNowPlayingOverlay: View {
         }
         .animation(.easeInOut(duration: 0.30), value: controller.trackIdentity)
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: progress)
-    }
-
-    private var controlForegroundColor: Color {
-        colorScheme == .dark ? .white : .black.opacity(0.82)
     }
 
     private func artworkView(size: CGFloat) -> some View {
@@ -872,22 +872,22 @@ private struct FriendSharedPlaylistCard: View {
     let playlist: SharedPlaylistSummary
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             artwork
-                .frame(width: 188, height: 188)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(Color.black.opacity(0.06), lineWidth: 1)
-                )
+            .frame(width: 188, height: 188)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.black.opacity(0.06), lineWidth: 1)
+            )
 
             Text(playlist.title)
-                .font(.system(size: 16, weight: .semibold))
+                .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(1)
 
             Text(playlist.ownerNickname)
-                .font(.system(size: 14))
+                .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
         }

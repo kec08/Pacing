@@ -11,6 +11,8 @@ final class FriendProfileViewModel: ObservableObject {
     @Published var recentRuns: [RunRecord] = []
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var recentSongArtworkURLs: [String: String] = [:]
+    @Published var playingSongID: String?
+    @Published var playbackError: String?
     @Published var isLoading: Bool = false
     @Published var canViewDetails: Bool = true
     @Published var isUpdatingRelationship: Bool = false
@@ -162,6 +164,26 @@ final class FriendProfileViewModel: ObservableObject {
             errorMessage = "친구 요청을 취소하지 못했어요."
             isUpdatingRelationship = false
             return false
+        }
+    }
+
+    func playRecentSong(_ song: FriendRecentSong) async {
+        guard let songStoreID = song.songStoreID,
+              !songStoreID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            playbackError = "재생 정보를 찾을 수 없어요"
+            playingSongID = nil
+            return
+        }
+
+        playingSongID = song.id
+        playbackError = nil
+
+        do {
+            try await musicService.playTracks(with: [songStoreID])
+        } catch {
+            playbackError = "재생을 시작하지 못했어요"
+            playingSongID = nil
         }
     }
 

@@ -40,7 +40,6 @@ final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
     @Published var weight: Int = 0
-    @Published var profileVisibility: ProfileVisibility = .public
     @Published var profileImage: UIImage? = nil
     @Published var activityStatusText: String = "러닝 기록 없음"
     @Published var selectedPeriod: StatsPeriod = .week
@@ -72,9 +71,8 @@ final class MyViewModel: ObservableObject {
     private func loadProfile() {
         // UserDefaults 우선 (즉시 표시), Firestore에서 최신값 덮어씀
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        height = UserDefaults.standard.integer(forKey: "height")
-        weight = UserDefaults.standard.integer(forKey: "weight")
-        profileVisibility = ProfileVisibility(rawValue: UserDefaults.standard.string(forKey: "profileVisibility") ?? "") ?? .public
+        height   = UserDefaults.standard.integer(forKey: "height")
+        weight   = UserDefaults.standard.integer(forKey: "weight")
         UserDefaults.standard.removeObject(forKey: "age")
         profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
@@ -82,10 +80,8 @@ final class MyViewModel: ObservableObject {
         Task { @MainActor in
             if let data = try? await FirestoreService.shared.fetchUserProfile(uid: uid) {
                 nickname = data["nickname"] as? String ?? nickname
-                height = data["height"] as? Int ?? height
-                weight = data["weight"] as? Int ?? weight
-                profileVisibility = ProfileVisibility(rawValue: data["profileVisibility"] as? String ?? "") ?? .public
-                UserDefaults.standard.set(profileVisibility.rawValue, forKey: "profileVisibility")
+                height   = data["height"]   as? Int    ?? height
+                weight   = data["weight"]   as? Int    ?? weight
                 if let img = data["profileImageBase64"] as? String {
                     UserDefaults.standard.set(img, forKey: "profileImageBase64")
                     profileImage = Self.decodeImage(img)
@@ -128,14 +124,12 @@ final class MyViewModel: ObservableObject {
     }
 
     private func applyData(records: [RunRecord]) {
+        let now = Date()
         let filtered = filter(records: records)
 
-        let validPaceRecords = filtered.filter(\.isPaceValid)
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
         let totalTime = filtered.reduce(0) { $0 + $1.duration }
-        let validDistance = validPaceRecords.reduce(0) { $0 + $1.distance }
-        let validDuration = validPaceRecords.reduce(0) { $0 + $1.duration }
-        let avgPace = validDistance > 0 ? Double(validDuration) / 60.0 / validDistance : 0
+        let avgPace = filtered.isEmpty ? 0 : filtered.reduce(0) { $0 + $1.avgPace } / Double(filtered.count)
 
         stats = MyStats(
             totalDistance: totalDist,
@@ -145,14 +139,16 @@ final class MyViewModel: ObservableObject {
         )
 
         chartEntries = buildChartEntries(from: filtered)
-        runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
-            .filter { $0.startedAt <= Date() }
+        runHistory = records
+            .filter { $0.startedAt <= now }
+            .sorted(by: { $0.startedAt > $1.startedAt })
         updateHistoryMonths()
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
     }
 
     var filteredRunHistory: [RunRecord] {
         guard let selectedHistoryMonth else { return [] }
+
         return runHistory.filter {
             cal.component(.year, from: $0.startedAt) == selectedHistoryMonth.year
                 && cal.component(.month, from: $0.startedAt) == selectedHistoryMonth.month
@@ -164,16 +160,20 @@ final class MyViewModel: ObservableObject {
     }
 
     private func updateHistoryMonths() {
-        var seen = Set<String>()
+        var seenMonthIDs = Set<String>()
         let months = runHistory.compactMap { record -> RunHistoryMonth? in
             let month = RunHistoryMonth(
                 year: cal.component(.year, from: record.startedAt),
                 month: cal.component(.month, from: record.startedAt)
             )
-            return seen.insert(month.id).inserted ? month : nil
+            return seenMonthIDs.insert(month.id).inserted ? month : nil
         }
+
         availableHistoryMonths = months
-        if let selectedHistoryMonth, months.contains(selectedHistoryMonth) { return }
+        if let selectedHistoryMonth,
+           months.contains(selectedHistoryMonth) {
+            return
+        }
         selectedHistoryMonth = months.first
     }
 
@@ -348,11 +348,14 @@ final class MyViewModel: ObservableObject {
         appState.isProfileComplete = false
         // 계정 전환 시 이전 프로필 잔상 방지
         let d = UserDefaults.standard
-        ["nickname", "height", "weight", "age", "profileImageBase64", "profileVisibility"].forEach { d.removeObject(forKey: $0) }
+        ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
     }
 
     func formattedPace(_ pace: Double) -> String {
-        RunRecord.formattedPace(pace)
+        guard pace > 0 else { return "-'--\"" }
+        let min = Int(pace)
+        let sec = Int((pace - Double(min)) * 60)
+        return String(format: "%d'%02d\"", min, sec)
     }
 
     func formattedDuration(_ seconds: Int) -> String {
@@ -400,13 +403,6 @@ final class MyViewModel: ObservableObject {
             self.weight = weight
             self.profileImage = profileImage
         }
-    }
-
-    func saveProfileVisibility(_ visibility: ProfileVisibility) async throws {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-        try await FirestoreService.shared.saveProfileVisibility(uid: uid, visibility: visibility)
-        UserDefaults.standard.set(visibility.rawValue, forKey: "profileVisibility")
-        profileVisibility = visibility
     }
 
     private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {
