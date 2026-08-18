@@ -162,28 +162,19 @@ struct ProfileEditView: View {
                 trailingText: ""
             )
             divider
-            fieldRow(
-                title: "키",
-                value: $heightText,
-                keyboardType: .numberPad,
-                trailingText: "cm"
-            )
+            fieldRow(title: "키", value: $heightText, keyboardType: .numberPad, trailingText: "cm")
             divider
-            fieldRow(
-                title: "몸무게",
-                value: $weightText,
-                keyboardType: .numberPad,
-                trailingText: "kg"
-            )
+            fieldRow(title: "몸무게", value: $weightText, keyboardType: .numberPad, trailingText: "kg")
         }
-        .background(Color.white.opacity(0.68))
+        .background(Color.backgroundSecondary)
+        .overlay {
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.surfaceBorder, lineWidth: 1)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
-    private var divider: some View {
-        Divider()
-            .padding(.leading, 20)
-    }
+    private var divider: some View { Divider().padding(.leading, 20) }
 
     private func fieldRow(
         title: String,
@@ -204,11 +195,9 @@ struct ProfileEditView: View {
                 .multilineTextAlignment(.trailing)
                 .keyboardType(keyboardType)
                 .onChange(of: value.wrappedValue) { _, newValue in
-                    if title == "이름" {
-                        if newValue.count > 12 {
-                            value.wrappedValue = String(newValue.prefix(12))
-                        }
-                    } else {
+                    if title == "이름", newValue.count > 12 {
+                        value.wrappedValue = String(newValue.prefix(12))
+                    } else if title != "이름" {
                         value.wrappedValue = newValue.filter(\.isNumber)
                     }
                 }
@@ -234,7 +223,6 @@ struct ProfileEditView: View {
             errorMessage = "키는 100cm부터 250cm 사이로 입력해주세요."
             return
         }
-
         guard let weight = Int(weightText), (20...200).contains(weight) else {
             errorMessage = "몸무게는 20kg부터 200kg 사이로 입력해주세요."
             return

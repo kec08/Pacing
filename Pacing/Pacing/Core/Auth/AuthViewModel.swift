@@ -48,7 +48,6 @@ final class AuthViewModel: ObservableObject {
     private func authenticateWithEmail(email: String, password: String, appState: AppState) async {
         isLoading = true
         errorMessage = nil
-        appState.isAuthLoading = true
         defer {
             isLoading = false
             appState.isAuthLoading = false
@@ -59,8 +58,10 @@ final class AuthViewModel: ObservableObject {
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
-            appState.isLoggedIn = true
             await restoreProfile(appState: appState)
+            // 이메일 로그인은 인증·프로필 복원 중에도 현재 로그인 화면의 로딩 UI를
+            // 유지한 뒤, 복원이 끝난 시점에만 메인 화면으로 전환한다.
+            appState.isLoggedIn = true
         } catch {
             appState.isLoggedIn = false
             errorMessage = Self.emailAuthErrorMessage(for: error)
@@ -208,14 +209,13 @@ final class AuthViewModel: ObservableObject {
         }
         let d = UserDefaults.standard
         // 계정 전환 잔상 방지: 항상 비우고 새 계정 값으로 채움
-        ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
+        ["nickname", "height", "weight", "age", "profileImageBase64", "profileVisibility"].forEach { d.removeObject(forKey: $0) }
 
         if let data = try? await FirestoreService.shared.fetchUserProfile(uid: uid),
            let nickname = data["nickname"] as? String,
            !nickname.trimmingCharacters(in: .whitespaces).isEmpty {
             d.set(nickname, forKey: "nickname")
-            if let h = data["height"] as? Int { d.set(h, forKey: "height") }
-            if let w = data["weight"] as? Int { d.set(w, forKey: "weight") }
+            if let visibility = data["profileVisibility"] as? String { d.set(visibility, forKey: "profileVisibility") }
             if let img = data["profileImageBase64"] as? String { d.set(img, forKey: "profileImageBase64") }
             if data["age"] != nil {
                 try? await FirestoreService.shared.removeLegacyAge(uid: uid)
@@ -233,7 +233,7 @@ final class AuthViewModel: ObservableObject {
         appState.isProfileComplete = false
         // 다른 계정 로그인 시 이전 프로필 잔상 방지
         let d = UserDefaults.standard
-        ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
+        ["nickname", "height", "weight", "age", "profileImageBase64", "profileVisibility"].forEach { d.removeObject(forKey: $0) }
     }
 
     private static func emailAuthErrorMessage(for error: Error) -> String {

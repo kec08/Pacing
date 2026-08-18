@@ -13,6 +13,7 @@ struct AppleSignInButton: View {
             onCompletion(result)
         }
         .signInWithAppleButtonStyle(.black)
+        .frame(maxWidth: .infinity)
         .frame(height: 54)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .overlay(

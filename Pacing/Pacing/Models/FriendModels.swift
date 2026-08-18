@@ -12,6 +12,11 @@ struct FriendUser: Identifiable, Equatable {
     }
 }
 
+struct FriendProfileAccess {
+    let user: FriendUser
+    let canViewDetails: Bool
+}
+
 enum FriendRecommendationSource: String, Equatable {
     case friend = "친구"
     case search = "검색"

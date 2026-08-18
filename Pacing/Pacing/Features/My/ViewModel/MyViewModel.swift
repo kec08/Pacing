@@ -40,6 +40,7 @@ final class MyViewModel: ObservableObject {
     @Published var nickname: String = ""
     @Published var height: Int = 0
     @Published var weight: Int = 0
+    @Published var profileVisibility: ProfileVisibility = .public
     @Published var profileImage: UIImage? = nil
     @Published var activityStatusText: String = "러닝 기록 없음"
     @Published var selectedPeriod: StatsPeriod = .week
@@ -71,8 +72,9 @@ final class MyViewModel: ObservableObject {
     private func loadProfile() {
         // UserDefaults 우선 (즉시 표시), Firestore에서 최신값 덮어씀
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        height   = UserDefaults.standard.integer(forKey: "height")
-        weight   = UserDefaults.standard.integer(forKey: "weight")
+        height = UserDefaults.standard.integer(forKey: "height")
+        weight = UserDefaults.standard.integer(forKey: "weight")
+        profileVisibility = ProfileVisibility(rawValue: UserDefaults.standard.string(forKey: "profileVisibility") ?? "") ?? .public
         UserDefaults.standard.removeObject(forKey: "age")
         profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
@@ -80,8 +82,10 @@ final class MyViewModel: ObservableObject {
         Task { @MainActor in
             if let data = try? await FirestoreService.shared.fetchUserProfile(uid: uid) {
                 nickname = data["nickname"] as? String ?? nickname
-                height   = data["height"]   as? Int    ?? height
-                weight   = data["weight"]   as? Int    ?? weight
+                height = data["height"] as? Int ?? height
+                weight = data["weight"] as? Int ?? weight
+                profileVisibility = ProfileVisibility(rawValue: data["profileVisibility"] as? String ?? "") ?? .public
+                UserDefaults.standard.set(profileVisibility.rawValue, forKey: "profileVisibility")
                 if let img = data["profileImageBase64"] as? String {
                     UserDefaults.standard.set(img, forKey: "profileImageBase64")
                     profileImage = Self.decodeImage(img)
@@ -344,7 +348,7 @@ final class MyViewModel: ObservableObject {
         appState.isProfileComplete = false
         // 계정 전환 시 이전 프로필 잔상 방지
         let d = UserDefaults.standard
-        ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
+        ["nickname", "height", "weight", "age", "profileImageBase64", "profileVisibility"].forEach { d.removeObject(forKey: $0) }
     }
 
     func formattedPace(_ pace: Double) -> String {
@@ -396,6 +400,13 @@ final class MyViewModel: ObservableObject {
             self.weight = weight
             self.profileImage = profileImage
         }
+    }
+
+    func saveProfileVisibility(_ visibility: ProfileVisibility) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        try await FirestoreService.shared.saveProfileVisibility(uid: uid, visibility: visibility)
+        UserDefaults.standard.set(visibility.rawValue, forKey: "profileVisibility")
+        profileVisibility = visibility
     }
 
     private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {
