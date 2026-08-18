@@ -233,10 +233,11 @@
 				};
 			};
 			buildConfigurationList = BC5790152FEC4AEF006C925A /* Build configuration list for PBXProject "Pacing" */;
-			developmentRegion = en;
+			developmentRegion = ko;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				ko,
 				Base,
 			);
 			mainGroup = BC5790112FEC4AEF006C925A;
