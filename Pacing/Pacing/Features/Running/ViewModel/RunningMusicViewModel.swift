@@ -197,13 +197,13 @@ final class RunningMusicViewModel: ObservableObject {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let song = applicationSong(from: entry)
-            let systemArtwork = player.nowPlayingItem?.artwork?.image(at: CGSize(width: 900, height: 900))
+            let systemArtwork = matchingSystemArtwork(for: entry)
             return PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
-                artworkURL: song?.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? entry.artwork?.url(width: 900, height: 900)?.absoluteString,
+                artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
                 artwork: systemArtwork
             )
         }
@@ -403,9 +403,9 @@ final class RunningMusicViewModel: ObservableObject {
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
-                artworkURL: song?.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? entry.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: player.nowPlayingItem?.artwork?.image(at: CGSize(width: 900, height: 900))
+                artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+                artwork: matchingSystemArtwork(for: entry)
             )
             if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
                 ?? queueSongs.firstIndex(where: {
@@ -492,6 +492,19 @@ final class RunningMusicViewModel: ObservableObject {
               case let .song(song) = item
         else { return nil }
         return song
+    }
+
+    /// 시스템 플레이어는 이전 항목의 nowPlayingItem을 잠시 유지할 수 있다.
+    /// 현재 ApplicationMusicPlayer 엔트리와 메타데이터가 일치할 때만 이미지를
+    /// 사용해 이전 곡의 커버가 러닝 시트에 남지 않도록 한다.
+    private func matchingSystemArtwork(
+        for entry: MusicKit.MusicPlayer.Queue.Entry
+    ) -> UIImage? {
+        guard let item = player.nowPlayingItem,
+              item.title?.caseInsensitiveCompare(entry.title) == .orderedSame,
+              entry.subtitle == nil || item.artist?.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame
+        else { return nil }
+        return item.artwork?.image(at: CGSize(width: 900, height: 900))
     }
 
     private func resolveApplicationSongMetadataIfNeeded(
