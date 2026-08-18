@@ -143,7 +143,7 @@ final class RunningMusicViewModel: ObservableObject {
         queueSongs = loadedSongs
         currentSong = loadedSongs[0]
         currentSongIndex = 0
-        musicService.playbackContext.configure(songs: loadedSongs)
+        musicService.playbackContext.configure(songs: loadedSongs, title: playlist.name)
         applicationPlayer.queue = .init(for: loadedSongs)
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
         try? await applicationPlayer.prepareToPlay()
@@ -220,12 +220,16 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     var canSkipToPrevious: Bool {
-        if isUsingApplicationPlayer { return true }
+        if isUsingApplicationPlayer {
+            return !queueSongs.isEmpty && currentSongIndex > 0
+        }
         return currentSongIndex > 0 && currentSongIndex < cachedMediaItems.count
     }
 
     var canSkipToNext: Bool {
-        if isUsingApplicationPlayer { return true }
+        if isUsingApplicationPlayer {
+            return !queueSongs.isEmpty && currentSongIndex + 1 < queueSongs.count
+        }
         return currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
     }
 
@@ -398,8 +402,8 @@ final class RunningMusicViewModel: ObservableObject {
     // MARK: - 이전 곡
     func skipToPrevious() async {
         if isUsingApplicationPlayer {
-            try? await applicationPlayer.skipToPreviousEntry()
-            syncCurrentState()
+            guard currentSongIndex > 0 else { return }
+            await play(at: currentSongIndex - 1, from: currentSongIndex)
             return
         }
         guard canSkipToPrevious else { return }
@@ -414,8 +418,8 @@ final class RunningMusicViewModel: ObservableObject {
     // MARK: - 다음 곡
     func skipToNext() async {
         if isUsingApplicationPlayer {
-            try? await applicationPlayer.skipToNextEntry()
-            syncCurrentState()
+            guard currentSongIndex + 1 < queueSongs.count else { return }
+            await play(at: currentSongIndex + 1, from: currentSongIndex)
             return
         }
         guard canSkipToNext else { return }
@@ -452,6 +456,7 @@ final class RunningMusicViewModel: ObservableObject {
             // 곡 목록을 연결해 리스트 패널과 이미지 캐러셀이 같은 큐를 사용한다.
             if !musicService.playbackContext.songs.isEmpty {
                 queueSongs = musicService.playbackContext.songs
+                currentPlaylistName = musicService.playbackContext.queueTitle
             }
 
             let song = applicationSong(from: entry)
@@ -473,7 +478,13 @@ final class RunningMusicViewModel: ObservableObject {
                     ?? resolvedApplicationArtworkURLsByEntryKey[entryKey],
                 artwork: nil
             )
-            if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
+            if let contextIndex = queueSongs.indices.contains(musicService.playbackContext.currentIndex)
+                ? musicService.playbackContext.currentIndex
+                : nil {
+                isGoingForward = contextIndex >= currentSongIndex
+                currentSongIndex = contextIndex
+                currentSong = queueSongs[contextIndex]
+            } else if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
                 ?? queueSongs.firstIndex(where: {
                 $0.title.caseInsensitiveCompare(entry.title) == .orderedSame &&
                 ($0.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame || entry.subtitle == nil)

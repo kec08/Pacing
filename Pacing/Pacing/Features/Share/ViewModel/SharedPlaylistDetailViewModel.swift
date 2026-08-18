@@ -278,7 +278,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                try await musicService.play(sharedTracks: tracks)
+                try await musicService.play(sharedTracks: tracks, title: summary.title)
             case .recommendation(let playlist):
                 try await musicService.play(playlist: playlist)
             case .album(let album):
@@ -308,7 +308,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         isStartingPlayback = true
 
         do {
-            try await musicService.play(sharedTracks: tracks, startingAt: track.id)
+            try await musicService.play(sharedTracks: tracks, startingAt: track.id, title: summary.title)
             playingTrackID = track.id
             isStartingPlayback = false
         } catch {
