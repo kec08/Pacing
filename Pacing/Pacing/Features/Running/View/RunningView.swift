@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     private let locationFocusDistance: Double = 1_000
 
     @StateObject private var viewModel = RunningViewModel()
@@ -142,20 +144,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                focusOnMyLocation()
-                            } label: {
-                                Image(systemName: "location.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color.main500)
-                                    .frame(width: 40, height: 40)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .accessibilityLabel("내 위치로 이동")
-                        } else {
-                            // 러닝 중: 통계 패널 아래에 배치하고 항상 내 위치 버튼만 표시한다.
-                            Button {
-                                focusOnMyLocation()
+                                toggleUserLocationFollowing()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -164,7 +153,21 @@ struct RunningView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
-                            .accessibilityLabel("내 위치로 이동하고 지도 추적 시작")
+                            .accessibilityLabel(isFollowingUser ? "내 위치 자동 추적 끄기" : "내 위치 자동 추적 켜기")
+                            .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
+                        } else {
+                            // 러닝 중: 통계 패널 아래에 배치하고 항상 내 위치 버튼만 표시한다.
+                            Button {
+                                toggleUserLocationFollowing()
+                            } label: {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(isFollowingUser ? Color.main500 : Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .accessibilityLabel(isFollowingUser ? "내 위치 자동 추적 끄기" : "내 위치 자동 추적 켜기")
                             .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
                         }
                     }
@@ -271,7 +274,7 @@ struct RunningView: View {
             if !hasCenteredOnInitialLocation {
                 hasCenteredOnInitialLocation = true
                 recenterCamera(distance: mapZoomDistance)
-            } else if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+            } else if isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             }
             nearbyVM.updateMyLocation(loc.coordinate)
@@ -1351,10 +1354,11 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        // 내 위치에 사용하던 진한 버건디 표면을 친구 카드에도 적용한다.
-        let cardSurface = Color.main200
+        // 라이트 모드에서는 지도 위 정보가 선명하게 보이도록 흰 표면을 사용하고,
+        // 다크 모드에서는 기존 버건디 표면을 유지한다.
+        let cardSurface = colorScheme == .light ? Color.white : Color.main200
         let cardBg = Color.main500.opacity(0.05)
-        let nameColor = Color.textPrimary
+        let nameColor = runner.isMe ? Color.main500 : Color.textPrimary
 
         Button {
             collapsedPinIDs.formSymmetricDifference([runner.id])
@@ -1928,6 +1932,14 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func toggleUserLocationFollowing() {
+        if isFollowingUser {
+            stopFollowingUser()
+        } else {
+            focusOnMyLocation()
+        }
     }
 
     private func stopFollowingUser() {

@@ -233,10 +233,18 @@ final class FirestoreService {
         var activities: [FriendRecentSongActivity] = []
         for friendDocument in snapshot.documents {
             let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
-            let songs = try await fetchRecentSongs(
-                uid: friendDocument.documentID,
-                limit: max(1, songsPerFriend)
-            )
+            let songs: [FriendRecentSong]
+
+            do {
+                songs = try await fetchRecentSongs(
+                    uid: friendDocument.documentID,
+                    limit: max(1, songsPerFriend)
+                )
+            } catch {
+                // 공개 범위에 따라 특정 친구의 활동 조회가 거부될 수 있다.
+                // 한 명의 조회 실패가 홈의 전체 친구 활동을 가리지 않도록 건너뛴다.
+                continue
+            }
 
             activities.append(
                 contentsOf: songs.map { song in
@@ -264,7 +272,16 @@ final class FirestoreService {
 
         var activities: [FriendRecentRunActivity] = []
         for friendDocument in snapshot.documents {
-            guard let run = try await fetchRunHistory(uid: friendDocument.documentID, limit: 1).first else {
+            let runs: [RunRecord]
+
+            do {
+                runs = try await fetchRunHistory(uid: friendDocument.documentID, limit: 1)
+            } catch {
+                // 음악 활동과 동일하게 접근할 수 없는 친구는 결과에서만 제외한다.
+                continue
+            }
+
+            guard let run = runs.first else {
                 continue
             }
 
