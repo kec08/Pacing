@@ -937,9 +937,14 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(
+                                        isActiveListenGuest || !musicVM.canSkipToPrevious
+                                            ? Color.textSecondary.opacity(0.35)
+                                            : .primary
+                                    )
                             }
-                            .disabled(isActiveListenGuest)
+                            .disabled(isActiveListenGuest || !musicVM.canSkipToPrevious)
+                            .accessibilityLabel("이전 곡")
 
                             Button {
                                 if shouldRunLocalPlaybackClock {
@@ -959,9 +964,14 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(
+                                        isActiveListenGuest || !musicVM.canSkipToNext
+                                            ? Color.textSecondary.opacity(0.35)
+                                            : .primary
+                                    )
                             }
-                            .disabled(isActiveListenGuest)
+                            .disabled(isActiveListenGuest || !musicVM.canSkipToNext)
+                            .accessibilityLabel("다음 곡")
                         }
                         .padding(.top, 20)
 
@@ -1112,7 +1122,7 @@ struct RunningView: View {
                     .padding(.vertical, 16)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
+                    LazyHStack(spacing: 14) {
                         ForEach(musicVM.playlists, id: \.id) { playlist in
                             Button {
                                 Task { await musicVM.play(playlist: playlist) }
@@ -1258,6 +1268,9 @@ struct RunningView: View {
                                 .foregroundStyle(Color.main500)
                         }
                 }
+            }
+            .task(id: song.id) {
+                await musicVM.loadArtworkURLIfNeeded(for: song)
             }
             .overlay {
                 if isCurrentTrack {

@@ -1,5 +1,6 @@
 import Foundation
 import MusicKit
+import MediaPlayer
 import UIKit
 
 extension Notification.Name {
@@ -81,15 +82,29 @@ final class AppleMusicRecommendationService {
         try await MusicSubscription.current
     }
 
-    func fetchLibraryPlaylists(limit: Int = 6) async throws -> [Playlist] {
+    /// 보관함 플레이리스트를 배치 끝까지 조회한다. 재생 선택 화면에서는 수를 자르지 않고,
+    /// 공유 동기화처럼 상한이 필요한 호출만 `maximumCount`를 지정한다.
+    func fetchLibraryPlaylists(pageSize: Int = 100, maximumCount: Int? = nil) async throws -> [Playlist] {
         var request = MusicLibraryRequest<Playlist>()
-        request.limit = limit
-        let response = try await request.response()
-        return Array(response.items.prefix(limit))
+        request.limit = pageSize
+        var batch = try await request.response().items
+        var playlists = Array(batch)
+
+        while batch.hasNextBatch,
+              maximumCount.map({ playlists.count < $0 }) ?? true,
+              let nextBatch = try await batch.nextBatch(limit: pageSize) {
+            batch = nextBatch
+            playlists.append(contentsOf: nextBatch)
+        }
+
+        if let maximumCount {
+            return Array(playlists.prefix(maximumCount))
+        }
+        return playlists
     }
 
     func syncCurrentUserPlaylists(uid: String, nickname: String, limit: Int = 30) async throws {
-        let playlists = try await fetchLibraryPlaylists(limit: limit)
+        let playlists = try await fetchLibraryPlaylists(maximumCount: limit)
 
         for playlist in playlists {
             let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .library)
@@ -355,6 +370,9 @@ final class AppleMusicRecommendationService {
     }
 
     private func startPlayback(with queue: ApplicationMusicPlayer.Queue) async throws {
+        // 러닝 시트의 시스템 플레이어가 남아 있으면 탭마다 서로 다른 곡을 표시할 수 있다.
+        // 새 재생 경로를 시작하기 전에 이전 경로를 명시적으로 멈춘다.
+        MPMusicPlayerController.systemMusicPlayer.pause()
         player.queue = queue
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()

@@ -455,6 +455,17 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func togglePlayPause() {
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            if applicationPlayer.state.playbackStatus == .playing {
+                applicationPlayer.pause()
+            } else {
+                Task { try? await applicationPlayer.play() }
+            }
+            refresh()
+            return
+        }
+
         if isPlaying {
             player.pause()
         } else {
@@ -464,6 +475,16 @@ final class SongNowPlayingController: ObservableObject {
     }
 
     func skipToNext() {
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            Task { [weak self] in
+                guard let self else { return }
+                try? await self.applicationPlayer.skipToNextEntry()
+                self.refresh()
+            }
+            return
+        }
+
         player.skipToNextItem()
         refresh()
     }
@@ -627,6 +648,7 @@ final class SongNowPlayingController: ObservableObject {
 private struct SongNowPlayingOverlay: View {
     @ObservedObject var controller: SongNowPlayingController
     let expandedWidth: CGFloat
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         morphingOverlay
@@ -720,7 +742,7 @@ private struct SongNowPlayingOverlay: View {
                     } label: {
                         Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.82))
+                            .foregroundStyle(controlForegroundColor)
                     }
                     .buttonStyle(.plain)
 
@@ -729,7 +751,7 @@ private struct SongNowPlayingOverlay: View {
                     } label: {
                         Image(systemName: "forward.fill")
                             .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.82))
+                            .foregroundStyle(controlForegroundColor)
                     }
                     .buttonStyle(.plain)
                 }
@@ -763,6 +785,10 @@ private struct SongNowPlayingOverlay: View {
         }
         .animation(.easeInOut(duration: 0.30), value: controller.trackIdentity)
         .animation(.spring(response: 0.38, dampingFraction: 0.88), value: progress)
+    }
+
+    private var controlForegroundColor: Color {
+        colorScheme == .dark ? .white : .black.opacity(0.82)
     }
 
     private func artworkView(size: CGFloat) -> some View {

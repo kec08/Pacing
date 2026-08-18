@@ -36,6 +36,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published private(set) var playlistArtworkURLsByPlaylistID: [String: String] = [:]
 
     private let player = MPMusicPlayerController.systemMusicPlayer
+    private let applicationPlayer = ApplicationMusicPlayer.shared
     private let musicService = AppleMusicRecommendationService.shared
     private let playlistRetryDelays: [UInt64] = [500_000_000, 1_200_000_000, 2_500_000_000]
     private var isManualSeeking: Bool = false
@@ -45,6 +46,7 @@ final class RunningMusicViewModel: ObservableObject {
     private var optimisticPlaybackStartedAt: Date?
     private var pendingTrackPersistentID: MPMediaEntityPersistentID?
     private var activePlaylistLoadID: UUID?
+    private var resolvingSongArtworkIDs: Set<String> = []
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -84,7 +86,7 @@ final class RunningMusicViewModel: ObservableObject {
 
         for attempt in 0 ... playlistRetryDelays.count {
             do {
-                let fetchedPlaylists = try await musicService.fetchLibraryPlaylists(limit: 8)
+                let fetchedPlaylists = try await musicService.fetchLibraryPlaylists()
                 playlists = fetchedPlaylists
                 loadPlaylistArtworkURLsInBackground(for: fetchedPlaylists)
                 return
@@ -106,6 +108,10 @@ final class RunningMusicViewModel: ObservableObject {
         queueArtworkURLsBySongID = [:]
         currentSong = nil
         currentSongIndex = 0
+
+        // 음악 탭에서 ApplicationMusicPlayer가 살아 있으면 해당 상태가 우선 표시된다.
+        // 러닝 플레이리스트 시작 시 이를 멈춰 현재 재생 항목의 기준을 하나로 유지한다.
+        applicationPlayer.pause()
 
         // 큐 전환은 네트워크 작업보다 먼저 처리한다. 수록곡/커버 보강을 기다리면
         // 이전 곡이 수십 초 유지되는 문제가 생긴다.
@@ -141,9 +147,6 @@ final class RunningMusicViewModel: ObservableObject {
             self.queueSongs = loadedSongs
             self.syncCurrentState()
 
-            let artworkURLs = await self.musicService.resolvedArtworkURLs(for: loadedSongs)
-            guard self.activePlaylistLoadID == loadID else { return }
-            self.queueArtworkURLsBySongID = artworkURLs
         }
     }
 
@@ -175,6 +178,14 @@ final class RunningMusicViewModel: ObservableObject {
 
     var hasDisplaySong: Bool {
         currentSong != nil || nowPlayingSnapshot != nil
+    }
+
+    var canSkipToPrevious: Bool {
+        currentSongIndex > 0 && currentSongIndex < cachedMediaItems.count
+    }
+
+    var canSkipToNext: Bool {
+        currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
     }
 
     func currentSongSnapshot() -> PlayerSongSnapshot? {
@@ -214,6 +225,26 @@ final class RunningMusicViewModel: ObservableObject {
         }
 
         return queueArtworkURLsBySongID["\(song.id)"]
+    }
+
+    /// 목록에 실제로 보이는 곡만 커버를 보강한다. 전체 곡을 한 번에 검색하지 않아
+    /// 긴 플레이리스트에서도 네트워크 요청과 메모리 사용량이 급증하지 않는다.
+    func loadArtworkURLIfNeeded(for song: Song) async {
+        let songID = "\(song.id)"
+        let loadID = activePlaylistLoadID
+        guard artworkURL(for: song) == nil,
+              queueArtworkURLsBySongID[songID] == nil,
+              !resolvingSongArtworkIDs.contains(songID),
+              loadID != nil
+        else { return }
+
+        resolvingSongArtworkIDs.insert(songID)
+        let resolvedArtworkURLs = await musicService.resolvedArtworkURLs(for: [song])
+        resolvingSongArtworkIDs.remove(songID)
+        guard activePlaylistLoadID == loadID,
+              let resolvedArtworkURL = resolvedArtworkURLs[songID]
+        else { return }
+        queueArtworkURLsBySongID[songID] = resolvedArtworkURL
     }
 
     func artworkURL(for playlist: Playlist) -> String? {
@@ -289,21 +320,23 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 이전 곡
     func skipToPrevious() async {
-        guard currentSongIndex > 0 else { return }
+        guard canSkipToPrevious else { return }
         let newIndex = currentSongIndex - 1
         isGoingForward = false
         presentTrack(at: newIndex, mediaItem: cachedMediaItems[newIndex])
-        player.skipToPreviousItem()
+        player.nowPlayingItem = cachedMediaItems[newIndex]
+        player.play()
         await synchronizeTrackTransition(to: newIndex)
     }
 
     // MARK: - 다음 곡
     func skipToNext() async {
-        guard currentSongIndex + 1 < cachedMediaItems.count else { return }
+        guard canSkipToNext else { return }
         let newIndex = currentSongIndex + 1
         isGoingForward = true
         presentTrack(at: newIndex, mediaItem: cachedMediaItems[newIndex])
-        player.skipToNextItem()
+        player.nowPlayingItem = cachedMediaItems[newIndex]
+        player.play()
         await synchronizeTrackTransition(to: newIndex)
     }
 
