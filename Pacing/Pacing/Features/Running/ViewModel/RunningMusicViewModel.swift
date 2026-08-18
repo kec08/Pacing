@@ -458,7 +458,7 @@ final class RunningMusicViewModel: ObservableObject {
         stopOptimisticPlaybackClock()
     }
 
-    private func applicationSong(from entry: MusicPlayer.Queue.Entry) -> Song? {
+    private func applicationSong(from entry: MusicKit.MusicPlayer.Queue.Entry) -> Song? {
         guard let item = entry.item,
               case let .song(song) = item
         else { return nil }
