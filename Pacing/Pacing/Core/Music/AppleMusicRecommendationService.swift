@@ -1,5 +1,7 @@
 import Foundation
 import MusicKit
+import MediaPlayer
+import Combine
 import UIKit
 
 extension Notification.Name {
@@ -59,8 +61,45 @@ enum AppleMusicRecommendationError: LocalizedError {
 }
 
 @MainActor
+final class ApplicationPlaybackContext: ObservableObject {
+    static let shared = ApplicationPlaybackContext()
+
+    @Published private(set) var songs: [Song] = []
+    @Published private(set) var currentSong: Song?
+    @Published private(set) var currentIndex: Int = 0
+
+    func configure(songs: [Song], startingAt song: Song? = nil) {
+        self.songs = songs
+        currentIndex = song.flatMap { target in songs.firstIndex(where: { $0.id == target.id }) } ?? 0
+        currentSong = songs.indices.contains(currentIndex) ? songs[currentIndex] : nil
+    }
+
+    func sync(title: String, artist: String?) {
+        let exactIndex = songs.firstIndex(where: {
+            $0.title.caseInsensitiveCompare(title) == .orderedSame &&
+            (artist == nil || $0.artistName.caseInsensitiveCompare(artist ?? "") == .orderedSame)
+        })
+        let index = exactIndex ?? songs.firstIndex(where: {
+            $0.title.caseInsensitiveCompare(title) == .orderedSame
+        })
+        guard let index else { return }
+        currentIndex = index
+        currentSong = songs[index]
+    }
+
+    func move(by offset: Int) {
+        let index = currentIndex + offset
+        guard songs.indices.contains(index) else { return }
+        currentIndex = index
+        currentSong = songs[index]
+    }
+}
+
+@MainActor
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
+
+    let playbackContext = ApplicationPlaybackContext.shared
 
     private let player = ApplicationMusicPlayer.shared
     private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
@@ -81,15 +120,29 @@ final class AppleMusicRecommendationService {
         try await MusicSubscription.current
     }
 
-    func fetchLibraryPlaylists(limit: Int = 6) async throws -> [Playlist] {
+    /// 보관함 플레이리스트를 배치 끝까지 조회한다. 재생 선택 화면에서는 수를 자르지 않고,
+    /// 공유 동기화처럼 상한이 필요한 호출만 `maximumCount`를 지정한다.
+    func fetchLibraryPlaylists(pageSize: Int = 100, maximumCount: Int? = nil) async throws -> [Playlist] {
         var request = MusicLibraryRequest<Playlist>()
-        request.limit = limit
-        let response = try await request.response()
-        return Array(response.items.prefix(limit))
+        request.limit = pageSize
+        var batch = try await request.response().items
+        var playlists = Array(batch)
+
+        while batch.hasNextBatch,
+              maximumCount.map({ playlists.count < $0 }) ?? true,
+              let nextBatch = try await batch.nextBatch(limit: pageSize) {
+            batch = nextBatch
+            playlists.append(contentsOf: nextBatch)
+        }
+
+        if let maximumCount {
+            return Array(playlists.prefix(maximumCount))
+        }
+        return playlists
     }
 
     func syncCurrentUserPlaylists(uid: String, nickname: String, limit: Int = 30) async throws {
-        let playlists = try await fetchLibraryPlaylists(limit: limit)
+        let playlists = try await fetchLibraryPlaylists(maximumCount: limit)
 
         for playlist in playlists {
             let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .library)
@@ -281,11 +334,23 @@ final class AppleMusicRecommendationService {
     }
 
     func play(playlist: Playlist) async throws {
-        try await startPlayback(with: .init(for: [playlist]))
+        let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .catalog)
+        let songs = loadedPlaylist.tracks?.compactMap { track -> Song? in
+            if case .song(let song) = track { return song }
+            return nil
+        } ?? []
+        guard !songs.isEmpty else { throw AppleMusicRecommendationError.noPlayableTracks }
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     func play(album: Album) async throws {
-        try await startPlayback(with: .init(for: [album]))
+        let loadedAlbum = try await album.with([.tracks], preferredSource: .catalog)
+        let songs = loadedAlbum.tracks?.compactMap { track -> Song? in
+            if case .song(let song) = track { return song }
+            return nil
+        } ?? []
+        guard !songs.isEmpty else { throw AppleMusicRecommendationError.noPlayableTracks }
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     func play(station: Station) async throws {
@@ -311,7 +376,20 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs), songs: songs)
+    }
+
+    /// ApplicationMusicPlayer 큐가 최소 정보만 제공할 때 커버·재생 시간을 보강한다.
+    func resolveCatalogSong(id: MusicItemID) async -> Song? {
+        var request = MusicCatalogResourceRequest<Song>(matching: \.id, memberOf: [id])
+        request.limit = 1
+        return try? await request.response().items.first
+    }
+
+    /// 재생 큐 엔트리 ID가 카탈로그 ID가 아닌 경우 제목·아티스트로 현재 곡을
+    /// 다시 찾는다. 러닝 시트의 앨범 아트 보강에 사용한다.
+    func resolveCatalogSong(title: String, artist: String) async -> Song? {
+        try? await searchCatalogSong(title: title, artist: artist)
     }
 
     func play(sharedTracks: [SharedPlaylistTrack]) async throws {
@@ -320,7 +398,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs), songs: songs)
     }
 
     /// 선택한 곡부터 목록의 마지막 곡까지 순서대로 재생한다.
@@ -330,19 +408,18 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        let queuedTracks = Array(sharedTracks[startIndex...])
-        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: queuedTracks)
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: sharedTracks)
 
-        guard resolvedSongsByTrackID[trackID] != nil else {
+        guard let targetSong = resolvedSongsByTrackID[trackID] else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        let songs = queuedTracks.compactMap { resolvedSongsByTrackID[$0.id] }
+        let songs = sharedTracks.compactMap { resolvedSongsByTrackID[$0.id] }
         guard !songs.isEmpty else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs, startingAt: targetSong), songs: songs, startingAt: targetSong)
     }
 
     func play(sharedTrack: SharedPlaylistTrack) async throws {
@@ -351,10 +428,18 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: [song]))
+        try await startPlayback(with: .init(for: [song]), songs: [song])
     }
 
-    private func startPlayback(with queue: ApplicationMusicPlayer.Queue) async throws {
+    private func startPlayback(
+        with queue: ApplicationMusicPlayer.Queue,
+        songs: [Song] = [],
+        startingAt song: Song? = nil
+    ) async throws {
+        // 러닝 시트의 시스템 플레이어가 남아 있으면 탭마다 서로 다른 곡을 표시할 수 있다.
+        // 새 재생 경로를 시작하기 전에 이전 경로를 명시적으로 멈춘다.
+        MPMusicPlayerController.systemMusicPlayer.pause()
+        playbackContext.configure(songs: songs, startingAt: song)
         player.queue = queue
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()

@@ -795,13 +795,18 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
+                            // 플레이리스트에서 받은 Song은 앨범 아트를 이미 포함한다.
+                            // ApplicationMusicPlayer 재생 여부로 이 경로를 막으면
+                            // 빈 큐 엔트리의 placeholder만 표시되므로 항상 우선 사용한다.
+                            } else if !isActiveListenGuest,
+                                      !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
-                                        musicVM.isGoingForward = newIndex > musicVM.currentSongIndex
+                                        let previousIndex = musicVM.currentSongIndex
+                                        musicVM.isGoingForward = newIndex > previousIndex
                                         musicVM.currentSongIndex = newIndex
-                                        Task { await musicVM.play(at: newIndex) }
+                                        Task { await musicVM.play(at: newIndex, from: previousIndex) }
                                     }
                                 )) {
                                     ForEach(musicVM.queueSongs.indices, id: \.self) { idx in
@@ -937,9 +942,14 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(
+                                        isActiveListenGuest || !musicVM.canSkipToPrevious
+                                            ? Color.textSecondary.opacity(0.35)
+                                            : .primary
+                                    )
                             }
-                            .disabled(isActiveListenGuest)
+                            .disabled(isActiveListenGuest || !musicVM.canSkipToPrevious)
+                            .accessibilityLabel("이전 곡")
 
                             Button {
                                 if shouldRunLocalPlaybackClock {
@@ -959,9 +969,14 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
-                                    .foregroundStyle(isActiveListenGuest ? Color.textSecondary.opacity(0.35) : .primary)
+                                    .foregroundStyle(
+                                        isActiveListenGuest || !musicVM.canSkipToNext
+                                            ? Color.textSecondary.opacity(0.35)
+                                            : .primary
+                                    )
                             }
-                            .disabled(isActiveListenGuest)
+                            .disabled(isActiveListenGuest || !musicVM.canSkipToNext)
+                            .accessibilityLabel("다음 곡")
                         }
                         .padding(.top, 20)
 
@@ -1112,7 +1127,7 @@ struct RunningView: View {
                     .padding(.vertical, 16)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
+                    LazyHStack(spacing: 14) {
                         ForEach(musicVM.playlists, id: \.id) { playlist in
                             Button {
                                 Task { await musicVM.play(playlist: playlist) }
@@ -1155,10 +1170,12 @@ struct RunningView: View {
                     }
                     .padding(.horizontal, 20)
                 }
+                .frame(height: 126)
             }
 
             Spacer().frame(height: 8)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .shadow(color: .black.opacity(0.1), radius: 10, y: 4)
@@ -1258,6 +1275,9 @@ struct RunningView: View {
                                 .foregroundStyle(Color.main500)
                         }
                 }
+            }
+            .task(id: song.id) {
+                await musicVM.loadArtworkURLIfNeeded(for: song)
             }
             .overlay {
                 if isCurrentTrack {

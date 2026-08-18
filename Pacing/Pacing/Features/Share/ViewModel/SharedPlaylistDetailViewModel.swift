@@ -51,6 +51,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private var applicationQueueObserver: AnyCancellable?
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
+    private var playbackContextObserver: AnyCancellable?
     private var isStartingPlayback = false
     private var pendingPlaybackTrackID: String?
 
@@ -318,6 +319,20 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         }
     }
 
+    func isCurrentTrack(_ track: SharedPlaylistTrack) -> Bool {
+        guard isPlaying else { return false }
+        if let contextSong = musicService.playbackContext.currentSong {
+            let titleMatches = track.title.caseInsensitiveCompare(contextSong.title) == .orderedSame
+            let artistMatches = track.artistName.caseInsensitiveCompare(contextSong.artistName) == .orderedSame
+            return titleMatches && (artistMatches || contextSong.artistName.isEmpty)
+        }
+        if !nowPlayingTitle.isEmpty {
+            return track.title.caseInsensitiveCompare(nowPlayingTitle) == .orderedSame &&
+                (nowPlayingArtist.isEmpty || track.artistName.caseInsensitiveCompare(nowPlayingArtist) == .orderedSame)
+        }
+        return playingTrackID == track.id
+    }
+
     func savePrimaryPlaylist() async {
         guard !isSaveButtonDisabled else { return }
         errorMessage = nil
@@ -581,6 +596,15 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 guard self?.applicationPlayer.state.playbackStatus != .stopped else { return }
                 self?.syncCurrentTrack()
             }
+
+        // 미니 플레이어의 다음/이전 버튼은 이 뷰모델 밖에서 실행된다.
+        // 공통 재생 컨텍스트를 직접 구독해 목록의 핑크 강조가 현재 곡과
+        // 동시에 이동하도록 한다.
+        playbackContextObserver = musicService.playbackContext.$currentSong
+            .receive(on: RunLoop.main)
+            .sink { [weak self] song in
+                self?.applyPlaybackContext(song)
+            }
     }
 
     private func bindApplicationQueue() {
@@ -609,6 +633,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
 
         if let entry = applicationPlayer.queue.currentEntry,
            applicationPlayer.state.playbackStatus != .stopped {
+            musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
             nowPlayingTitle = entry.title
             nowPlayingArtist = entry.subtitle ?? summary.ownerNickname
             nowPlayingArtwork = nil
@@ -620,6 +645,10 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
                 ($0.artistName.caseInsensitiveCompare(currentArtist) == .orderedSame || currentArtist.isEmpty)
             }) {
                 playingTrackID = matchedTrack.id
+                pendingPlaybackTrackID = nil
+            } else {
+                // 이전에 선택한 곡이 남아 있으면 다음 곡으로 넘어가도 핑크 표시가 고정된다.
+                playingTrackID = nil
                 pendingPlaybackTrackID = nil
             }
             return
@@ -658,7 +687,24 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
             return
         }
 
-        if !isPlaying && !isStartingPlayback {
+        playingTrackID = nil
+        pendingPlaybackTrackID = nil
+    }
+
+    private func applyPlaybackContext(_ song: Song?) {
+        guard let song else { return }
+
+        nowPlayingTitle = song.title
+        nowPlayingArtist = song.artistName
+        if let matchedTrack = tracks.first(where: {
+            $0.title.caseInsensitiveCompare(song.title) == .orderedSame
+                && $0.artistName.caseInsensitiveCompare(song.artistName) == .orderedSame
+        }) ?? tracks.first(where: {
+            $0.title.caseInsensitiveCompare(song.title) == .orderedSame
+        }) {
+            playingTrackID = matchedTrack.id
+            pendingPlaybackTrackID = nil
+        } else {
             playingTrackID = nil
             pendingPlaybackTrackID = nil
         }
@@ -674,7 +720,16 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func skipToNext() {
-        systemPlayer.skipToNextItem()
-        syncCurrentTrack()
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            Task { [weak self] in
+                guard let self else { return }
+                try? await self.applicationPlayer.skipToNextEntry()
+                self.syncCurrentTrack()
+            }
+        } else {
+            systemPlayer.skipToNextItem()
+            syncCurrentTrack()
+        }
     }
 }
