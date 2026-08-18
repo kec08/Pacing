@@ -3,7 +3,7 @@
 > **상태**: 개발 완료 · 최종 실기기 회귀 QA 대기
 > **완료일**: 2026-08-18
 > **관련 이슈**: #111
-> **PR**: 생성 예정 (`dev` 대상 Draft PR)
+> **PR**: #112 (Draft · `dev` 대상)
 > **브랜치**: `feat/111-profile-visibility-simplification`
 
 ---
