@@ -12,6 +12,8 @@ private enum MusicSheetPanel {
 }
 
 struct RunningView: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     private let locationFocusDistance: Double = 1_000
 
     @StateObject private var viewModel = RunningViewModel()
@@ -1352,10 +1354,11 @@ struct RunningView: View {
         let isCollapsed = collapsedPinIDs.contains(runner.id)
         // 프로필이 아직 내려오지 않은 순간에도 일반 위치 점처럼 빨갛게 보이지 않게 한다.
         let avatarColor = Color(.systemGray3)
-        // 내 위치에 사용하던 진한 버건디 표면을 친구 카드에도 적용한다.
-        let cardSurface = Color.main200
+        // 라이트 모드에서는 지도 위 정보가 선명하게 보이도록 흰 표면을 사용하고,
+        // 다크 모드에서는 기존 버건디 표면을 유지한다.
+        let cardSurface = colorScheme == .light ? Color.white : Color.main200
         let cardBg = Color.main500.opacity(0.05)
-        let nameColor = Color.textPrimary
+        let nameColor = runner.isMe ? Color.main500 : Color.textPrimary
 
         Button {
             collapsedPinIDs.formSymmetricDifference([runner.id])
