@@ -480,13 +480,13 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func applicationSong(from entry: MusicKit.MusicPlayer.Queue.Entry) -> Song? {
+        if let resolvedSong = resolvedApplicationSongsByEntryID[entry.id] {
+            return resolvedSong
+        }
         if let contextSong = musicService.playbackContext.currentSong,
            contextSong.title.caseInsensitiveCompare(entry.title) == .orderedSame &&
            (entry.subtitle == nil || contextSong.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame) {
             return contextSong
-        }
-        if let resolvedSong = resolvedApplicationSongsByEntryID[entry.id] {
-            return resolvedSong
         }
         guard let item = entry.item,
               case let .song(song) = item
@@ -513,16 +513,24 @@ final class RunningMusicViewModel: ObservableObject {
     ) {
         guard resolvedApplicationSongsByEntryID[entry.id] == nil,
               !resolvingApplicationEntryIDs.contains(entry.id),
-              let item = entry.item,
-              case let .song(queueSong) = item,
-              (queueSong.artwork == nil || queueSong.duration == nil)
+              song?.artwork == nil || song?.duration == nil
         else { return }
+
+        let catalogID: MusicItemID
+        if let item = entry.item, case let .song(queueSong) = item {
+            catalogID = queueSong.id
+        } else {
+            // ApplicationMusicPlayer 엔트리는 제목/아티스트만 제공하고
+            // item을 비워서 전달하는 경우가 있다. 이때도 엔트리 ID는
+            // 카탈로그 곡 ID이므로 이를 사용해 아트워크를 보강한다.
+            catalogID = MusicItemID(entry.id)
+        }
 
         resolvingApplicationEntryIDs.insert(entry.id)
 
         Task { [weak self] in
             guard let self else { return }
-            let resolvedSong = await self.musicService.resolveCatalogSong(id: queueSong.id)
+            let resolvedSong = await self.musicService.resolveCatalogSong(id: catalogID)
             self.resolvingApplicationEntryIDs.remove(entry.id)
             guard let resolvedSong,
                   self.applicationPlayer.queue.currentEntry?.id == entry.id
