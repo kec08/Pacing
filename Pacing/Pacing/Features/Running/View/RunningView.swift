@@ -836,6 +836,9 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
+                            } else if let artwork = musicVM.currentMusicArtwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
                             } else if let artworkURL = displaySnapshot?.artworkURL {
                                 RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
                                     .frame(width: artSize, height: artSize)

@@ -30,6 +30,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isGoingForward: Bool = true
     @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
+    @Published private(set) var currentMusicArtwork: Artwork? = nil
     @Published private(set) var displayPlaybackTime: TimeInterval = 0
     @Published private(set) var applicationPlaybackDuration: TimeInterval = 0
     @Published private(set) var currentPlaylistName: String? = nil
@@ -446,6 +447,7 @@ final class RunningMusicViewModel: ObservableObject {
             }
             musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
             let song = applicationSong(from: entry)
+            currentMusicArtwork = entry.artwork ?? song?.artwork
             currentSong = musicService.playbackContext.currentSong
             pendingTrackPersistentID = nil
             isPlaying = applicationPlayer.state.playbackStatus == .playing
@@ -488,9 +490,11 @@ final class RunningMusicViewModel: ObservableObject {
         updatePlaybackClock()
         guard let item = player.nowPlayingItem else {
             currentSong = nil
+            currentMusicArtwork = nil
             nowPlayingSnapshot = nil
             return
         }
+        currentMusicArtwork = currentSong?.artwork
         nowPlayingSnapshot = PlayerSongSnapshot(
             title: item.title ?? "",
             artistName: item.artist ?? "Apple Music",
