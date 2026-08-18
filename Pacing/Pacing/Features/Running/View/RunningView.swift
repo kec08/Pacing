@@ -1861,7 +1861,9 @@ struct RunningView: View {
             // 같이 듣기 버튼
             Button {
                 showNearbySheet = false
-                listenVM.sendRequest(to: runner, musicVM: musicVM)
+                Task {
+                    await listenVM.sendRequest(to: runner, musicVM: musicVM)
+                }
             } label: {
                 Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
                     .font(.system(size: 13, weight: .medium))
