@@ -142,20 +142,7 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
                             Button {
-                                focusOnMyLocation()
-                            } label: {
-                                Image(systemName: "location.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(Color.main500)
-                                    .frame(width: 40, height: 40)
-                                    .background(.ultraThinMaterial)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                            }
-                            .accessibilityLabel("내 위치로 이동")
-                        } else {
-                            // 러닝 중: 통계 패널 아래에 배치하고 항상 내 위치 버튼만 표시한다.
-                            Button {
-                                focusOnMyLocation()
+                                toggleUserLocationFollowing()
                             } label: {
                                 Image(systemName: "location.fill")
                                     .font(.system(size: 15, weight: .semibold))
@@ -164,7 +151,21 @@ struct RunningView: View {
                                     .background(.ultraThinMaterial)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                             }
-                            .accessibilityLabel("내 위치로 이동하고 지도 추적 시작")
+                            .accessibilityLabel(isFollowingUser ? "내 위치 자동 추적 끄기" : "내 위치 자동 추적 켜기")
+                            .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
+                        } else {
+                            // 러닝 중: 통계 패널 아래에 배치하고 항상 내 위치 버튼만 표시한다.
+                            Button {
+                                toggleUserLocationFollowing()
+                            } label: {
+                                Image(systemName: "location.fill")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(isFollowingUser ? Color.main500 : Color.textPrimary)
+                                    .frame(width: 40, height: 40)
+                                    .background(.ultraThinMaterial)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            }
+                            .accessibilityLabel(isFollowingUser ? "내 위치 자동 추적 끄기" : "내 위치 자동 추적 켜기")
                             .accessibilityValue(isFollowingUser ? "자동 추적 중" : "자동 추적 꺼짐")
                         }
                     }
@@ -271,7 +272,7 @@ struct RunningView: View {
             if !hasCenteredOnInitialLocation {
                 hasCenteredOnInitialLocation = true
                 recenterCamera(distance: mapZoomDistance)
-            } else if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+            } else if isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             }
             nearbyVM.updateMyLocation(loc.coordinate)
@@ -1928,6 +1929,14 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func toggleUserLocationFollowing() {
+        if isFollowingUser {
+            stopFollowingUser()
+        } else {
+            focusOnMyLocation()
+        }
     }
 
     private func stopFollowingUser() {
