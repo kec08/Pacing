@@ -446,6 +446,14 @@ final class RunningMusicViewModel: ObservableObject {
                 pendingApplicationTrackIndex = nil
             }
             musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
+
+            // 음악 탭에서 시작한 플레이리스트·앨범 재생은 러닝 ViewModel의
+            // 로컬 queueSongs가 비어 있을 수 있다. 공통 재생 컨텍스트의 전체
+            // 곡 목록을 연결해 리스트 패널과 이미지 캐러셀이 같은 큐를 사용한다.
+            if !musicService.playbackContext.songs.isEmpty {
+                queueSongs = musicService.playbackContext.songs
+            }
+
             let song = applicationSong(from: entry)
             currentMusicArtwork = entry.artwork ?? song?.artwork
             currentSong = musicService.playbackContext.currentSong
