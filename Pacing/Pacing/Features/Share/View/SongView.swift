@@ -1173,7 +1173,10 @@ final class ArtworkImageStore {
                 return nil
             }
 
-            return downsampledImage(from: data)
+            // Apple Music artwork 응답은 기기/콘텐츠에 따라 ImageIO 썸네일 생성이
+            // 실패할 수 있다. 음악 탭에서 사용하는 UIImage 디코딩을 최종 fallback으로
+            // 사용해 유효한 artwork URL이 placeholder로 끝나지 않게 한다.
+            return downsampledImage(from: data) ?? UIImage(data: data)
         } catch {
             return nil
         }
