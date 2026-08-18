@@ -31,6 +31,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isGoingForward: Bool = true
     @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
     @Published private(set) var displayPlaybackTime: TimeInterval = 0
+    @Published private(set) var applicationPlaybackDuration: TimeInterval = 0
     @Published private(set) var currentPlaylistName: String? = nil
     @Published private(set) var queueArtworkURLsBySongID: [String: String] = [:]
     @Published private(set) var playlistArtworkURLsByPlaylistID: [String: String] = [:]
@@ -156,7 +157,9 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 재생 시간
     var currentPlaybackTime: TimeInterval { isUsingApplicationPlayer ? 0 : displayPlaybackTime }
-    var playbackDuration: TimeInterval { isUsingApplicationPlayer ? 0 : player.nowPlayingItem?.playbackDuration ?? 0 }
+    var playbackDuration: TimeInterval {
+        isUsingApplicationPlayer ? applicationPlaybackDuration : player.nowPlayingItem?.playbackDuration ?? 0
+    }
 
     var displaySongTitle: String {
         nowPlayingSnapshot?.title ?? currentSong?.title ?? "플레이리스트를 선택하세요"
@@ -187,11 +190,13 @@ final class RunningMusicViewModel: ObservableObject {
     func currentSongSnapshot() -> PlayerSongSnapshot? {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
+            let song = applicationSong(from: entry)
             return PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
-                artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString,
+                artworkURL: song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? entry.artwork?.url(width: 900, height: 900)?.absoluteString,
                 artwork: nil
             )
         }
@@ -372,15 +377,18 @@ final class RunningMusicViewModel: ObservableObject {
     func syncCurrentState() {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
+            let song = applicationSong(from: entry)
             currentSong = nil
             pendingTrackPersistentID = nil
             isPlaying = applicationPlayer.state.playbackStatus == .playing
             displayPlaybackTime = 0
+            applicationPlaybackDuration = song?.duration ?? 0
             nowPlayingSnapshot = PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
-                artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString,
+                artworkURL: song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? entry.artwork?.url(width: 900, height: 900)?.absoluteString,
                 artwork: nil
             )
             if let index = queueSongs.firstIndex(where: {
@@ -393,6 +401,8 @@ final class RunningMusicViewModel: ObservableObject {
             }
             return
         }
+
+        applicationPlaybackDuration = 0
 
         let playerIsPlaying = player.playbackState == .playing
         if !isManualSeeking || playerIsPlaying {
@@ -446,6 +456,13 @@ final class RunningMusicViewModel: ObservableObject {
         )
         displayPlaybackTime = 0
         stopOptimisticPlaybackClock()
+    }
+
+    private func applicationSong(from entry: MusicPlayer.Queue.Entry) -> Song? {
+        guard let item = entry.item,
+              case let .song(song) = item
+        else { return nil }
+        return song
     }
 
     private func synchronizeTrackTransition(to index: Int) async {

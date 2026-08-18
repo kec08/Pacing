@@ -296,11 +296,23 @@ final class AppleMusicRecommendationService {
     }
 
     func play(playlist: Playlist) async throws {
-        try await startPlayback(with: .init(for: [playlist]))
+        let loadedPlaylist = try await playlist.with([.tracks], preferredSource: .catalog)
+        let songs = loadedPlaylist.tracks?.compactMap { track -> Song? in
+            if case .song(let song) = track { return song }
+            return nil
+        } ?? []
+        guard !songs.isEmpty else { throw AppleMusicRecommendationError.noPlayableTracks }
+        try await startPlayback(with: .init(for: songs))
     }
 
     func play(album: Album) async throws {
-        try await startPlayback(with: .init(for: [album]))
+        let loadedAlbum = try await album.with([.tracks], preferredSource: .catalog)
+        let songs = loadedAlbum.tracks?.compactMap { track -> Song? in
+            if case .song(let song) = track { return song }
+            return nil
+        } ?? []
+        guard !songs.isEmpty else { throw AppleMusicRecommendationError.noPlayableTracks }
+        try await startPlayback(with: .init(for: songs))
     }
 
     func play(station: Station) async throws {
@@ -345,19 +357,18 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        let queuedTracks = Array(sharedTracks[startIndex...])
-        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: queuedTracks)
+        let resolvedSongsByTrackID = try await resolveCatalogSongMatches(for: sharedTracks)
 
-        guard resolvedSongsByTrackID[trackID] != nil else {
+        guard let targetSong = resolvedSongsByTrackID[trackID] else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        let songs = queuedTracks.compactMap { resolvedSongsByTrackID[$0.id] }
+        let songs = sharedTracks.compactMap { resolvedSongsByTrackID[$0.id] }
         guard !songs.isEmpty else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
-        try await startPlayback(with: .init(for: songs))
+        try await startPlayback(with: .init(for: songs, startingAt: targetSong))
     }
 
     func play(sharedTrack: SharedPlaylistTrack) async throws {
