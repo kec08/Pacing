@@ -840,6 +840,7 @@ struct RunningView: View {
                                 RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
                                     .frame(width: artSize, height: artSize)
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id(displaySnapshot?.songStoreID)
                             } else {
                                 artworkPlaceholder
                                     .frame(width: artSize, height: artSize)
