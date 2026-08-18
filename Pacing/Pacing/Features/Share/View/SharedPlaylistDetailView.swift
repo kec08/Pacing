@@ -258,12 +258,12 @@ struct SharedPlaylistDetailView: View {
                                 SharedAlbumTrackRow(
                                     trackNumber: index + 1,
                                     track: track,
-                                    isPlaying: viewModel.playingTrackID == track.id
+                                    isPlaying: viewModel.isCurrentTrack(track)
                                 )
                             } else {
                                 SharedPlaylistTrackRow(
                                     track: track,
-                                    isPlaying: viewModel.playingTrackID == track.id
+                                    isPlaying: viewModel.isCurrentTrack(track)
                                 )
                             }
                         }

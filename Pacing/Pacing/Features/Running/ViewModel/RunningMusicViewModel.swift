@@ -115,56 +115,43 @@ final class RunningMusicViewModel: ObservableObject {
         // 음악 탭에서 ApplicationMusicPlayer가 살아 있으면 해당 상태가 우선 표시된다.
         // 러닝 플레이리스트 시작 시 이를 멈춰 현재 재생 항목의 기준을 하나로 유지한다.
         applicationPlayer.pause()
+        cachedMediaItems = []
+        isLoading = true
+        defer { isLoading = false }
 
-        // 큐 전환은 네트워크 작업보다 먼저 처리한다. 수록곡/커버 보강을 기다리면
-        // 이전 곡이 수십 초 유지되는 문제가 생긴다.
-        let query = MPMediaQuery.playlists()
-        let mediaPlaylists = query.collections as? [MPMediaPlaylist] ?? []
+        guard let loaded = try? await playlist.with([.tracks]),
+              activePlaylistLoadID == loadID
+        else { return }
 
-        if let match = mediaPlaylists.first(where: { $0.name == playlist.name }) {
-            cachedMediaItems = match.items
-            let collection = MPMediaItemCollection(items: match.items)
-            player.setQueue(with: collection)
-            if let firstItem = match.items.first {
-                presentTrack(at: 0, mediaItem: firstItem)
-                player.nowPlayingItem = firstItem
-            }
-            player.play()
-            syncCurrentState()
-        } else {
-            cachedMediaItems = []
-        }
+        let loadedSongs = loaded.tracks?.compactMap { track -> Song? in
+            if case .song(let song) = track { return song }
+            return nil
+        } ?? []
+        guard !loadedSongs.isEmpty else { return }
 
-        Task { [weak self] in
-            guard let self,
-                  let loaded = try? await playlist.with([.tracks]),
-                  self.activePlaylistLoadID == loadID
-            else {
-                return
-            }
-
-            let loadedSongs = loaded.tracks?.compactMap { track -> Song? in
-                if case .song(let song) = track { return song }
-                return nil
-            } ?? []
-            self.queueSongs = loadedSongs
-            self.syncCurrentState()
-
-        }
+        // 러닝과 음악 탭 모두 ApplicationMusicPlayer만 사용한다. 두 플레이어를 섞으면
+        // 같은 시점에 서로 다른 큐를 읽어 제목·커버·제어가 분리된다.
+        queueSongs = loadedSongs
+        currentSong = loadedSongs[0]
+        currentSongIndex = 0
+        applicationPlayer.queue = .init(for: loadedSongs)
+        NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+        try? await applicationPlayer.prepareToPlay()
+        try? await applicationPlayer.play()
+        syncCurrentState()
     }
 
     // MARK: - 인덱스로 곡 직접 이동 (캐시된 아이템 활용)
     func play(at index: Int) async {
-        guard index >= 0, index < cachedMediaItems.count else { return }
-        isManualSeeking = true
-        let targetItem = cachedMediaItems[index]
-        presentTrack(at: index, mediaItem: targetItem)
-        player.nowPlayingItem = targetItem
-        player.play()
+        guard queueSongs.indices.contains(index) else { return }
+        let targetSong = queueSongs[index]
+        currentSongIndex = index
+        currentSong = targetSong
+        applicationPlayer.queue = .init(for: queueSongs, startingAt: targetSong)
+        NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+        try? await applicationPlayer.prepareToPlay()
+        try? await applicationPlayer.play()
         syncCurrentState()
-        try? await Task.sleep(nanoseconds: 80_000_000)
-        syncCurrentState()
-        isManualSeeking = false
     }
 
     // MARK: - 재생 시간
@@ -184,13 +171,13 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     var canSkipToPrevious: Bool {
-        if isUsingApplicationPlayer { return true }
-        currentSongIndex > 0 && currentSongIndex < cachedMediaItems.count
+        if isUsingApplicationPlayer { return currentSongIndex > 0 }
+        return currentSongIndex > 0 && currentSongIndex < cachedMediaItems.count
     }
 
     var canSkipToNext: Bool {
-        if isUsingApplicationPlayer { return true }
-        currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
+        if isUsingApplicationPlayer { return currentSongIndex + 1 < queueSongs.count }
+        return currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
     }
 
     private var isUsingApplicationPlayer: Bool {
@@ -396,6 +383,14 @@ final class RunningMusicViewModel: ObservableObject {
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString,
                 artwork: nil
             )
+            if let index = queueSongs.firstIndex(where: {
+                $0.title.caseInsensitiveCompare(entry.title) == .orderedSame &&
+                ($0.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame || entry.subtitle == nil)
+            }) {
+                isGoingForward = index >= currentSongIndex
+                currentSongIndex = index
+                currentSong = queueSongs[index]
+            }
             return
         }
 

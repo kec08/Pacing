@@ -318,6 +318,15 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         }
     }
 
+    func isCurrentTrack(_ track: SharedPlaylistTrack) -> Bool {
+        guard isPlaying else { return false }
+        if !nowPlayingTitle.isEmpty {
+            return track.title.caseInsensitiveCompare(nowPlayingTitle) == .orderedSame &&
+                (nowPlayingArtist.isEmpty || track.artistName.caseInsensitiveCompare(nowPlayingArtist) == .orderedSame)
+        }
+        return playingTrackID == track.id
+    }
+
     func savePrimaryPlaylist() async {
         guard !isSaveButtonDisabled else { return }
         errorMessage = nil
@@ -676,7 +685,16 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func skipToNext() {
-        systemPlayer.skipToNextItem()
-        syncCurrentTrack()
+        if applicationPlayer.queue.currentEntry != nil,
+           applicationPlayer.state.playbackStatus != .stopped {
+            Task { [weak self] in
+                guard let self else { return }
+                try? await self.applicationPlayer.skipToNextEntry()
+                self.syncCurrentTrack()
+            }
+        } else {
+            systemPlayer.skipToNextItem()
+            syncCurrentTrack()
+        }
     }
 }
