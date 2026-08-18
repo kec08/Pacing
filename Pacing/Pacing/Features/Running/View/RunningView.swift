@@ -803,9 +803,10 @@ struct RunningView: View {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
-                                        musicVM.isGoingForward = newIndex > musicVM.currentSongIndex
+                                        let previousIndex = musicVM.currentSongIndex
+                                        musicVM.isGoingForward = newIndex > previousIndex
                                         musicVM.currentSongIndex = newIndex
-                                        Task { await musicVM.play(at: newIndex) }
+                                        Task { await musicVM.play(at: newIndex, from: previousIndex) }
                                     }
                                 )) {
                                     ForEach(musicVM.queueSongs.indices, id: \.self) { idx in

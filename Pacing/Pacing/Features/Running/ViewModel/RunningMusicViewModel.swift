@@ -46,6 +46,7 @@ final class RunningMusicViewModel: ObservableObject {
     private var optimisticPlaybackBaseTime: TimeInterval?
     private var optimisticPlaybackStartedAt: Date?
     private var pendingTrackPersistentID: MPMediaEntityPersistentID?
+    private var pendingApplicationTrackIndex: Int?
     private var activePlaylistLoadID: UUID?
     private var resolvingSongArtworkIDs: Set<String> = []
     private var resolvedApplicationSongsByEntryID: [String: Song] = [:]
@@ -146,9 +147,45 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     // MARK: - 인덱스로 곡 직접 이동 (캐시된 아이템 활용)
-    func play(at index: Int) async {
+    func play(at index: Int, from previousIndex: Int? = nil) async {
         guard queueSongs.indices.contains(index) else { return }
         let targetSong = queueSongs[index]
+
+        // 커버 슬라이드는 이미 만들어진 ApplicationMusicPlayer 큐의 인접 항목을
+        // 이동한다. 매번 큐를 재생성하고 prepareToPlay()를 호출하면 2~3초 동안
+        // 새 곡 재생이 지연된다.
+        if isUsingApplicationPlayer,
+           let previousIndex,
+           abs(index - previousIndex) == 1 {
+            isGoingForward = index > previousIndex
+            currentSongIndex = index
+            currentSong = targetSong
+            pendingApplicationTrackIndex = index
+            musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
+            nowPlayingSnapshot = PlayerSongSnapshot(
+                title: targetSong.title,
+                artistName: targetSong.artistName,
+                songStoreID: "\(targetSong.id)",
+                artworkURL: artworkURL(for: targetSong),
+                artwork: nil
+            )
+            displayPlaybackTime = 0
+
+            do {
+                if index > previousIndex {
+                    try await applicationPlayer.skipToNextEntry()
+                } else {
+                    try await applicationPlayer.skipToPreviousEntry()
+                }
+                syncCurrentState()
+                return
+            } catch {
+                // 큐 상태가 외부 조작으로 바뀐 경우에만 기존 재구성 방식으로
+                // 안전하게 복구한다.
+                pendingApplicationTrackIndex = nil
+            }
+        }
+
         currentSongIndex = index
         currentSong = targetSong
         musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
@@ -389,6 +426,18 @@ final class RunningMusicViewModel: ObservableObject {
     func syncCurrentState() {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
+            if let pendingIndex = pendingApplicationTrackIndex,
+               queueSongs.indices.contains(pendingIndex) {
+                let pendingSong = queueSongs[pendingIndex]
+                let didReachPendingSong = pendingSong.title.caseInsensitiveCompare(entry.title) == .orderedSame
+                guard didReachPendingSong else {
+                    // skip 작업이 진행되는 동안 이전 큐 엔트리의 상태 알림이 와도
+                    // 슬라이드한 새 커버와 제목을 이전 곡으로 되돌리지 않는다.
+                    isPlaying = applicationPlayer.state.playbackStatus == .playing
+                    return
+                }
+                pendingApplicationTrackIndex = nil
+            }
             musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
             let song = applicationSong(from: entry)
             currentSong = musicService.playbackContext.currentSong
