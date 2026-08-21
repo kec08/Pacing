@@ -825,11 +825,9 @@ final class AppleMusicRecommendationService {
         guard !tracks.isEmpty else { return [:] }
 
         var resolvedSongsByTrackID: [String: Song] = [:]
-        let batches = stride(from: 0, to: tracks.count, by: maximumConcurrentRequests).map {
-            Array(tracks[$0..<min($0 + maximumConcurrentRequests, tracks.count)])
-        }
-
-        for batch in batches {
+        for batchStartIndex in stride(from: 0, to: tracks.count, by: maximumConcurrentRequests) {
+            let batchEndIndex = min(batchStartIndex + maximumConcurrentRequests, tracks.count)
+            let batch = tracks[batchStartIndex..<batchEndIndex]
             let matches = await withTaskGroup(of: (String, Song?).self, returning: [(String, Song)].self) { group in
                 for track in batch {
                     group.addTask { [self] in
@@ -839,6 +837,7 @@ final class AppleMusicRecommendationService {
                 }
 
                 var batchMatches: [(String, Song)] = []
+                batchMatches.reserveCapacity(batch.count)
                 for await (trackID, song) in group {
                     if let song {
                         batchMatches.append((trackID, song))
