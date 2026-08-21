@@ -2,7 +2,7 @@
 
 > 상태: 구현 완료 / 컴파일 QA 완료 / Simulator 실행 QA 제한
 > 작성일: 2026-08-22
-> 관련 이슈: GitHub API 권한 부족으로 미생성
+> 관련 이슈: [#119 Static Dispatch·Lazy Evaluation·In-Place Mutation 최적화](https://github.com/kec08/Pacing/issues/119)
 > 브랜치: `refactor/117`
 
 ## 1. 목적 및 배경

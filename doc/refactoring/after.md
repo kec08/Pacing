@@ -2,6 +2,8 @@
 
 측정일: 2026-08-22
 
+관련 이슈: [#119](https://github.com/kec08/Pacing/issues/119)
+
 ## 변경 사항
 
 - `AppDelegate`를 `final class`로 변경해 상속 가능성을 제거했다.
