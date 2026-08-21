@@ -133,19 +133,12 @@ final class FirestoreService {
         let records = try await fetchRunHistory(uid: uid, limit: 100)
         guard !records.isEmpty else { return .empty }
 
-        let validPaceRecords = records.filter(\.isPaceValid)
-        let totalDistance = records.reduce(0) { $0 + $1.distance }
-        let totalDuration = records.reduce(0) { $0 + $1.duration }
-        let validDistance = validPaceRecords.reduce(0) { $0 + $1.distance }
-        let validDuration = validPaceRecords.reduce(0) { $0 + $1.duration }
-        let averagePace = validDistance > 0
-            ? Double(validDuration) / 60.0 / validDistance
-            : 0
+        let summary = RunStatisticsCalculator.summary(from: records)
 
         return FriendProfileStats(
-            averagePace: averagePace,
-            totalDuration: totalDuration,
-            totalDistance: totalDistance,
+            averagePace: summary.averagePace,
+            totalDuration: summary.totalDuration,
+            totalDistance: summary.totalDistance,
             lastRunDate: records.first?.startedAt
         )
     }
