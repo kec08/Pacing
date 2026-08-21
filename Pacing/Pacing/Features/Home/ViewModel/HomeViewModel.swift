@@ -164,8 +164,8 @@ final class HomeViewModel: ObservableObject {
     private func calcWeeklyStats(from records: [RunRecord]) -> WeeklyStats {
         let now = Date()
         let weekInterval = WeeklyDateRange.interval(containing: now, calendar: cal)
-        let weekly = records.filter { weekInterval.contains($0.startedAt) }
-        let validPaceRecords = weekly.filter(\.isPaceValid)
+        let weekly = records.lazy.filter { weekInterval.contains($0.startedAt) }
+        let validPaceRecords = weekly.lazy.filter(\.isPaceValid)
         let dist = weekly.reduce(0.0) { $0 + $1.distance }
         let dur  = weekly.reduce(0)   { $0 + $1.duration }
         let validDistance = validPaceRecords.reduce(0.0) { $0 + $1.distance }

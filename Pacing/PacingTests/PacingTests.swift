@@ -169,4 +169,16 @@ final class PacingTests: XCTestCase {
         XCTAssertNil(AppleNonceStore.nonceHash(fromIDToken: idToken))
     }
 
+    func testRunRouteGradientPreservesSegmentCoverage() {
+        let coordinates = (0..<101).map {
+            CLLocationCoordinate2D(latitude: 37 + Double($0) * 0.001, longitude: 127)
+        }
+
+        let segments = RunRouteGradient.segments(from: coordinates, maximumSegmentCount: 10)
+
+        XCTAssertEqual(segments.count, 10)
+        XCTAssertEqual(segments.first?.coordinates.first?.latitude, coordinates.first?.latitude)
+        XCTAssertEqual(segments.last?.coordinates.last?.latitude, coordinates.last?.latitude)
+    }
+
 }

@@ -249,34 +249,43 @@ final class MyViewModel: ObservableObject {
         case .week:
             let labels = ["월", "화", "수", "목", "금", "토", "일"]
             let monday = cal.date(byAdding: .day, value: weekOffset * 7, to: WeeklyDateRange.start(containing: now, calendar: cal))!
-            return (0..<7).map { i in
+            var entries: [BarChartEntry] = []
+            entries.reserveCapacity(labels.count)
+            for i in 0..<labels.count {
                 let date = cal.date(byAdding: .day, value: i, to: monday)!
                 let next = cal.date(byAdding: .day, value: 1, to: date)!
                 let km = records.filter { $0.startedAt >= date && $0.startedAt < next }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: labels[i], value: km, startDate: date, endDate: next)
+                entries.append(BarChartEntry(label: labels[i], value: km, startDate: date, endDate: next))
             }
+            return entries
 
         case .month:
             let year = cal.component(.year, from: now)
             var comps = DateComponents(); comps.year = year; comps.month = selectedMonth
             let monthStart = cal.date(from: comps)!
             let weeksInMonth = 5
-            return (0..<weeksInMonth).map { week in
+            var entries: [BarChartEntry] = []
+            entries.reserveCapacity(weeksInMonth)
+            for week in 0..<weeksInMonth {
                 let start = cal.date(byAdding: .weekOfMonth, value: week, to: monthStart)!
                 let end   = cal.date(byAdding: .weekOfMonth, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: "\(week + 1)주", value: km, startDate: start, endDate: end)
+                entries.append(BarChartEntry(label: "\(week + 1)주", value: km, startDate: start, endDate: end))
             }
+            return entries
 
         case .year:
             let monthLabels = ["1","2","3","4","5","6","7","8","9","10","11","12"]
-            return (1...12).map { month in
+            var entries: [BarChartEntry] = []
+            entries.reserveCapacity(monthLabels.count)
+            for month in 1...monthLabels.count {
                 var c = DateComponents(); c.year = selectedYear; c.month = month
                 let start = cal.date(from: c)!
                 let end   = cal.date(byAdding: .month, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: monthLabels[month - 1], value: km, startDate: start, endDate: end)
+                entries.append(BarChartEntry(label: monthLabels[month - 1], value: km, startDate: start, endDate: end))
             }
+            return entries
 
         case .all:
             return (0..<6).map { offset in
