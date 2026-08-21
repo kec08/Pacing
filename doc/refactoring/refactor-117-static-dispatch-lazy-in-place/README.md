@@ -26,7 +26,7 @@
 - [x] 통계·경로 경계 계산의 in-place mutation 적용
 - [x] 단위 테스트로 결과 동일성 검증 코드 추가
 - [x] 동일 조건으로 after 벤치마크 실행
-- [x] `before.md`, `after.md`, 최종 비교 문서 작성
+- [x] 변경 대상별 Before/After 문서 작성
 
 ## 4. 완료 기준
 
@@ -50,3 +50,9 @@
 - `xcodebuild test`, `test-without-building`: Simulator가 테스트 시작 시 Shutdown으로 전환돼 실행 완료 불가
 - 순수 Swift 벤치마크 checksum: before/after 일치
 - `git diff --check`: 통과
+
+## 7. 변경 대상별 기록
+
+- [주간·친구 프로필 통계](./01-run-statistics/after.md)
+- [러닝 경로 경계 계산](./02-route-bounds/after.md)
+- [AppDelegate Static Dispatch](./03-static-dispatch/after.md)
