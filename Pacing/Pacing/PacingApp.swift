@@ -16,7 +16,7 @@ import KakaoSDKCommon
 import KakaoSDKAuth
 #endif
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate {
     private let naverDelegate = NaverLoginDelegate()
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {

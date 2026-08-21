@@ -294,7 +294,13 @@ struct FriendProfileView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(vm.recentSongs.prefix(5)) { song in
-                        FriendRecentSongRow(song: song, artworkURL: vm.recentSongArtworkURLs[song.id])
+                        FriendRecentSongRow(
+                            song: song,
+                            artworkURL: vm.recentSongArtworkURLs[song.id],
+                            isPlaying: vm.playingSongID == song.id,
+                            playbackError: vm.playingSongID == song.id ? vm.playbackError : nil,
+                            onPlay: { Task { await vm.playRecentSong(song) } }
+                        )
                     }
                 }
             }
@@ -381,33 +387,51 @@ private struct FriendProfileStatItem: View {
 private struct FriendRecentSongRow: View {
     let song: FriendRecentSong
     let artworkURL: String?
+    let isPlaying: Bool
+    let playbackError: String?
+    let onPlay: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            albumArtwork
+        Button(action: onPlay) {
+            HStack(spacing: 12) {
+                ZStack {
+                    albumArtwork
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(song.title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
+                    if isPlaying {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.black.opacity(0.42))
+                        FriendSongPlayingWaveform()
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                Text(song.artistName.isEmpty ? "Apple Music" : song.artistName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSecondary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(song.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+
+                    Text(playbackError ?? (song.artistName.isEmpty ? "Apple Music" : song.artistName))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(playbackError == nil ? Color.textSecondary : Color.accent500)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                if let playedAtText {
+                    Text(playedAtText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.gray500)
+                }
             }
-
-            Spacer(minLength: 8)
-
-            if let playedAtText {
-                Text(playedAtText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.gray500)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(song.title) 재생")
         .overlay(alignment: .bottom) {
             Divider()
                 .padding(.leading, 62)
@@ -449,6 +473,35 @@ private struct FriendRecentSongRow: View {
         formatter.locale = Locale(identifier: "ko_KR")
         formatter.unitsStyle = .short
         return formatter.localizedString(for: playedAt, relativeTo: Date())
+    }
+}
+
+private struct FriendSongPlayingWaveform: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 2.5) {
+            waveBar(height: 16, delay: 0.0)
+            waveBar(height: 23, delay: 0.1)
+            waveBar(height: 14, delay: 0.2)
+            waveBar(height: 20, delay: 0.3)
+        }
+        .frame(width: 30, height: 28)
+        .onAppear { isAnimating = true }
+        .accessibilityLabel("재생 중")
+    }
+
+    private func waveBar(height: CGFloat, delay: Double) -> some View {
+        Capsule()
+            .fill(.white)
+            .frame(width: 2.5, height: height)
+            .scaleEffect(y: isAnimating ? 0.52 : 1, anchor: .center)
+            .animation(
+                .easeInOut(duration: 0.52)
+                    .repeatForever(autoreverses: true)
+                    .delay(delay),
+                value: isAnimating
+            )
     }
 }
 

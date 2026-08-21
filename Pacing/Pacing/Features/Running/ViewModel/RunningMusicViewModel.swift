@@ -30,6 +30,7 @@ final class RunningMusicViewModel: ObservableObject {
     @Published var isLoading: Bool = false
     @Published var isGoingForward: Bool = true
     @Published var nowPlayingSnapshot: PlayerSongSnapshot? = nil
+    @Published private(set) var currentMusicArtwork: Artwork? = nil
     @Published private(set) var displayPlaybackTime: TimeInterval = 0
     @Published private(set) var applicationPlaybackDuration: TimeInterval = 0
     @Published private(set) var currentPlaylistName: String? = nil
@@ -49,8 +50,11 @@ final class RunningMusicViewModel: ObservableObject {
     private var pendingApplicationTrackIndex: Int?
     private var activePlaylistLoadID: UUID?
     private var resolvingSongArtworkIDs: Set<String> = []
-    private var resolvedApplicationSongsByEntryID: [String: Song] = [:]
+    private var resolvedApplicationSongsByEntryKey: [String: Song] = [:]
+    private var resolvedApplicationArtworkURLsByEntryKey: [String: String] = [:]
+    private var attemptedApplicationArtworkEntryKeys: Set<String> = []
     private var resolvingApplicationEntryIDs: Set<String> = []
+    private var applicationSongResolutionTasks: [String: Task<Void, Never>] = [:]
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -66,6 +70,7 @@ final class RunningMusicViewModel: ObservableObject {
     deinit {
         playbackClock?.cancel()
         seekSyncTask?.cancel()
+        applicationSongResolutionTasks.values.forEach { $0.cancel() }
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
     }
@@ -138,7 +143,7 @@ final class RunningMusicViewModel: ObservableObject {
         queueSongs = loadedSongs
         currentSong = loadedSongs[0]
         currentSongIndex = 0
-        musicService.playbackContext.configure(songs: loadedSongs)
+        musicService.playbackContext.configure(songs: loadedSongs, title: playlist.name)
         applicationPlayer.queue = .init(for: loadedSongs)
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
         try? await applicationPlayer.prepareToPlay()
@@ -215,12 +220,16 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     var canSkipToPrevious: Bool {
-        if isUsingApplicationPlayer { return true }
+        if isUsingApplicationPlayer {
+            return !queueSongs.isEmpty && currentSongIndex > 0
+        }
         return currentSongIndex > 0 && currentSongIndex < cachedMediaItems.count
     }
 
     var canSkipToNext: Bool {
-        if isUsingApplicationPlayer { return true }
+        if isUsingApplicationPlayer {
+            return !queueSongs.isEmpty && currentSongIndex + 1 < queueSongs.count
+        }
         return currentSongIndex >= 0 && currentSongIndex + 1 < cachedMediaItems.count
     }
 
@@ -234,14 +243,14 @@ final class RunningMusicViewModel: ObservableObject {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let song = applicationSong(from: entry)
-            let systemArtwork = matchingSystemArtwork(for: entry)
             return PlayerSongSnapshot(
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: systemArtwork
+                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? resolvedApplicationArtworkURLsByEntryKey[applicationEntryKey(for: entry)],
+                artwork: nil
             )
         }
 
@@ -393,8 +402,8 @@ final class RunningMusicViewModel: ObservableObject {
     // MARK: - 이전 곡
     func skipToPrevious() async {
         if isUsingApplicationPlayer {
-            try? await applicationPlayer.skipToPreviousEntry()
-            syncCurrentState()
+            guard currentSongIndex > 0 else { return }
+            await play(at: currentSongIndex - 1, from: currentSongIndex)
             return
         }
         guard canSkipToPrevious else { return }
@@ -409,8 +418,8 @@ final class RunningMusicViewModel: ObservableObject {
     // MARK: - 다음 곡
     func skipToNext() async {
         if isUsingApplicationPlayer {
-            try? await applicationPlayer.skipToNextEntry()
-            syncCurrentState()
+            guard currentSongIndex + 1 < queueSongs.count else { return }
+            await play(at: currentSongIndex + 1, from: currentSongIndex)
             return
         }
         guard canSkipToNext else { return }
@@ -426,6 +435,8 @@ final class RunningMusicViewModel: ObservableObject {
     func syncCurrentState() {
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
+            let entryKey = applicationEntryKey(for: entry)
+            cancelResolutionTasks(except: entryKey)
             if let pendingIndex = pendingApplicationTrackIndex,
                queueSongs.indices.contains(pendingIndex) {
                 let pendingSong = queueSongs[pendingIndex]
@@ -439,7 +450,17 @@ final class RunningMusicViewModel: ObservableObject {
                 pendingApplicationTrackIndex = nil
             }
             musicService.playbackContext.sync(title: entry.title, artist: entry.subtitle)
+
+            // 음악 탭에서 시작한 플레이리스트·앨범 재생은 러닝 ViewModel의
+            // 로컬 queueSongs가 비어 있을 수 있다. 공통 재생 컨텍스트의 전체
+            // 곡 목록을 연결해 리스트 패널과 이미지 캐러셀이 같은 큐를 사용한다.
+            if !musicService.playbackContext.songs.isEmpty {
+                queueSongs = musicService.playbackContext.songs
+                currentPlaylistName = musicService.playbackContext.queueTitle
+            }
+
             let song = applicationSong(from: entry)
+            currentMusicArtwork = entry.artwork ?? song?.artwork
             currentSong = musicService.playbackContext.currentSong
             pendingTrackPersistentID = nil
             isPlaying = applicationPlayer.state.playbackStatus == .playing
@@ -453,10 +474,17 @@ final class RunningMusicViewModel: ObservableObject {
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString,
-                artwork: matchingSystemArtwork(for: entry)
+                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? resolvedApplicationArtworkURLsByEntryKey[entryKey],
+                artwork: nil
             )
-            if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
+            if let contextIndex = queueSongs.indices.contains(musicService.playbackContext.currentIndex)
+                ? musicService.playbackContext.currentIndex
+                : nil {
+                isGoingForward = contextIndex >= currentSongIndex
+                currentSongIndex = contextIndex
+                currentSong = queueSongs[contextIndex]
+            } else if let index = queueSongs.firstIndex(where: { "\($0.id)" == entry.id })
                 ?? queueSongs.firstIndex(where: {
                 $0.title.caseInsensitiveCompare(entry.title) == .orderedSame &&
                 ($0.artistName.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame || entry.subtitle == nil)
@@ -468,7 +496,7 @@ final class RunningMusicViewModel: ObservableObject {
                 currentSongIndex = index
                 currentSong = queueSongs[index]
             }
-            resolveApplicationSongMetadataIfNeeded(for: entry, song: song)
+            resolveApplicationSongMetadataIfNeeded(for: entry, song: song, entryKey: entryKey)
             return
         }
 
@@ -481,9 +509,11 @@ final class RunningMusicViewModel: ObservableObject {
         updatePlaybackClock()
         guard let item = player.nowPlayingItem else {
             currentSong = nil
+            currentMusicArtwork = nil
             nowPlayingSnapshot = nil
             return
         }
+        currentMusicArtwork = currentSong?.artwork
         nowPlayingSnapshot = PlayerSongSnapshot(
             title: item.title ?? "",
             artistName: item.artist ?? "Apple Music",
@@ -529,7 +559,7 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func applicationSong(from entry: MusicKit.MusicPlayer.Queue.Entry) -> Song? {
-        if let resolvedSong = resolvedApplicationSongsByEntryID[entry.id] {
+        if let resolvedSong = resolvedApplicationSongsByEntryKey[applicationEntryKey(for: entry)] {
             return resolvedSong
         }
         if let contextSong = musicService.playbackContext.currentSong,
@@ -543,26 +573,19 @@ final class RunningMusicViewModel: ObservableObject {
         return song
     }
 
-    /// 시스템 플레이어는 이전 항목의 nowPlayingItem을 잠시 유지할 수 있다.
-    /// 현재 ApplicationMusicPlayer 엔트리와 메타데이터가 일치할 때만 이미지를
-    /// 사용해 이전 곡의 커버가 러닝 시트에 남지 않도록 한다.
-    private func matchingSystemArtwork(
-        for entry: MusicKit.MusicPlayer.Queue.Entry
-    ) -> UIImage? {
-        guard let item = player.nowPlayingItem,
-              item.title?.caseInsensitiveCompare(entry.title) == .orderedSame,
-              entry.subtitle == nil || item.artist?.caseInsensitiveCompare(entry.subtitle ?? "") == .orderedSame
-        else { return nil }
-        return item.artwork?.image(at: CGSize(width: 900, height: 900))
-    }
-
     private func resolveApplicationSongMetadataIfNeeded(
         for entry: MusicKit.MusicPlayer.Queue.Entry,
-        song: Song?
+        song: Song?,
+        entryKey: String
     ) {
-        guard resolvedApplicationSongsByEntryID[entry.id] == nil,
-              !resolvingApplicationEntryIDs.contains(entry.id),
-              song?.artwork == nil || song?.duration == nil
+        if let artworkURL = song?.artwork?.url(width: 900, height: 900)?.absoluteString {
+            resolvedApplicationArtworkURLsByEntryKey[entryKey] = artworkURL
+        }
+
+        guard resolvedApplicationArtworkURLsByEntryKey[entryKey] == nil,
+              !attemptedApplicationArtworkEntryKeys.contains(entryKey),
+              !resolvingApplicationEntryIDs.contains(entryKey),
+              resolvedApplicationSongsByEntryKey[entryKey] == nil || song?.artwork == nil
         else { return }
 
         let catalogID: MusicItemID
@@ -575,9 +598,10 @@ final class RunningMusicViewModel: ObservableObject {
             catalogID = MusicItemID(entry.id)
         }
 
-        resolvingApplicationEntryIDs.insert(entry.id)
+        resolvingApplicationEntryIDs.insert(entryKey)
+        attemptedApplicationArtworkEntryKeys.insert(entryKey)
 
-        Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let songByID = await self.musicService.resolveCatalogSong(id: catalogID)
             // Queue.Entry.id가 카탈로그 Song ID가 아닌 경우 Resource 요청은
@@ -592,12 +616,44 @@ final class RunningMusicViewModel: ObservableObject {
                     artist: entry.subtitle ?? ""
                 ) ?? songByID
             }
-            self.resolvingApplicationEntryIDs.remove(entry.id)
-            guard let resolvedSong,
-                  self.applicationPlayer.queue.currentEntry?.id == entry.id
+            let resolvedArtworkURL: String?
+            if let songArtworkURL = resolvedSong?.artwork?.url(width: 900, height: 900)?.absoluteString {
+                resolvedArtworkURL = songArtworkURL
+            } else {
+                resolvedArtworkURL = await self.musicService.resolvedRecentSongArtworkURL(
+                    title: entry.title,
+                    artistName: entry.subtitle ?? ""
+                )
+            }
+            self.resolvingApplicationEntryIDs.remove(entryKey)
+            guard self.applicationPlayer.queue.currentEntry.map({ self.applicationEntryKey(for: $0) }) == entryKey
             else { return }
-            self.resolvedApplicationSongsByEntryID[entry.id] = resolvedSong
+            if let resolvedSong {
+                self.resolvedApplicationSongsByEntryKey[entryKey] = resolvedSong
+            }
+            if let resolvedArtworkURL {
+                self.resolvedApplicationArtworkURLsByEntryKey[entryKey] = resolvedArtworkURL
+            }
             self.syncCurrentState()
+        }
+        applicationSongResolutionTasks[entryKey] = task
+    }
+
+    private func applicationEntryKey(
+        for entry: MusicKit.MusicPlayer.Queue.Entry
+    ) -> String {
+        "\(entry.id)|\(entry.title)|\(entry.subtitle ?? "")"
+    }
+
+    private func cancelResolutionTasks(except currentEntryKey: String) {
+        let staleKeys = applicationSongResolutionTasks.keys.filter { $0 != currentEntryKey }
+        for staleKey in staleKeys {
+            applicationSongResolutionTasks[staleKey]?.cancel()
+            applicationSongResolutionTasks.removeValue(forKey: staleKey)
+            resolvingApplicationEntryIDs.remove(staleKey)
+            resolvedApplicationSongsByEntryKey.removeValue(forKey: staleKey)
+            resolvedApplicationArtworkURLsByEntryKey.removeValue(forKey: staleKey)
+            attemptedApplicationArtworkEntryKeys.remove(staleKey)
         }
     }
 

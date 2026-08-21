@@ -72,9 +72,11 @@ final class MyViewModel: ObservableObject {
     private func loadProfile() {
         // UserDefaults 우선 (즉시 표시), Firestore에서 최신값 덮어씀
         nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        height = UserDefaults.standard.integer(forKey: "height")
-        weight = UserDefaults.standard.integer(forKey: "weight")
-        profileVisibility = ProfileVisibility(rawValue: UserDefaults.standard.string(forKey: "profileVisibility") ?? "") ?? .public
+        height   = UserDefaults.standard.integer(forKey: "height")
+        weight   = UserDefaults.standard.integer(forKey: "weight")
+        profileVisibility = ProfileVisibility(
+            rawValue: UserDefaults.standard.string(forKey: "profileVisibility") ?? ""
+        ) ?? .public
         UserDefaults.standard.removeObject(forKey: "age")
         profileImage = Self.decodeImage(UserDefaults.standard.string(forKey: "profileImageBase64"))
 
@@ -82,9 +84,11 @@ final class MyViewModel: ObservableObject {
         Task { @MainActor in
             if let data = try? await FirestoreService.shared.fetchUserProfile(uid: uid) {
                 nickname = data["nickname"] as? String ?? nickname
-                height = data["height"] as? Int ?? height
-                weight = data["weight"] as? Int ?? weight
-                profileVisibility = ProfileVisibility(rawValue: data["profileVisibility"] as? String ?? "") ?? .public
+                height   = data["height"]   as? Int    ?? height
+                weight   = data["weight"]   as? Int    ?? weight
+                profileVisibility = ProfileVisibility(
+                    rawValue: data["profileVisibility"] as? String ?? ""
+                ) ?? profileVisibility
                 UserDefaults.standard.set(profileVisibility.rawValue, forKey: "profileVisibility")
                 if let img = data["profileImageBase64"] as? String {
                     UserDefaults.standard.set(img, forKey: "profileImageBase64")
@@ -128,14 +132,12 @@ final class MyViewModel: ObservableObject {
     }
 
     private func applyData(records: [RunRecord]) {
+        let now = Date()
         let filtered = filter(records: records)
 
-        let validPaceRecords = filtered.filter(\.isPaceValid)
         let totalDist = filtered.reduce(0) { $0 + $1.distance }
         let totalTime = filtered.reduce(0) { $0 + $1.duration }
-        let validDistance = validPaceRecords.reduce(0) { $0 + $1.distance }
-        let validDuration = validPaceRecords.reduce(0) { $0 + $1.duration }
-        let avgPace = validDistance > 0 ? Double(validDuration) / 60.0 / validDistance : 0
+        let avgPace = filtered.isEmpty ? 0 : filtered.reduce(0) { $0 + $1.avgPace } / Double(filtered.count)
 
         stats = MyStats(
             totalDistance: totalDist,
@@ -145,14 +147,16 @@ final class MyViewModel: ObservableObject {
         )
 
         chartEntries = buildChartEntries(from: filtered)
-        runHistory = records.sorted(by: { $0.startedAt > $1.startedAt })
-            .filter { $0.startedAt <= Date() }
+        runHistory = records
+            .filter { $0.startedAt <= now }
+            .sorted(by: { $0.startedAt > $1.startedAt })
         updateHistoryMonths()
         activityStatusText = FriendActivityText.runningStatus(lastRunDate: runHistory.first?.startedAt)
     }
 
     var filteredRunHistory: [RunRecord] {
         guard let selectedHistoryMonth else { return [] }
+
         return runHistory.filter {
             cal.component(.year, from: $0.startedAt) == selectedHistoryMonth.year
                 && cal.component(.month, from: $0.startedAt) == selectedHistoryMonth.month
@@ -164,16 +168,20 @@ final class MyViewModel: ObservableObject {
     }
 
     private func updateHistoryMonths() {
-        var seen = Set<String>()
+        var seenMonthIDs = Set<String>()
         let months = runHistory.compactMap { record -> RunHistoryMonth? in
             let month = RunHistoryMonth(
                 year: cal.component(.year, from: record.startedAt),
                 month: cal.component(.month, from: record.startedAt)
             )
-            return seen.insert(month.id).inserted ? month : nil
+            return seenMonthIDs.insert(month.id).inserted ? month : nil
         }
+
         availableHistoryMonths = months
-        if let selectedHistoryMonth, months.contains(selectedHistoryMonth) { return }
+        if let selectedHistoryMonth,
+           months.contains(selectedHistoryMonth) {
+            return
+        }
         selectedHistoryMonth = months.first
     }
 
@@ -241,34 +249,43 @@ final class MyViewModel: ObservableObject {
         case .week:
             let labels = ["월", "화", "수", "목", "금", "토", "일"]
             let monday = cal.date(byAdding: .day, value: weekOffset * 7, to: WeeklyDateRange.start(containing: now, calendar: cal))!
-            return (0..<7).map { i in
+            var entries: [BarChartEntry] = []
+            entries.reserveCapacity(labels.count)
+            for i in 0..<labels.count {
                 let date = cal.date(byAdding: .day, value: i, to: monday)!
                 let next = cal.date(byAdding: .day, value: 1, to: date)!
                 let km = records.filter { $0.startedAt >= date && $0.startedAt < next }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: labels[i], value: km, startDate: date, endDate: next)
+                entries.append(BarChartEntry(label: labels[i], value: km, startDate: date, endDate: next))
             }
+            return entries
 
         case .month:
             let year = cal.component(.year, from: now)
             var comps = DateComponents(); comps.year = year; comps.month = selectedMonth
             let monthStart = cal.date(from: comps)!
             let weeksInMonth = 5
-            return (0..<weeksInMonth).map { week in
+            var entries: [BarChartEntry] = []
+            entries.reserveCapacity(weeksInMonth)
+            for week in 0..<weeksInMonth {
                 let start = cal.date(byAdding: .weekOfMonth, value: week, to: monthStart)!
                 let end   = cal.date(byAdding: .weekOfMonth, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: "\(week + 1)주", value: km, startDate: start, endDate: end)
+                entries.append(BarChartEntry(label: "\(week + 1)주", value: km, startDate: start, endDate: end))
             }
+            return entries
 
         case .year:
             let monthLabels = ["1","2","3","4","5","6","7","8","9","10","11","12"]
-            return (1...12).map { month in
+            var entries: [BarChartEntry] = []
+            entries.reserveCapacity(monthLabels.count)
+            for month in 1...monthLabels.count {
                 var c = DateComponents(); c.year = selectedYear; c.month = month
                 let start = cal.date(from: c)!
                 let end   = cal.date(byAdding: .month, value: 1, to: start)!
                 let km = records.filter { $0.startedAt >= start && $0.startedAt < end }.reduce(0) { $0 + $1.distance }
-                return BarChartEntry(label: monthLabels[month - 1], value: km, startDate: start, endDate: end)
+                entries.append(BarChartEntry(label: monthLabels[month - 1], value: km, startDate: start, endDate: end))
             }
+            return entries
 
         case .all:
             return (0..<6).map { offset in
@@ -348,11 +365,14 @@ final class MyViewModel: ObservableObject {
         appState.isProfileComplete = false
         // 계정 전환 시 이전 프로필 잔상 방지
         let d = UserDefaults.standard
-        ["nickname", "height", "weight", "age", "profileImageBase64", "profileVisibility"].forEach { d.removeObject(forKey: $0) }
+        ["nickname", "height", "weight", "age", "profileImageBase64"].forEach { d.removeObject(forKey: $0) }
     }
 
     func formattedPace(_ pace: Double) -> String {
-        RunRecord.formattedPace(pace)
+        guard pace > 0 else { return "-'--\"" }
+        let min = Int(pace)
+        let sec = Int((pace - Double(min)) * 60)
+        return String(format: "%d'%02d\"", min, sec)
     }
 
     func formattedDuration(_ seconds: Int) -> String {

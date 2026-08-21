@@ -278,7 +278,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         do {
             switch source {
             case .shared:
-                try await musicService.play(sharedTracks: tracks)
+                try await musicService.play(sharedTracks: tracks, title: summary.title)
             case .recommendation(let playlist):
                 try await musicService.play(playlist: playlist)
             case .album(let album):
@@ -305,10 +305,11 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     func play(track: SharedPlaylistTrack) async {
         pendingPlaybackTrackID = track.id
         playingTrackID = track.id
+        isPlaying = true
         isStartingPlayback = true
 
         do {
-            try await musicService.play(sharedTracks: tracks, startingAt: track.id)
+            try await musicService.play(sharedTracks: tracks, startingAt: track.id, title: summary.title)
             playingTrackID = track.id
             isStartingPlayback = false
         } catch {
@@ -320,7 +321,12 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     }
 
     func isCurrentTrack(_ track: SharedPlaylistTrack) -> Bool {
-        guard isPlaying else { return false }
+        guard isPlaying || isStartingPlayback else { return false }
+        // 클릭 직후에는 ApplicationMusicPlayer의 현재 엔트리 알림보다
+        // 선택 상태가 먼저 화면에 반영될 수 있으므로 낙관적 선택 ID를 우선한다.
+        if playingTrackID == track.id {
+            return true
+        }
         if let contextSong = musicService.playbackContext.currentSong {
             let titleMatches = track.title.caseInsensitiveCompare(contextSong.title) == .orderedSame
             let artistMatches = track.artistName.caseInsensitiveCompare(contextSong.artistName) == .orderedSame
@@ -694,6 +700,7 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
     private func applyPlaybackContext(_ song: Song?) {
         guard let song else { return }
 
+        isPlaying = applicationPlayer.state.playbackStatus == .playing || isStartingPlayback
         nowPlayingTitle = song.title
         nowPlayingArtist = song.artistName
         if let matchedTrack = tracks.first(where: {

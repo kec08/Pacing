@@ -8,6 +8,7 @@
 import XCTest
 @testable import Pacing
 import CoreLocation
+import MapKit
 
 final class PacingTests: XCTestCase {
     func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
@@ -167,6 +168,56 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(AppleNonceStore.nonceHash(fromIDToken: tokenWithNonce), nonceHash)
         XCTAssertEqual(nonceStore.consume(rawNonceHash: nonceHash), rawNonce)
         XCTAssertNil(AppleNonceStore.nonceHash(fromIDToken: idToken))
+    }
+
+    func testRunRouteGradientPreservesSegmentCoverage() {
+        let coordinates = (0..<101).map {
+            CLLocationCoordinate2D(latitude: 37 + Double($0) * 0.001, longitude: 127)
+        }
+
+        let segments = RunRouteGradient.segments(from: coordinates, maximumSegmentCount: 10)
+
+        XCTAssertEqual(segments.count, 10)
+        XCTAssertEqual(segments.first?.coordinates.first?.latitude, coordinates.first?.latitude)
+        XCTAssertEqual(segments.last?.coordinates.last?.latitude, coordinates.last?.latitude)
+    }
+
+    func testRunStatisticsSummaryUsesSinglePassResult() {
+        let validRecord = RunRecord(
+            id: "valid", startedAt: .now, duration: 600, distance: 2, avgPace: 5,
+            routeCoordinates: [], lapPaces: []
+        )
+        let invalidRecord = RunRecord(
+            id: "invalid", startedAt: .now, duration: 300, distance: 0.01, avgPace: 50,
+            routeCoordinates: [], lapPaces: []
+        )
+
+        let summary = RunStatisticsCalculator.summary(from: [validRecord, invalidRecord])
+
+        XCTAssertEqual(summary.totalDistance, 2.01, accuracy: 0.0001)
+        XCTAssertEqual(summary.totalDuration, 900)
+        XCTAssertEqual(summary.averagePace, 5, accuracy: 0.0001)
+    }
+
+    func testRunRouteBoundsCalculatesExpectedRegion() {
+        let coordinates = [
+            CLLocationCoordinate2D(latitude: 37.0, longitude: 127.0),
+            CLLocationCoordinate2D(latitude: 37.1, longitude: 127.2)
+        ]
+
+        let region = RunRouteBounds.region(
+            for: coordinates,
+            paddingMultiplier: 1.5,
+            minimumDelta: 0.003
+        )
+
+        guard let region else {
+            return XCTFail("경로 좌표가 있으면 지도 영역을 계산해야 합니다.")
+        }
+        XCTAssertEqual(region.center.latitude, 37.05, accuracy: 0.0001)
+        XCTAssertEqual(region.center.longitude, 127.1, accuracy: 0.0001)
+        XCTAssertEqual(region.span.latitudeDelta, 0.15, accuracy: 0.0001)
+        XCTAssertEqual(region.span.longitudeDelta, 0.3, accuracy: 0.0001)
     }
 
 }

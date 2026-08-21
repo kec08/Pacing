@@ -225,24 +225,12 @@ struct RunActivityDetailView: View {
     }
 
     private func fitRoute() {
-        guard record.routeCoordinates.count >= 2 else { return }
-
-        let latitudes = record.routeCoordinates.map(\.latitude)
-        let longitudes = record.routeCoordinates.map(\.longitude)
-        guard let minLatitude = latitudes.min(), let maxLatitude = latitudes.max(),
-              let minLongitude = longitudes.min(), let maxLongitude = longitudes.max() else {
-            return
-        }
-
-        let center = CLLocationCoordinate2D(
-            latitude: (minLatitude + maxLatitude) / 2,
-            longitude: (minLongitude + maxLongitude) / 2
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((maxLatitude - minLatitude) * 1.4, 0.003),
-            longitudeDelta: max((maxLongitude - minLongitude) * 1.4, 0.003)
-        )
-        cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+        guard let region = RunRouteBounds.region(
+            for: record.routeCoordinates,
+            paddingMultiplier: 1.4,
+            minimumDelta: 0.003
+        ) else { return }
+        cameraPosition = .region(region)
     }
 }
 

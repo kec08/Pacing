@@ -16,17 +16,22 @@ enum RunRouteGradient {
         guard lineSegmentCount > 0 else { return [] }
 
         let segmentCount = min(lineSegmentCount, maximumSegmentCount)
-        return (0..<segmentCount).compactMap { index in
+        var segments: [RunRouteGradientSegment] = []
+        segments.reserveCapacity(segmentCount)
+
+        for index in 0..<segmentCount {
             let startIndex = index * lineSegmentCount / segmentCount
             let endIndex = (index + 1) * lineSegmentCount / segmentCount
-            guard endIndex > startIndex else { return nil }
+            guard endIndex > startIndex else { continue }
 
-            return RunRouteGradientSegment(
+            segments.append(RunRouteGradientSegment(
                 id: index,
                 coordinates: Array(coordinates[startIndex...endIndex]),
                 color: color(at: Double(index) / Double(max(segmentCount - 1, 1)))
-            )
+            ))
         }
+
+        return segments
     }
 
     private static func color(at progress: Double) -> Color {
