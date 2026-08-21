@@ -104,6 +104,7 @@ final class RealtimeDBService {
     ) {
         observeHandle = db.child("activeRunners").observe(.value, with: { snapshot in
             var runners: [ActiveRunner] = []
+            runners.reserveCapacity(Int(snapshot.childrenCount))
             for child in snapshot.children {
                 guard
                     let snap = child as? DataSnapshot,
@@ -350,6 +351,7 @@ final class RealtimeDBService {
                 .queryLimited(toLast: UInt(limit))
             query.observeSingleEvent(of: .value) { snapshot in
                     var sessions: [ListenSession] = []
+                    sessions.reserveCapacity(Int(snapshot.childrenCount))
 
                     for childSnapshot in snapshot.children {
                         guard

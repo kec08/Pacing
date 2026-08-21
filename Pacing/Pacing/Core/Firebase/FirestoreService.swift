@@ -224,6 +224,7 @@ final class FirestoreService {
             .getDocuments()
 
         var activities: [FriendRecentSongActivity] = []
+        activities.reserveCapacity(snapshot.documents.count * max(1, songsPerFriend))
         for friendDocument in snapshot.documents {
             let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
             let songs: [FriendRecentSong]
@@ -264,6 +265,7 @@ final class FirestoreService {
             .getDocuments()
 
         var activities: [FriendRecentRunActivity] = []
+        activities.reserveCapacity(snapshot.documents.count)
         for friendDocument in snapshot.documents {
             let runs: [RunRecord]
 
@@ -299,6 +301,7 @@ final class FirestoreService {
             .getDocuments()
 
         var friends: [FriendUser] = []
+        friends.reserveCapacity(snapshot.documents.count)
         for doc in snapshot.documents {
             let data = doc.data()
             let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
@@ -378,6 +381,7 @@ final class FirestoreService {
             .getDocuments()
 
         var requests: [FriendRequest] = []
+        requests.reserveCapacity(snapshot.documents.count)
         for doc in snapshot.documents {
             let data = doc.data()
             guard let fromUID = data["fromUID"] as? String else { continue }
@@ -530,6 +534,7 @@ final class FirestoreService {
 
         let friendIDs = friends.prefix(8).map(\.id)
         var summaries: [SharedPlaylistSummary] = []
+        summaries.reserveCapacity(min(limit, friends.count * 3))
 
         // 한 번에 너무 많은 Firestore 요청을 보내지 않되, 친구별 조회를 순차
         // 실행하지 않아 첫 화면 대기 시간을 줄인다.
@@ -552,6 +557,7 @@ final class FirestoreService {
                 }
 
                 var results: [SharedPlaylistSummary] = []
+                results.reserveCapacity(batch.count * 3)
                 for try await playlists in group {
                     results.append(contentsOf: playlists)
                 }
