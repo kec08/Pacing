@@ -182,57 +182,21 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.subscriptionUnavailable
         }
 
-        let recentlyPlayedAlbums: [Album]
-        let didReceiveRecentlyPlayedResponse: Bool
-        do {
-            recentlyPlayedAlbums = try await fetchRecentlyPlayedAlbums(limit: limit)
-            didReceiveRecentlyPlayedResponse = true
-        } catch {
-            // Keep recommendations available even if recent-played lookup fails.
-            recentlyPlayedAlbums = []
-            didReceiveRecentlyPlayedResponse = false
-        }
+        // 독립적인 MusicKit 요청은 동시에 시작해 추천 화면의 전체 대기 시간을 줄인다.
+        // 각 헬퍼가 실패를 자체 처리하므로 일부 응답만 성공해도 기존 UX를 유지한다.
+        async let recentlyPlayedResult = fetchRecentlyPlayedAlbumsSafely(limit: limit)
+        async let genreResult = fetchGenreAlbumRows()
+        async let moodResult = fetchMoodPlaylists()
+        async let playlistResult = fetchPlaylistRecommendations(limit: limit)
 
-        var playlists: [Playlist] = []
-        let genreResult = await fetchGenreAlbumRows()
-        let moodResult = await fetchMoodPlaylists()
-        var didReceivePlaylistResponse = false
-
-        do {
-            var request = MusicPersonalRecommendationsRequest()
-            request.limit = limit
-            let response = try await request.response()
-
-            playlists = response.recommendations
-                .flatMap { Array($0.playlists) }
-                .uniquedByID()
-                .prefix(limit)
-                .map { $0 }
-            didReceivePlaylistResponse = true
-
-        } catch {
-            playlists = []
-        }
-
-        if playlists.isEmpty {
-            do {
-                var chartsRequest = MusicCatalogChartsRequest(types: [Playlist.self])
-                chartsRequest.limit = limit
-                let charts = try await chartsRequest.response()
-                playlists = charts.playlistCharts
-                    .flatMap { Array($0.items) }
-                    .uniquedByID()
-                    .prefix(limit)
-                    .map { $0 }
-                didReceivePlaylistResponse = true
-            } catch {
-                playlists = []
-            }
-        }
+        let (recentlyPlayedAlbums, didReceiveRecentlyPlayedResponse) = await recentlyPlayedResult
+        let resolvedGenreResult = await genreResult
+        let resolvedMoodResult = await moodResult
+        let (playlists, didReceivePlaylistResponse) = await playlistResult
 
         guard didReceiveRecentlyPlayedResponse ||
-            genreResult.didReceiveResponse ||
-            moodResult.didReceiveResponse ||
+            resolvedGenreResult.didReceiveResponse ||
+            resolvedMoodResult.didReceiveResponse ||
             didReceivePlaylistResponse else {
             throw AppleMusicRecommendationError.catalogUnavailable
         }
@@ -240,9 +204,50 @@ final class AppleMusicRecommendationService {
         return ShareRecommendationBundle(
             recentlyPlayedAlbums: recentlyPlayedAlbums,
             playlists: playlists,
-            genreAlbumRows: genreResult.items,
-            moodPlaylists: moodResult.items
+            genreAlbumRows: resolvedGenreResult.items,
+            moodPlaylists: resolvedMoodResult.items
         )
+    }
+
+    private func fetchRecentlyPlayedAlbumsSafely(limit: Int) async -> ([Album], Bool) {
+        do {
+            return (try await fetchRecentlyPlayedAlbums(limit: limit), true)
+        } catch {
+            // Keep recommendations available even if recent-played lookup fails.
+            return ([], false)
+        }
+    }
+
+    private func fetchPlaylistRecommendations(limit: Int) async -> ([Playlist], Bool) {
+        do {
+            var request = MusicPersonalRecommendationsRequest()
+            request.limit = limit
+            let response = try await request.response()
+            let playlists = response.recommendations
+                .flatMap { Array($0.playlists) }
+                .uniquedByID()
+                .prefix(limit)
+                .map { $0 }
+            if !playlists.isEmpty {
+                return (playlists, true)
+            }
+        } catch {
+            // 개인 추천 실패 시 차트 fallback을 시도한다.
+        }
+
+        do {
+            var chartsRequest = MusicCatalogChartsRequest(types: [Playlist.self])
+            chartsRequest.limit = limit
+            let charts = try await chartsRequest.response()
+            let playlists = charts.playlistCharts
+                .flatMap { Array($0.items) }
+                .uniquedByID()
+                .prefix(limit)
+                .map { $0 }
+            return (playlists, true)
+        } catch {
+            return ([], false)
+        }
     }
 
     private func fetchGenreAlbumRows() async -> (items: [GenreAlbumRow], didReceiveResponse: Bool) {
@@ -731,12 +736,14 @@ final class AppleMusicRecommendationService {
             return songStoreID
         }))
 
-        if !unresolvedStoreIDs.isEmpty {
+        for startIndex in stride(from: 0, to: unresolvedStoreIDs.count, by: 25) {
+            let endIndex = min(startIndex + 25, unresolvedStoreIDs.count)
+            let storeIDBatch = unresolvedStoreIDs[startIndex..<endIndex]
             var request = MusicCatalogResourceRequest<Song>(
                 matching: \.id,
-                memberOf: unresolvedStoreIDs.map { MusicItemID($0) }
+                memberOf: storeIDBatch.map { MusicItemID($0) }
             )
-            request.limit = min(unresolvedStoreIDs.count, 25)
+            request.limit = storeIDBatch.count
 
             if let response = try? await request.response() {
                 let fetchedSongsByID: [String: Song] = Dictionary(
