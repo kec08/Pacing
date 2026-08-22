@@ -5,17 +5,11 @@ struct RunHistoryCard: View {
     let vm: MyViewModel
 
     private var dateString: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "yyyy. M. d."
-        return f.string(from: record.startedAt)
+        RunHistoryDateFormatters.date.string(from: record.startedAt)
     }
 
     private var startTimeString: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "a h시 m분"
-        return f.string(from: record.startedAt)
+        RunHistoryDateFormatters.startTime.string(from: record.startedAt)
     }
 
     var body: some View {
@@ -61,5 +55,18 @@ struct RunHistoryCard: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Color.textSecondary)
         }
+    }
+}
+
+@MainActor
+private enum RunHistoryDateFormatters {
+    static let date = make(format: "yyyy. M. d.")
+    static let startTime = make(format: "a h시 m분")
+
+    private static func make(format: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = format
+        return formatter
     }
 }
