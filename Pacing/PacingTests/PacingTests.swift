@@ -220,4 +220,60 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(region.span.longitudeDelta, 0.3, accuracy: 0.0001)
     }
 
+    func testKilometerMarkersAreInterpolatedAtEveryDistanceBoundary() {
+        let samples = [
+            trackedLocation(latitude: 37.0, longitude: 127.0, distanceMeters: 0),
+            trackedLocation(latitude: 37.0, longitude: 127.02, distanceMeters: 2_500),
+            trackedLocation(latitude: 37.0, longitude: 127.04, distanceMeters: 4_500)
+        ]
+
+        let markers = RunMetricsCalculator.kilometerMarkers(from: samples)
+
+        XCTAssertEqual(markers.map(\.kilometer), [1, 2, 3, 4])
+        XCTAssertEqual(markers[0].coordinate.longitude, 127.008, accuracy: 0.000001)
+        XCTAssertEqual(markers[1].coordinate.longitude, 127.016, accuracy: 0.000001)
+        XCTAssertEqual(markers[3].coordinate.longitude, 127.035, accuracy: 0.000001)
+    }
+
+    func testElevationGainIgnoresInvalidAccuracyAndSmallNoise() {
+        let locations = [
+            location(altitude: 100, verticalAccuracy: 5),
+            location(altitude: 101, verticalAccuracy: 5),
+            location(altitude: 105, verticalAccuracy: 5),
+            location(altitude: 103, verticalAccuracy: -1),
+            location(altitude: 110, verticalAccuracy: 5)
+        ]
+
+        guard let elevationGain = RunMetricsCalculator.elevationGain(from: locations) else {
+            return XCTFail("유효한 고도 샘플이 있으면 상승 고도를 계산해야 합니다.")
+        }
+        XCTAssertEqual(elevationGain, 10, accuracy: 0.0001)
+    }
+
+    private func trackedLocation(
+        latitude: CLLocationDegrees,
+        longitude: CLLocationDegrees,
+        distanceMeters: CLLocationDistance
+    ) -> RunTrackedLocation {
+        RunTrackedLocation(
+            location: location(latitude: latitude, longitude: longitude),
+            cumulativeDistanceMeters: distanceMeters
+        )
+    }
+
+    private func location(
+        latitude: CLLocationDegrees = 37,
+        longitude: CLLocationDegrees = 127,
+        altitude: CLLocationDistance = 0,
+        verticalAccuracy: CLLocationAccuracy = 5
+    ) -> CLLocation {
+        CLLocation(
+            coordinate: CLLocationCoordinate2D(latitude: latitude, longitude: longitude),
+            altitude: altitude,
+            horizontalAccuracy: 5,
+            verticalAccuracy: verticalAccuracy,
+            timestamp: .now
+        )
+    }
+
 }

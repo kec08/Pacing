@@ -45,6 +45,9 @@ struct RunningView: View {
     @State private var hasCenteredOnInitialLocation = false
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
+    @State private var leftMetricIndex = 0
+    @State private var centerMetricIndex = 0
+    @State private var rightMetricIndex = 0
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -161,12 +164,14 @@ struct RunningView: View {
                     }
                     .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                     .padding(.trailing, 16)
-                    .padding(.top, 220)
+                    .padding(.top, 280)
                     .animation(.spring(duration: 0.3), value: viewModel.state)
                     .animation(.spring(duration: 0.3), value: isFollowingUser)
                 }
                 Spacer()
             }
+            // 통계 카드나 일시정지 화면보다 항상 앞에 표시해 러닝 상태에서도 위치 버튼이 가려지지 않게 한다.
+            .zIndex(9)
 
             VStack(spacing: 0) {
                 // 뮤직 카드: idle 상태에서만 표시
@@ -175,17 +180,26 @@ struct RunningView: View {
                         .padding(.top, 44)
                 }
 
-                // 스탯 오버레이: idle이 아닐 때 상단으로 올라옴
-                if viewModel.state != .idle {
+                // 러닝 중에는 기존 상단 카드, 일시정지 시에는 지도 위쪽과 하단 지표 패널로 전환
+                if viewModel.state == .running {
                     runningStatsOverlay
                         .padding(.top, 60)
                         .padding(.horizontal, 0)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 Spacer()
 
-                controlSection
-                    .padding(.bottom, 40)
+                if viewModel.state != .paused {
+                    controlSection
+                        .padding(.bottom, 40)
+                }
+            }
+
+            if viewModel.state == .paused {
+                pausedRunDashboard
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(8)
             }
 
             // 수신 요청 배너 (항상 최상단)
@@ -260,8 +274,10 @@ struct RunningView: View {
             if !hasCenteredOnInitialLocation {
                 hasCenteredOnInitialLocation = true
                 recenterCamera(distance: mapZoomDistance)
-            } else if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+            } else if viewModel.state == .running && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
+            } else if viewModel.state == .paused && isFollowingUser {
+                recenterCamera(distance: mapZoomDistance, verticalOffsetMeters: pausedMapVerticalOffsetMeters)
             }
             nearbyVM.updateMyLocation(loc.coordinate)
         }
@@ -298,9 +314,13 @@ struct RunningView: View {
                 if newState == .running {
                     isFollowingUser = true
                     recenterCamera(distance: mapZoomDistance)
+                } else if newState == .paused {
+                    isFollowingUser = true
+                    recenterCamera(distance: mapZoomDistance, verticalOffsetMeters: pausedMapVerticalOffsetMeters)
                 }
             }
         }
+        .animation(.spring(response: 0.48, dampingFraction: 0.86), value: viewModel.state)
         .onChange(of: musicVM.currentSong) { _, _ in
             if let uid = Auth.auth().currentUser?.uid {
                 let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
@@ -510,49 +530,129 @@ struct RunningView: View {
 
             Divider().opacity(0.3).padding(.horizontal, 24)
 
-            // km / 페이스 / 칼로리
-            HStack(spacing: 0) {
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedDistance)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.textPrimary)
-                    Text("km")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 40).opacity(0.3)
-
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedPace)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.textPrimary)
-                    Text("페이스")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 40).opacity(0.3)
-
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedCalories)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text("칼로리")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
+                independentMetricGrid
+                    .padding(.vertical, 16)
             }
-            .padding(.vertical, 16)
-        }
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal, 16)
+    }
+
+    private var independentMetricGrid: some View {
+        HStack(spacing: 0) {
+            independentMetricButton(
+                index: $leftMetricIndex,
+                values: [(viewModel.formattedDistance, "km"), ("--", "고도 상승")]
+            )
+            metricDivider
+            independentMetricButton(
+                index: $centerMetricIndex,
+                values: [(viewModel.formattedPace, "페이스"), ("--", "BPM")]
+            )
+            metricDivider
+            independentMetricButton(
+                index: $rightMetricIndex,
+                values: [(viewModel.formattedCalories, "칼로리"), ("--", "케이던스")]
+            )
+        }
+    }
+
+    private func independentMetricButton(
+        index: Binding<Int>,
+        values: [(String, String)]
+    ) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeInOut(duration: 0.24)) {
+                index.wrappedValue = (index.wrappedValue + 1) % values.count
+            }
+        } label: {
+            VStack(spacing: 2) {
+                Text(values[index.wrappedValue].0)
+                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .id("value-\(index.wrappedValue)")
+                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                Text(values[index.wrappedValue].1)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.textSecondary)
+                    .id("label-\(index.wrappedValue)")
+                    .transition(.opacity)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("탭하면 다음 러닝 지표를 표시합니다.")
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var metricDivider: some View {
+        Divider().frame(height: 40).opacity(0.3)
+    }
+
+    private var pausedRunDashboard: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
+            VStack(spacing: 0) {
+                pausedMetricGrid
+                    .padding(.top, 64)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                    .offset(y: -10)
+
+                Capsule()
+                    .fill(Color.secondary.opacity(0.28))
+                    .frame(width: 300, height: 2.5)
+
+                pausedControls
+                    .padding(.top, 44)
+                    .padding(.bottom, 34)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: UIScreen.main.bounds.height * 0.55, alignment: .top)
+            .background(Color.backgroundPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var pausedMetricGrid: some View {
+        VStack(spacing: 24) {
+            HStack(spacing: 0) {
+                pausedMetric(value: viewModel.formattedDistance, label: "킬로미터")
+                metricDivider
+                pausedMetric(value: viewModel.formattedAvgPace, label: "평균 페이스")
+                metricDivider
+                pausedMetric(value: viewModel.formattedTime, label: "시간")
+            }
+            HStack(spacing: 0) {
+                pausedMetric(value: viewModel.formattedCalories, label: "칼로리")
+                metricDivider
+                pausedMetric(value: "--", label: "고도 상승")
+                metricDivider
+                pausedMetric(value: "--", label: "BPM")
+            }
+        }
+    }
+
+    private func pausedMetric(value: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.textSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 하단 컨트롤
@@ -1905,6 +2005,10 @@ struct RunningView: View {
 
     // MARK: - 카메라
 
+    private var pausedMapVerticalOffsetMeters: CLLocationDistance {
+        max(120, mapZoomDistance * 0.16)
+    }
+
     private func focusOnMyLocation() {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
@@ -1925,11 +2029,18 @@ struct RunningView: View {
         }
     }
 
-    private func recenterCamera(distance: Double) {
+    private func recenterCamera(
+        distance: Double,
+        verticalOffsetMeters: CLLocationDistance = 0
+    ) {
         guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
+        let cameraCenter = CLLocationCoordinate2D(
+            latitude: coord.latitude - (verticalOffsetMeters / 111_000),
+            longitude: coord.longitude
+        )
         isProgrammaticMove = true
         withAnimation(.easeInOut(duration: 0.65)) {
-            cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: distance))
+            cameraPosition = .camera(MapCamera(centerCoordinate: cameraCenter, distance: distance))
         }
         // 카메라 애니메이션 중 발생하는 MapKit 콜백은 수동 조작으로 처리하지 않는다.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
