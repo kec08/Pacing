@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-08-27
 > **관련 이슈**: [#127](https://github.com/kec08/Pacing/issues/127)
-> **PR**: [#128](https://github.com/kec08/Pacing/pull/128)
+> **PR**: [#129](https://github.com/kec08/Pacing/pull/129)
 > **브랜치**: `feat/127-run-result-metrics`
 
 ## 구현 요약
