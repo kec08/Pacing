@@ -250,6 +250,116 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(elevationGain, 10, accuracy: 0.0001)
     }
 
+    func testCadenceAccumulatorConvertsCurrentCadenceToStepsPerMinute() {
+        var accumulator = CadenceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        guard let currentCadence = accumulator.ingest(CadenceSample(
+            timestamp: start,
+            cumulativeSteps: 0,
+            currentCadenceStepsPerSecond: 3
+        )) else {
+            return XCTFail("유효한 현재 케이던스는 값으로 변환되어야 합니다.")
+        }
+        XCTAssertEqual(currentCadence, 180, accuracy: 0.0001)
+    }
+
+    func testCadenceAverageUsesStepDeltaAndActiveDuration() {
+        var accumulator = CadenceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start,
+            cumulativeSteps: 0,
+            currentCadenceStepsPerSecond: nil
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(30),
+            cumulativeSteps: 90,
+            currentCadenceStepsPerSecond: 3
+        ))
+
+        guard let average = accumulator.averageStepsPerMinute else {
+            return XCTFail("유효한 샘플의 평균 케이던스를 계산해야 합니다.")
+        }
+        XCTAssertEqual(average, 180, accuracy: 0.0001)
+    }
+
+    func testCadenceAverageExcludesPauseGapAfterReset() {
+        var accumulator = CadenceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start,
+            cumulativeSteps: 0,
+            currentCadenceStepsPerSecond: 3
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(10),
+            cumulativeSteps: 30,
+            currentCadenceStepsPerSecond: 3
+        ))
+
+        accumulator.reset()
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(100),
+            cumulativeSteps: 0,
+            currentCadenceStepsPerSecond: 2
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(110),
+            cumulativeSteps: 20,
+            currentCadenceStepsPerSecond: 2
+        ))
+
+        guard let average = accumulator.averageStepsPerMinute else {
+            return XCTFail("재개 구간의 평균 케이던스를 계산해야 합니다.")
+        }
+        XCTAssertEqual(average, 120, accuracy: 0.0001)
+    }
+
+    func testCadenceAccumulatorBreaksBaselineForInvalidIntervals() {
+        var accumulator = CadenceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start,
+            cumulativeSteps: 0,
+            currentCadenceStepsPerSecond: 3
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(11),
+            cumulativeSteps: 100,
+            currentCadenceStepsPerSecond: 3
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(21),
+            cumulativeSteps: 120,
+            currentCadenceStepsPerSecond: 2
+        ))
+
+        guard let average = accumulator.averageStepsPerMinute else {
+            return XCTFail("유효하지 않은 구간 이후의 평균 케이던스를 계산해야 합니다.")
+        }
+        XCTAssertEqual(average, 120, accuracy: 0.0001)
+    }
+
+    func testCadenceAccumulatorReturnsNilForInvalidCurrentCadence() {
+        var accumulator = CadenceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertNil(accumulator.ingest(CadenceSample(
+            timestamp: start,
+            cumulativeSteps: 0,
+            currentCadenceStepsPerSecond: nil
+        )))
+        XCTAssertNil(accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(1),
+            cumulativeSteps: 1,
+            currentCadenceStepsPerSecond: 6
+        )))
+    }
+
     private func trackedLocation(
         latitude: CLLocationDegrees,
         longitude: CLLocationDegrees,
