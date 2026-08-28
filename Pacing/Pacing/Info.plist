@@ -16,54 +16,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>NSAccentColorName</key>
-	<string>AccentColor</string>
-	<key>NSAppleMusicUsageDescription</key>
-	<string>주변 러너와 음악을 함께 듣기 위해 Apple Music 접근이 필요합니다.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>러닝 중 경로를 기록하고 주변 러너를 찾기 위해 위치 정보가 필요합니다. 백그라운드에서도 경로가 정확히 기록됩니다.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>러닝 중 경로를 기록하고 주변 러너를 찾기 위해 위치 정보가 필요합니다.</string>
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>location</string>
-		<string>audio</string>
-	</array>
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<true/>
-		<key>UISceneConfigurations</key>
-		<dict/>
-	</dict>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UILaunchScreen</key>
-	<dict>
-		<key>UILaunchScreen</key>
-		<dict/>
-	</dict>
-	<key>UISupportedInterfaceOrientations~ipad</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationPortraitUpsideDown</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
-	</array>
-	<key>UISupportedInterfaceOrientations~iphone</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
-	<key>LSApplicationQueriesSchemes</key>
-	<array>
-		<string>naversearchapp</string>
-		<string>naversearchapplink</string>
-		<string>navercafe</string>
-	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -96,6 +48,56 @@
 				<string>naverPacing</string>
 			</array>
 		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>naversearchapp</string>
+		<string>naversearchapplink</string>
+		<string>navercafe</string>
+	</array>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSAccentColorName</key>
+	<string>AccentColor</string>
+	<key>NSAppleMusicUsageDescription</key>
+	<string>주변 러너와 음악을 함께 듣기 위해 Apple Music 접근이 필요합니다.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>러닝 중 경로를 기록하고 주변 러너를 찾기 위해 위치 정보가 필요합니다. 백그라운드에서도 경로가 정확히 기록됩니다.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>러닝 중 경로를 기록하고 주변 러너를 찾기 위해 위치 정보가 필요합니다.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>러닝 결과에 Apple Watch로 측정한 심박수를 표시하기 위해 건강 데이터 읽기 권한이 필요합니다.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+		<key>UISceneConfigurations</key>
+		<dict/>
+	</dict>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+		<string>audio</string>
+	</array>
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UILaunchScreen</key>
+		<dict/>
+	</dict>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~iphone</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
 	</array>
 </dict>
 </plist>

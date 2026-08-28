@@ -16,6 +16,33 @@ struct RunRecord: Identifiable {
     let avgPace: Double        // 분/km
     let routeCoordinates: [CLLocationCoordinate2D]
     let lapPaces: [RunLapPace]
+    let elevationGainMeters: Double?
+    let averageHeartRate: Double?
+    let averageCadence: Double?
+
+    init(
+        id: String,
+        startedAt: Date,
+        duration: Int,
+        distance: Double,
+        avgPace: Double,
+        routeCoordinates: [CLLocationCoordinate2D],
+        lapPaces: [RunLapPace],
+        elevationGainMeters: Double? = nil,
+        averageHeartRate: Double? = nil,
+        averageCadence: Double? = nil
+    ) {
+        self.id = id
+        self.startedAt = startedAt
+        self.duration = duration
+        self.distance = distance
+        self.avgPace = avgPace
+        self.routeCoordinates = routeCoordinates
+        self.lapPaces = lapPaces
+        self.elevationGainMeters = elevationGainMeters
+        self.averageHeartRate = averageHeartRate
+        self.averageCadence = averageCadence
+    }
 }
 
 extension RunRecord {
