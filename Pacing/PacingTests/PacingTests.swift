@@ -267,27 +267,29 @@ final class PacingTests: XCTestCase {
     func testCadenceAverageUsesStepDeltaAndActiveDuration() {
         var accumulator = CadenceAccumulator()
         let start = Date(timeIntervalSince1970: 1_000)
+        accumulator.resetBaseline(at: start)
 
         _ = accumulator.ingest(CadenceSample(
-            timestamp: start,
-            cumulativeSteps: 0,
+            timestamp: start.addingTimeInterval(5),
+            cumulativeSteps: 10,
             currentCadenceStepsPerSecond: nil
         ))
         _ = accumulator.ingest(CadenceSample(
-            timestamp: start.addingTimeInterval(30),
-            cumulativeSteps: 90,
+            timestamp: start.addingTimeInterval(10),
+            cumulativeSteps: 40,
             currentCadenceStepsPerSecond: 3
         ))
 
         guard let average = accumulator.averageStepsPerMinute else {
             return XCTFail("유효한 샘플의 평균 케이던스를 계산해야 합니다.")
         }
-        XCTAssertEqual(average, 180, accuracy: 0.0001)
+        XCTAssertEqual(average, 240, accuracy: 0.0001)
     }
 
-    func testCadenceAverageExcludesPauseGapAfterReset() {
+    func testCadenceAverageExcludesPauseGapAfterResetBaseline() {
         var accumulator = CadenceAccumulator()
         let start = Date(timeIntervalSince1970: 1_000)
+        accumulator.resetBaseline(at: start)
 
         _ = accumulator.ingest(CadenceSample(
             timestamp: start,
@@ -300,7 +302,7 @@ final class PacingTests: XCTestCase {
             currentCadenceStepsPerSecond: 3
         ))
 
-        accumulator.reset()
+        accumulator.resetBaseline(at: start.addingTimeInterval(100))
         _ = accumulator.ingest(CadenceSample(
             timestamp: start.addingTimeInterval(100),
             cumulativeSteps: 0,
@@ -318,9 +320,10 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(average, 120, accuracy: 0.0001)
     }
 
-    func testCadenceAccumulatorBreaksBaselineForInvalidIntervals() {
+    func testCadenceAccumulatorKeepsValidDelayedSamples() {
         var accumulator = CadenceAccumulator()
         let start = Date(timeIntervalSince1970: 1_000)
+        accumulator.resetBaseline(at: start)
 
         _ = accumulator.ingest(CadenceSample(
             timestamp: start,
@@ -328,25 +331,21 @@ final class PacingTests: XCTestCase {
             currentCadenceStepsPerSecond: 3
         ))
         _ = accumulator.ingest(CadenceSample(
-            timestamp: start.addingTimeInterval(11),
-            cumulativeSteps: 100,
+            timestamp: start.addingTimeInterval(30),
+            cumulativeSteps: 90,
             currentCadenceStepsPerSecond: 3
-        ))
-        _ = accumulator.ingest(CadenceSample(
-            timestamp: start.addingTimeInterval(21),
-            cumulativeSteps: 120,
-            currentCadenceStepsPerSecond: 2
         ))
 
         guard let average = accumulator.averageStepsPerMinute else {
-            return XCTFail("유효하지 않은 구간 이후의 평균 케이던스를 계산해야 합니다.")
+            return XCTFail("지연된 유효 샘플도 평균 케이던스에 포함해야 합니다.")
         }
-        XCTAssertEqual(average, 120, accuracy: 0.0001)
+        XCTAssertEqual(average, 180, accuracy: 0.0001)
     }
 
     func testCadenceAccumulatorReturnsNilForInvalidCurrentCadence() {
         var accumulator = CadenceAccumulator()
         let start = Date(timeIntervalSince1970: 1_000)
+        accumulator.resetBaseline(at: start)
 
         XCTAssertNil(accumulator.ingest(CadenceSample(
             timestamp: start,
@@ -363,6 +362,7 @@ final class PacingTests: XCTestCase {
     func testCadenceAccumulatorResetsBaselineWhenStepCountMovesBackwards() {
         var accumulator = CadenceAccumulator()
         let start = Date(timeIntervalSince1970: 1_000)
+        accumulator.resetBaseline(at: start)
 
         _ = accumulator.ingest(CadenceSample(
             timestamp: start,

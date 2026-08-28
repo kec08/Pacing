@@ -9,6 +9,12 @@ protocol CadenceRepository: AnyObject {
         handler: @escaping (CadenceSample) -> Void
     )
 
+    func queryData(
+        from startDate: Date,
+        to endDate: Date,
+        completion: @escaping (CadenceSample?) -> Void
+    )
+
     func stopUpdates()
 }
 
@@ -47,5 +53,29 @@ final class CoreMotionCadenceRepository: CadenceRepository {
         guard isUpdating else { return }
         isUpdating = false
         pedometer.stopUpdates()
+    }
+
+    func queryData(
+        from startDate: Date,
+        to endDate: Date,
+        completion: @escaping (CadenceSample?) -> Void
+    ) {
+        guard isCadenceAvailable, endDate >= startDate else {
+            completion(nil)
+            return
+        }
+
+        pedometer.queryPedometerData(from: startDate, to: endDate) { data, _ in
+            guard let data else {
+                completion(nil)
+                return
+            }
+
+            completion(CadenceSample(
+                timestamp: data.endDate,
+                cumulativeSteps: data.numberOfSteps.intValue,
+                currentCadenceStepsPerSecond: data.currentCadence?.doubleValue
+            ))
+        }
     }
 }

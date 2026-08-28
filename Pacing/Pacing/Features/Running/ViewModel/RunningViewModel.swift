@@ -71,6 +71,7 @@ final class RunningViewModel: ObservableObject {
     private let heartRateRepository: HeartRateRepository
     private let cadenceRepository: CadenceRepository
     private var cadenceAccumulator = CadenceAccumulator()
+    private var cadenceSegmentStartDate: Date?
     private var healthAuthorizationTask: Task<Bool, Never>?
 
     init(
@@ -113,6 +114,8 @@ final class RunningViewModel: ObservableObject {
         currentCadenceStepsPerMinute = nil
         averageCadence = nil
         cadenceAccumulator.reset()
+        cadenceAccumulator.resetBaseline(at: startedAt)
+        cadenceSegmentStartDate = startedAt
         healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
@@ -131,18 +134,21 @@ final class RunningViewModel: ObservableObject {
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
         cadenceAccumulator.resetBaseline()
+        cadenceSegmentStartDate = nil
         currentCadenceStepsPerMinute = nil
     }
 
     func resume() {
-        runningStartedAt = Date()
+        let resumedAt = Date()
+        runningStartedAt = resumedAt
         state = .running
         lastLocation = nil
         locationManager.startTracking()
         startTimer()
-        cadenceAccumulator.resetBaseline()
+        cadenceAccumulator.resetBaseline(at: resumedAt)
+        cadenceSegmentStartDate = resumedAt
         currentCadenceStepsPerMinute = nil
-        startCadenceUpdates(from: Date())
+        startCadenceUpdates(from: resumedAt)
     }
 
     func stop() async {
@@ -156,6 +162,8 @@ final class RunningViewModel: ObservableObject {
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
         state = .finished
+
+        await finalizeCadence(at: endedAt)
 
         elevationGainMeters = RunMetricsCalculator.elevationGain(
             from: locationManager.recordedLocations
@@ -189,6 +197,7 @@ final class RunningViewModel: ObservableObject {
         currentCadenceStepsPerMinute = nil
         averageCadence = nil
         cadenceAccumulator.reset()
+        cadenceSegmentStartDate = nil
         state = .idle
     }
 
@@ -271,6 +280,19 @@ final class RunningViewModel: ObservableObject {
                 self.currentCadenceStepsPerMinute = self.cadenceAccumulator.ingest(sample)
             }
         }
+    }
+
+    private func finalizeCadence(at endDate: Date) async {
+        guard let startDate = cadenceSegmentStartDate else { return }
+
+        let sample = await withCheckedContinuation { continuation in
+            cadenceRepository.queryData(from: startDate, to: endDate) { sample in
+                continuation.resume(returning: sample)
+            }
+        }
+
+        guard let sample else { return }
+        currentCadenceStepsPerMinute = cadenceAccumulator.ingest(sample)
     }
 
     private func updateDistance(with locations: [CLLocation]) {

@@ -17,23 +17,28 @@ struct CadenceSample: Equatable {
 }
 
 struct CadenceAccumulator {
-    /// 센서 콜백이 이보다 오래 끊기면 그 사이를 활동 구간으로 추정하지 않습니다.
-    static let maximumSampleInterval: TimeInterval = 10
     static let maximumCadenceStepsPerMinute = 300.0
 
     private(set) var totalSteps = 0
     private(set) var activeDuration: TimeInterval = 0
 
     private var previousSample: CadenceSample?
+    private var segmentStartDate: Date?
+
+    init(segmentStartDate: Date? = nil) {
+        self.segmentStartDate = segmentStartDate
+    }
 
     mutating func reset() {
         totalSteps = 0
         activeDuration = 0
         previousSample = nil
+        segmentStartDate = nil
     }
 
-    mutating func resetBaseline() {
+    mutating func resetBaseline(at startDate: Date? = nil) {
         previousSample = nil
+        segmentStartDate = startDate
     }
 
     /// 샘플 간 누적 걸음 수와 시간만 합산합니다.
@@ -43,9 +48,13 @@ struct CadenceAccumulator {
             return nil
         }
 
-        defer { previousSample = sample }
-
         guard let previousSample else {
+            if let segmentStartDate,
+               sample.timestamp >= segmentStartDate {
+                totalSteps += sample.cumulativeSteps
+                activeDuration += sample.timestamp.timeIntervalSince(segmentStartDate)
+            }
+            self.previousSample = sample
             return validatedCurrentCadence(from: sample)
         }
 
@@ -53,14 +62,15 @@ struct CadenceAccumulator {
         let stepDelta = sample.cumulativeSteps - previousSample.cumulativeSteps
 
         guard interval > 0,
-              interval <= Self.maximumSampleInterval,
               stepDelta >= 0
         else {
+            self.previousSample = sample
             return validatedCurrentCadence(from: sample)
         }
 
         totalSteps += stepDelta
         activeDuration += interval
+        self.previousSample = sample
         return validatedCurrentCadence(from: sample)
     }
 
