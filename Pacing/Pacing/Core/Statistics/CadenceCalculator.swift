@@ -32,6 +32,10 @@ struct CadenceAccumulator {
         previousSample = nil
     }
 
+    mutating func resetBaseline() {
+        previousSample = nil
+    }
+
     /// 샘플 간 누적 걸음 수와 시간만 합산합니다.
     /// 현재 케이던스가 nil이어도 누적 걸음 수와 시각이 유효하면 평균 계산에는 사용할 수 있습니다.
     mutating func ingest(_ sample: CadenceSample) -> Double? {

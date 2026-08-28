@@ -70,7 +70,7 @@ struct RunActivityDetailView: View {
             HStack(alignment: .top, spacing: 12) {
                 compactMetric(value: formattedElevation, label: "고도 상승")
                 compactMetric(value: formattedHeartRate, label: "BPM")
-                compactMetric(value: "--", label: "케이던스")
+                compactMetric(value: formattedCadence, label: "케이던스")
             }
         }
     }
@@ -222,6 +222,11 @@ struct RunActivityDetailView: View {
 
     private var formattedHeartRate: String {
         guard let value = record.averageHeartRate, value.isFinite else { return "--" }
+        return "\(Int(value.rounded()))"
+    }
+
+    private var formattedCadence: String {
+        guard let value = record.averageCadence, value.isFinite, value > 0 else { return "--" }
         return "\(Int(value.rounded()))"
     }
 

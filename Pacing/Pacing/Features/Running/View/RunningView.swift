@@ -362,6 +362,7 @@ struct RunningView: View {
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
                 elevationGainMeters: viewModel.elevationGainMeters,
                 averageHeartRate: viewModel.averageHeartRate,
+                averageCadence: viewModel.averageCadence,
                 onSave: {
                     let savedDistance = viewModel.distance
                     let savedElapsedSeconds = viewModel.elapsedSeconds
@@ -370,6 +371,7 @@ struct RunningView: View {
                     let savedLapPaces = viewModel.completedLapPaces
                     let savedElevationGainMeters = viewModel.elevationGainMeters
                     let savedAverageHeartRate = viewModel.averageHeartRate
+                    let savedAverageCadence = viewModel.averageCadence
                     Task {
                         await viewModel.saveRecord(
                             distance: savedDistance,
@@ -378,7 +380,8 @@ struct RunningView: View {
                             routeCoordinates: savedRouteCoordinates,
                             lapPaces: savedLapPaces,
                             elevationGainMeters: savedElevationGainMeters,
-                            averageHeartRate: savedAverageHeartRate
+                            averageHeartRate: savedAverageHeartRate,
+                            averageCadence: savedAverageCadence
                         )
                     }
                     showSummary = false
@@ -558,7 +561,7 @@ struct RunningView: View {
             metricDivider
             independentMetricButton(
                 index: $rightMetricIndex,
-                values: [(viewModel.formattedCalories, "칼로리"), ("--", "케이던스")]
+                values: [(viewModel.formattedCalories, "칼로리"), (viewModel.formattedCadence, "케이던스")]
             )
         }
     }

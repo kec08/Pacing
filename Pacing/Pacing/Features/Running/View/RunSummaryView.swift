@@ -11,6 +11,7 @@ struct RunSummaryView: View {
     let routeCoordinates: [CLLocationCoordinate2D]
     let elevationGainMeters: Double?
     let averageHeartRate: Double?
+    let averageCadence: Double?
     let onSave: () -> Void
     let onDiscard: () -> Void
 
@@ -105,7 +106,7 @@ struct RunSummaryView: View {
             HStack(spacing: 0) {
                 subStatItem(value: formattedElevation, label: "고도 상승")
                 subStatItem(value: formattedHeartRate, label: "BPM")
-                subStatItem(value: "--", label: "케이던스")
+                subStatItem(value: formattedCadence, label: "케이던스")
             }
 
             if !lapPaces.isEmpty {
@@ -188,6 +189,11 @@ struct RunSummaryView: View {
     private var formattedHeartRate: String {
         guard let averageHeartRate, averageHeartRate.isFinite else { return "--" }
         return "\(Int(averageHeartRate.rounded()))"
+    }
+
+    private var formattedCadence: String {
+        guard let averageCadence, averageCadence.isFinite, averageCadence > 0 else { return "--" }
+        return "\(Int(averageCadence.rounded()))"
     }
 
     private func formattedPace(_ pace: Double) -> String {

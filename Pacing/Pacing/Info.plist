@@ -69,6 +69,8 @@
 	<string>러닝 중 경로를 기록하고 주변 러너를 찾기 위해 위치 정보가 필요합니다.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>러닝 결과에 Apple Watch로 측정한 심박수를 표시하기 위해 건강 데이터 읽기 권한이 필요합니다.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>러닝 중 걸음 수를 측정해 정확한 케이던스를 계산하기 위해 동작 및 피트니스 데이터 접근이 필요합니다.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
