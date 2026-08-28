@@ -53,6 +53,10 @@ struct RunningView: View {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
     }
 
+    private var musicControlIconColor: Color {
+        colorScheme == .dark ? .white : .primary
+    }
+
     private var shouldDisplayRoute: Bool {
         viewModel.state != .idle && viewModel.locationManager.routeCoordinates.count >= 2
     }
@@ -1047,7 +1051,7 @@ struct RunningView: View {
                                     .foregroundStyle(
                                         isActiveListenGuest || !musicVM.canSkipToPrevious
                                             ? Color.textSecondary.opacity(0.35)
-                                            : .primary
+                                            : musicControlIconColor
                                     )
                             }
                             .disabled(isActiveListenGuest || !musicVM.canSkipToPrevious)
@@ -1063,7 +1067,7 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.system(size: 68))
-                                    .foregroundStyle(Color.main500)
+                                    .foregroundStyle(musicControlIconColor)
                             }
 
                             Button {
@@ -1074,7 +1078,7 @@ struct RunningView: View {
                                     .foregroundStyle(
                                         isActiveListenGuest || !musicVM.canSkipToNext
                                             ? Color.textSecondary.opacity(0.35)
-                                            : .primary
+                                            : musicControlIconColor
                                     )
                             }
                             .disabled(isActiveListenGuest || !musicVM.canSkipToNext)
@@ -1516,11 +1520,12 @@ struct RunningView: View {
                                             .font(.system(size: 11))
                                             .foregroundStyle(Color(.secondaryLabel))
                                             .lineLimit(1)
-                                    }
-                                }
-                            }
-                        }
                     }
+                }
+            }
+        }
+    }
+
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(
