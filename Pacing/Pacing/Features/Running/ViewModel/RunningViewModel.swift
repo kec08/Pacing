@@ -48,6 +48,8 @@ final class RunningViewModel: ObservableObject {
     @Published var distance: Double = 0       // km
     @Published var currentPace: Double = 0    // 분/km, 1km 랩 기준 표시
     @Published private(set) var completedLapPaces: [RunLapPace] = []
+    @Published private(set) var elevationGainMeters: Double?
+    @Published private(set) var averageHeartRate: Double?
 
     let locationManager: LocationManager
 
@@ -62,10 +64,17 @@ final class RunningViewModel: ObservableObject {
     private var lapStartElapsedSeconds: Int = 0
     private var lastCompletedLapPace: Double = 0
     private var runningStartedAt: Date?
+    private var healthRunStartedAt: Date?
     private var accumulatedElapsedSecondsBeforeResume: Int = 0
+    private let heartRateRepository: HeartRateRepository
+    private var healthAuthorizationTask: Task<Bool, Never>?
 
-    init(locationManager: LocationManager = .shared) {
+    init(
+        locationManager: LocationManager = .shared,
+        heartRateRepository: HeartRateRepository = HealthKitHeartRateRepository()
+    ) {
         self.locationManager = locationManager
+        self.heartRateRepository = heartRateRepository
         locationManager.startMonitoringCurrentLocation()
 
         locationManager.$recentRecordedLocations
@@ -90,7 +99,12 @@ final class RunningViewModel: ObservableObject {
         lastLocation = nil
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
-        runningStartedAt = Date()
+        let startedAt = Date()
+        runningStartedAt = startedAt
+        healthRunStartedAt = startedAt
+        elevationGainMeters = nil
+        averageHeartRate = nil
+        healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
         startTimer()
@@ -115,14 +129,27 @@ final class RunningViewModel: ObservableObject {
         startTimer()
     }
 
-    func stop() {
+    func stop() async {
         syncElapsedSeconds()
         completePendingLapsIfNeeded()
+        let endedAt = Date()
+        let healthStartedAt = healthRunStartedAt
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
         runningStartedAt = nil
         timer?.cancel()
         locationManager.stopTracking()
         state = .finished
+
+        elevationGainMeters = RunMetricsCalculator.elevationGain(
+            from: locationManager.recordedLocations
+        )
+        if let healthStartedAt {
+            _ = await healthAuthorizationTask?.value
+            averageHeartRate = await heartRateRepository.averageHeartRate(
+                from: healthStartedAt,
+                to: endedAt
+            )
+        }
     }
 
     func reset() {
@@ -135,6 +162,10 @@ final class RunningViewModel: ObservableObject {
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
         runningStartedAt = nil
+        healthRunStartedAt = nil
+        healthAuthorizationTask = nil
+        elevationGainMeters = nil
+        averageHeartRate = nil
         state = .idle
     }
 
@@ -234,7 +265,9 @@ final class RunningViewModel: ObservableObject {
         elapsedSeconds: Int? = nil,
         avgPace: Double? = nil,
         routeCoordinates: [CLLocationCoordinate2D]? = nil,
-        lapPaces: [RunLapPace]? = nil
+        lapPaces: [RunLapPace]? = nil,
+        elevationGainMeters: Double? = nil,
+        averageHeartRate: Double? = nil
     ) async {
         let savedDistance = distance ?? self.distance
         let savedElapsedSeconds = elapsedSeconds ?? self.elapsedSeconds
@@ -260,7 +293,9 @@ final class RunningViewModel: ObservableObject {
             distance: savedDistance,
             avgPace: savedAveragePace,
             routeCoordinates: savedRouteCoordinates,
-            lapPaces: savedLapPaces
+            lapPaces: savedLapPaces,
+            elevationGainMeters: elevationGainMeters ?? self.elevationGainMeters,
+            averageHeartRate: averageHeartRate ?? self.averageHeartRate
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
 
