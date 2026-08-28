@@ -360,6 +360,32 @@ final class PacingTests: XCTestCase {
         )))
     }
 
+    func testCadenceAccumulatorResetsBaselineWhenStepCountMovesBackwards() {
+        var accumulator = CadenceAccumulator()
+        let start = Date(timeIntervalSince1970: 1_000)
+
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start,
+            cumulativeSteps: 20,
+            currentCadenceStepsPerSecond: 3
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(5),
+            cumulativeSteps: 10,
+            currentCadenceStepsPerSecond: 3
+        ))
+        _ = accumulator.ingest(CadenceSample(
+            timestamp: start.addingTimeInterval(10),
+            cumulativeSteps: 30,
+            currentCadenceStepsPerSecond: 2
+        ))
+
+        guard let average = accumulator.averageStepsPerMinute else {
+            return XCTFail("누적 걸음 수가 역행한 뒤 새 기준점에서 평균을 계산해야 합니다.")
+        }
+        XCTAssertEqual(average, 240, accuracy: 0.0001)
+    }
+
     private func trackedLocation(
         latitude: CLLocationDegrees,
         longitude: CLLocationDegrees,

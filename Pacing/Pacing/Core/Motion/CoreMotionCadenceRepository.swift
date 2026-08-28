@@ -31,7 +31,7 @@ final class CoreMotionCadenceRepository: CadenceRepository {
             guard let self, let data else { return }
 
             let sample = CadenceSample(
-                timestamp: Date(),
+                timestamp: data.endDate,
                 cumulativeSteps: data.numberOfSteps.intValue,
                 currentCadenceStepsPerSecond: data.currentCadence?.doubleValue
             )
