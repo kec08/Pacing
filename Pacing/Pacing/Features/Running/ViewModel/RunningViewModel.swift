@@ -265,6 +265,10 @@ final class RunningViewModel: ObservableObject {
         if hasDistanceChanged {
             updateDisplayedPace()
         }
+
+        elevationGainMeters = RunMetricsCalculator.elevationGain(
+            from: locationManager.recordedLocations
+        ) ?? 0
     }
 
     func saveRecord(

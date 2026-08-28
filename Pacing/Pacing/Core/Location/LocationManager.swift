@@ -192,8 +192,8 @@ extension LocationManager: CLLocationManagerDelegate {
             return
         }
 
-        recentRecordedLocations = recordedLocations
         self.recordedLocations.append(contentsOf: recordedLocations)
+        recentRecordedLocations = recordedLocations
         appendRouteCoordinates(from: recordedLocations)
     }
 
