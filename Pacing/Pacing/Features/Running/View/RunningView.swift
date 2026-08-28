@@ -54,7 +54,7 @@ struct RunningView: View {
     }
 
     private var musicControlIconColor: Color {
-        .main500
+        colorScheme == .dark ? .white : .black
     }
 
     private var shouldDisplayRoute: Bool {
@@ -1067,7 +1067,7 @@ struct RunningView: View {
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.system(size: 68))
-                                    .foregroundStyle(musicControlIconColor)
+                                    .foregroundStyle(Color.main500)
                             }
 
                             Button {
