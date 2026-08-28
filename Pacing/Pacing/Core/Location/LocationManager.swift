@@ -36,6 +36,7 @@ final class LocationManager: NSObject, ObservableObject {
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var routeCoordinates: [CLLocationCoordinate2D] = []
     @Published private(set) var recentRecordedLocations: [CLLocation] = []
+    @Published private(set) var recordedLocations: [CLLocation] = []
 
     private let manager = CLLocationManager()
     private var isRecordingRoute = false
@@ -101,6 +102,7 @@ final class LocationManager: NSObject, ObservableObject {
         isRecordingRoute = false
         routeCoordinates = []
         recentRecordedLocations = []
+        recordedLocations = []
         configureBackgroundLocationSupport()
     }
 
@@ -191,6 +193,7 @@ extension LocationManager: CLLocationManagerDelegate {
         }
 
         recentRecordedLocations = recordedLocations
+        self.recordedLocations.append(contentsOf: recordedLocations)
         appendRouteCoordinates(from: recordedLocations)
     }
 

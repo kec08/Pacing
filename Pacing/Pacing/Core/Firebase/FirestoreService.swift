@@ -79,6 +79,15 @@ final class FirestoreService {
         data["lapPaces"] = record.lapPaces.map {
             ["kilometer": $0.kilometer, "pace": $0.pace]
         }
+        if let elevationGainMeters = record.elevationGainMeters {
+            data["elevationGainMeters"] = elevationGainMeters
+        }
+        if let averageHeartRate = record.averageHeartRate {
+            data["averageHeartRate"] = averageHeartRate
+        }
+        if let averageCadence = record.averageCadence {
+            data["averageCadence"] = averageCadence
+        }
 
         try await db.collection("users").document(uid)
             .collection("runHistory").document(record.id)
@@ -101,6 +110,9 @@ final class FirestoreService {
             let duration = (d["duration"] as? NSNumber)?.intValue ?? 0
             let distance = (d["distance"] as? NSNumber)?.doubleValue ?? 0
             let avgPace  = (d["avgPace"]  as? NSNumber)?.doubleValue ?? 0
+            let elevationGainMeters = (d["elevationGainMeters"] as? NSNumber)?.doubleValue
+            let averageHeartRate = (d["averageHeartRate"] as? NSNumber)?.doubleValue
+            let averageCadence = (d["averageCadence"] as? NSNumber)?.doubleValue
 
             let geoPoints = (d["routeCoordinates"] as? [GeoPoint]) ?? []
             let coords = geoPoints.map {
@@ -123,7 +135,10 @@ final class FirestoreService {
                 distance: distance,
                 avgPace: avgPace,
                 routeCoordinates: coords,
-                lapPaces: lapPaces
+                lapPaces: lapPaces,
+                elevationGainMeters: elevationGainMeters,
+                averageHeartRate: averageHeartRate,
+                averageCadence: averageCadence
             )
         }
     }
