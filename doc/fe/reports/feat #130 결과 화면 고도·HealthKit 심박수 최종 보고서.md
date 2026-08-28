@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-08-28
 > **관련 이슈**: [#130](https://github.com/kec08/Pacing/issues/130)
-> **PR**: 생성 예정
+> **PR**: [#131](https://github.com/kec08/Pacing/pull/131)
 > **기준 브랜치**: `dev`
 > **작업 브랜치**: `feat/130-healthkit-heart-rate`
 
