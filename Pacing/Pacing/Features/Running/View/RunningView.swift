@@ -54,7 +54,7 @@ struct RunningView: View {
     }
 
     private var musicControlIconColor: Color {
-        colorScheme == .dark ? .white : .primary
+        Color(uiColor: .label)
     }
 
     private var shouldDisplayRoute: Bool {
