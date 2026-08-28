@@ -548,7 +548,7 @@ struct RunningView: View {
         HStack(spacing: 0) {
             independentMetricButton(
                 index: $leftMetricIndex,
-                values: [(viewModel.formattedDistance, "km"), ("--", "고도 상승")]
+                values: [(viewModel.formattedDistance, "km"), (viewModel.formattedElevationGain, "고도 상승")]
             )
             metricDivider
             independentMetricButton(
@@ -638,7 +638,7 @@ struct RunningView: View {
             HStack(spacing: 0) {
                 pausedMetric(value: viewModel.formattedCalories, label: "칼로리")
                 metricDivider
-                pausedMetric(value: "--", label: "고도 상승")
+                pausedMetric(value: viewModel.formattedElevationGain, label: "고도 상승")
                 metricDivider
                 pausedMetric(value: "--", label: "BPM")
             }

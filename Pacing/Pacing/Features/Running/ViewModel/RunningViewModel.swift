@@ -212,6 +212,13 @@ final class RunningViewModel: ObservableObject {
         "\(estimatedCalories)"
     }
 
+    var formattedElevationGain: String {
+        guard let elevationGainMeters, elevationGainMeters.isFinite else {
+            return state == .running || state == .paused ? "0m" : "--"
+        }
+        return "\(Int(elevationGainMeters.rounded()))m"
+    }
+
     // MARK: - Private
 
     private func startTimer() {
