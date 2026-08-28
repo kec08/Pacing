@@ -360,19 +360,25 @@ struct RunningView: View {
                 calories: viewModel.estimatedCalories,
                 lapPaces: viewModel.completedLapPaces,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
+                elevationGainMeters: viewModel.elevationGainMeters,
+                averageHeartRate: viewModel.averageHeartRate,
                 onSave: {
                     let savedDistance = viewModel.distance
                     let savedElapsedSeconds = viewModel.elapsedSeconds
                     let savedAveragePace = viewModel.avgPace
                     let savedRouteCoordinates = viewModel.locationManager.routeCoordinates
                     let savedLapPaces = viewModel.completedLapPaces
+                    let savedElevationGainMeters = viewModel.elevationGainMeters
+                    let savedAverageHeartRate = viewModel.averageHeartRate
                     Task {
                         await viewModel.saveRecord(
                             distance: savedDistance,
                             elapsedSeconds: savedElapsedSeconds,
                             avgPace: savedAveragePace,
                             routeCoordinates: savedRouteCoordinates,
-                            lapPaces: savedLapPaces
+                            lapPaces: savedLapPaces,
+                            elevationGainMeters: savedElevationGainMeters,
+                            averageHeartRate: savedAverageHeartRate
                         )
                     }
                     showSummary = false
@@ -842,10 +848,12 @@ struct RunningView: View {
                     stopHoldTimer?.invalidate()
                     stopHoldTimer = nil
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    viewModel.stop()
-                    showSummary = true
-                    showStopConfirm = false
-                    stopHoldProgress = 0
+                    Task {
+                        await viewModel.stop()
+                        showSummary = true
+                        showStopConfirm = false
+                        stopHoldProgress = 0
+                    }
                 }
             }
         }

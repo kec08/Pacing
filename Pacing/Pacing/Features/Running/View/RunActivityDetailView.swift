@@ -61,10 +61,17 @@ struct RunActivityDetailView: View {
     }
 
     private var metricsSection: some View {
-        HStack(alignment: .top, spacing: 12) {
-            compactMetric(value: formattedPace(record.displayPace), label: "평균 페이스")
-            compactMetric(value: formattedDuration(record.duration), label: "시간")
-            compactMetric(value: "\(estimatedCalories)", label: "칼로리")
+        VStack(spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                compactMetric(value: formattedPace(record.displayPace), label: "평균 페이스")
+                compactMetric(value: formattedDuration(record.duration), label: "시간")
+                compactMetric(value: "\(estimatedCalories)", label: "칼로리")
+            }
+            HStack(alignment: .top, spacing: 12) {
+                compactMetric(value: formattedElevation, label: "고도 상승")
+                compactMetric(value: formattedHeartRate, label: "BPM")
+                compactMetric(value: "--", label: "케이던스")
+            }
         }
     }
 
@@ -206,6 +213,16 @@ struct RunActivityDetailView: View {
         let storedWeight = UserDefaults.standard.integer(forKey: "weight")
         let weight = storedWeight > 0 ? Double(storedWeight) : 60.0
         return Int((weight * record.distance * 1.036).rounded())
+    }
+
+    private var formattedElevation: String {
+        guard let value = record.elevationGainMeters, value.isFinite else { return "--" }
+        return "\(Int(value.rounded())) m"
+    }
+
+    private var formattedHeartRate: String {
+        guard let value = record.averageHeartRate, value.isFinite else { return "--" }
+        return "\(Int(value.rounded()))"
     }
 
     private func formattedDuration(_ seconds: Int) -> String {

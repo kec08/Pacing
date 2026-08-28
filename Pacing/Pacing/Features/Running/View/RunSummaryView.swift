@@ -9,6 +9,8 @@ struct RunSummaryView: View {
     let calories: Int
     let lapPaces: [RunLapPace]
     let routeCoordinates: [CLLocationCoordinate2D]
+    let elevationGainMeters: Double?
+    let averageHeartRate: Double?
     let onSave: () -> Void
     let onDiscard: () -> Void
 
@@ -98,6 +100,14 @@ struct RunSummaryView: View {
                 subStatItem(value: formattedCalories, label: "칼로리", minimumScaleFactor: 0.55)
             }
 
+            Divider().opacity(0.3).padding(.vertical, 14)
+
+            HStack(spacing: 0) {
+                subStatItem(value: formattedElevation, label: "고도 상승")
+                subStatItem(value: formattedHeartRate, label: "BPM")
+                subStatItem(value: "--", label: "케이던스")
+            }
+
             if !lapPaces.isEmpty {
                 Divider().opacity(0.3).padding(.vertical, 14)
 
@@ -168,6 +178,16 @@ struct RunSummaryView: View {
 
     private var formattedCalories: String {
         "\(calories) kcal"
+    }
+
+    private var formattedElevation: String {
+        guard let elevationGainMeters, elevationGainMeters.isFinite else { return "--" }
+        return "\(Int(elevationGainMeters.rounded())) m"
+    }
+
+    private var formattedHeartRate: String {
+        guard let averageHeartRate, averageHeartRate.isFinite else { return "--" }
+        return "\(Int(averageHeartRate.rounded()))"
     }
 
     private func formattedPace(_ pace: Double) -> String {
