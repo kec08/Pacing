@@ -53,6 +53,10 @@ struct RunningView: View {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
     }
 
+    private var musicControlIconColor: Color {
+        colorScheme == .dark ? .white : .black
+    }
+
     private var shouldDisplayRoute: Bool {
         viewModel.state != .idle && viewModel.locationManager.routeCoordinates.count >= 2
     }
@@ -362,6 +366,7 @@ struct RunningView: View {
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
                 elevationGainMeters: viewModel.elevationGainMeters,
                 averageHeartRate: viewModel.averageHeartRate,
+                averageCadence: viewModel.averageCadence,
                 onSave: {
                     let savedDistance = viewModel.distance
                     let savedElapsedSeconds = viewModel.elapsedSeconds
@@ -370,6 +375,7 @@ struct RunningView: View {
                     let savedLapPaces = viewModel.completedLapPaces
                     let savedElevationGainMeters = viewModel.elevationGainMeters
                     let savedAverageHeartRate = viewModel.averageHeartRate
+                    let savedAverageCadence = viewModel.averageCadence
                     Task {
                         await viewModel.saveRecord(
                             distance: savedDistance,
@@ -378,7 +384,8 @@ struct RunningView: View {
                             routeCoordinates: savedRouteCoordinates,
                             lapPaces: savedLapPaces,
                             elevationGainMeters: savedElevationGainMeters,
-                            averageHeartRate: savedAverageHeartRate
+                            averageHeartRate: savedAverageHeartRate,
+                            averageCadence: savedAverageCadence
                         )
                     }
                     showSummary = false
@@ -558,7 +565,7 @@ struct RunningView: View {
             metricDivider
             independentMetricButton(
                 index: $rightMetricIndex,
-                values: [(viewModel.formattedCalories, "칼로리"), ("--", "케이던스")]
+                values: [(viewModel.formattedCalories, "칼로리"), (viewModel.formattedCadence, "케이던스")]
             )
         }
     }
@@ -1044,7 +1051,7 @@ struct RunningView: View {
                                     .foregroundStyle(
                                         isActiveListenGuest || !musicVM.canSkipToPrevious
                                             ? Color.textSecondary.opacity(0.35)
-                                            : .primary
+                                            : musicControlIconColor
                                     )
                             }
                             .disabled(isActiveListenGuest || !musicVM.canSkipToPrevious)
@@ -1071,7 +1078,7 @@ struct RunningView: View {
                                     .foregroundStyle(
                                         isActiveListenGuest || !musicVM.canSkipToNext
                                             ? Color.textSecondary.opacity(0.35)
-                                            : .primary
+                                            : musicControlIconColor
                                     )
                             }
                             .disabled(isActiveListenGuest || !musicVM.canSkipToNext)
@@ -1513,11 +1520,12 @@ struct RunningView: View {
                                             .font(.system(size: 11))
                                             .foregroundStyle(Color(.secondaryLabel))
                                             .lineLimit(1)
-                                    }
-                                }
-                            }
-                        }
                     }
+                }
+            }
+        }
+    }
+
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(

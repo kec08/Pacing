@@ -669,6 +669,8 @@ final class SongNowPlayingController: ObservableObject {
 }
 
 private struct SongNowPlayingOverlay: View {
+    @Environment(\.colorScheme) private var colorScheme
+
     @ObservedObject var controller: SongNowPlayingController
     let expandedWidth: CGFloat
 
@@ -698,6 +700,10 @@ private struct SongNowPlayingOverlay: View {
 
     private var circleShadowOpacity: CGFloat {
         lerp(from: 0.06, to: 0.18, progress: progress)
+    }
+
+    private var controlIconColor: Color {
+        colorScheme == .dark ? .white : .black
     }
 
     private var artworkCenteringOffset: CGFloat {
@@ -764,7 +770,7 @@ private struct SongNowPlayingOverlay: View {
                     } label: {
                         Image(systemName: "backward.fill")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.82))
+                            .foregroundStyle(controlIconColor.opacity(0.82))
                             .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
@@ -774,7 +780,7 @@ private struct SongNowPlayingOverlay: View {
                     } label: {
                         Image(systemName: controller.isPlaying ? "pause.fill" : "play.fill")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.82))
+                            .foregroundStyle(controlIconColor.opacity(0.82))
                             .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
@@ -784,7 +790,7 @@ private struct SongNowPlayingOverlay: View {
                     } label: {
                         Image(systemName: "forward.fill")
                             .font(.system(size: 16, weight: .bold))
-                            .foregroundStyle(.black.opacity(0.82))
+                            .foregroundStyle(controlIconColor.opacity(0.82))
                             .frame(width: 30, height: 30)
                     }
                     .buttonStyle(.plain)
