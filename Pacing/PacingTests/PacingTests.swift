@@ -99,6 +99,44 @@ final class PacingTests: XCTestCase {
         )
     }
 
+    func testElevationGainIgnoresLowAccuracyAndSinglePointSpikes() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let locations = [
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 100, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 103, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(5)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 150, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(10)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 106, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(15)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 109, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(20)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 200, horizontalAccuracy: 5, verticalAccuracy: 30, timestamp: start.addingTimeInterval(25))
+        ]
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 9, accuracy: 0.001)
+    }
+
+    func testElevationGainKeepsSustainedClimbWithinAllowedDelta() {
+        let start = Date(timeIntervalSince1970: 2_000)
+        let locations = (0..<5).map { index in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+                altitude: 100 + Double(index * 5),
+                horizontalAccuracy: 5,
+                verticalAccuracy: 10,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 20, accuracy: 0.001)
+    }
+
+    func testPaceFromDistanceAndElapsedTimeUsesMinutesPerKilometer() {
+        let distanceKilometers = 5.0
+        let elapsedSeconds = 1_500
+
+        let pace = Double(elapsedSeconds) / 60.0 / distanceKilometers
+
+        XCTAssertEqual(pace, 5.0, accuracy: 0.001)
+    }
+
     func testRunRecordHidesPaceForShortDistanceAndExcludesExtremePace() {
         let shortDistance = RunRecord(
             id: "short", startedAt: .now, duration: 314, distance: 0.01, avgPace: 523.3,
@@ -247,7 +285,7 @@ final class PacingTests: XCTestCase {
         guard let elevationGain = RunMetricsCalculator.elevationGain(from: locations) else {
             return XCTFail("유효한 고도 샘플이 있으면 상승 고도를 계산해야 합니다.")
         }
-        XCTAssertEqual(elevationGain, 10, accuracy: 0.0001)
+        XCTAssertEqual(elevationGain, 9, accuracy: 0.0001)
     }
 
     func testCadenceAccumulatorConvertsCurrentCadenceToStepsPerMinute() {

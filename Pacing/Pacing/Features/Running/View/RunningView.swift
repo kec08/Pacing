@@ -11,6 +11,15 @@ private enum MusicSheetPanel {
     case trackList
 }
 
+private enum RunningMetric: CaseIterable, Hashable {
+    case distance
+    case elevation
+    case pace
+    case heartRate
+    case cadence
+    case calories
+}
+
 struct RunningView: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -45,9 +54,7 @@ struct RunningView: View {
     @State private var hasCenteredOnInitialLocation = false
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
-    @State private var leftMetricIndex = 0
-    @State private var centerMetricIndex = 0
-    @State private var rightMetricIndex = 0
+    @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -553,45 +560,37 @@ struct RunningView: View {
 
     private var independentMetricGrid: some View {
         HStack(spacing: 0) {
-            independentMetricButton(
-                index: $leftMetricIndex,
-                values: [(viewModel.formattedDistance, "km"), (viewModel.formattedElevationGain, "고도 상승")]
-            )
+            independentMetricButton(slot: 0)
             metricDivider
-            independentMetricButton(
-                index: $centerMetricIndex,
-                values: [(viewModel.formattedPace, "페이스"), ("--", "BPM")]
-            )
+            independentMetricButton(slot: 1)
             metricDivider
-            independentMetricButton(
-                index: $rightMetricIndex,
-                values: [(viewModel.formattedCalories, "칼로리"), (viewModel.formattedCadence, "케이던스")]
-            )
+            independentMetricButton(slot: 2)
         }
     }
 
-    private func independentMetricButton(
-        index: Binding<Int>,
-        values: [(String, String)]
-    ) -> some View {
+    private func independentMetricButton(slot: Int) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             withAnimation(.easeInOut(duration: 0.24)) {
-                index.wrappedValue = (index.wrappedValue + 1) % values.count
+                let currentMetric = metricSlots[slot]
+                let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
+                    index == slot ? nil : metric
+                })
+                metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
             }
         } label: {
             VStack(spacing: 2) {
-                Text(values[index.wrappedValue].0)
+                Text(metricValue(for: metricSlots[slot]))
                     .font(.system(size: 28, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .id("value-\(index.wrappedValue)")
+                    .id("value-\(metricSlots[slot])")
                     .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                Text(values[index.wrappedValue].1)
+                Text(metricLabel(for: metricSlots[slot]))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.textSecondary)
-                    .id("label-\(index.wrappedValue)")
+                    .id("label-\(metricSlots[slot])")
                     .transition(.opacity)
             }
             .frame(maxWidth: .infinity)
@@ -600,6 +599,42 @@ struct RunningView: View {
             .accessibilityHint("탭하면 다음 러닝 지표를 표시합니다.")
         }
         .buttonStyle(.plain)
+    }
+
+    private func nextMetric(
+        after currentMetric: RunningMetric,
+        excluding occupiedMetrics: Set<RunningMetric>
+    ) -> RunningMetric {
+        let metrics = RunningMetric.allCases
+        guard let currentIndex = metrics.firstIndex(of: currentMetric) else { return currentMetric }
+
+        for offset in 1...metrics.count {
+            let candidate = metrics[(currentIndex + offset) % metrics.count]
+            if !occupiedMetrics.contains(candidate) { return candidate }
+        }
+        return currentMetric
+    }
+
+    private func metricValue(for metric: RunningMetric) -> String {
+        switch metric {
+        case .distance: return viewModel.formattedDistance
+        case .elevation: return viewModel.formattedElevationGain
+        case .pace: return viewModel.formattedPace
+        case .heartRate: return "--"
+        case .cadence: return viewModel.formattedCadence
+        case .calories: return viewModel.formattedCalories
+        }
+    }
+
+    private func metricLabel(for metric: RunningMetric) -> String {
+        switch metric {
+        case .distance: return "km"
+        case .elevation: return "고도 상승"
+        case .pace: return "페이스"
+        case .heartRate: return "BPM"
+        case .cadence: return "케이던스"
+        case .calories: return "칼로리"
+        }
     }
 
     private var metricDivider: some View {
@@ -2087,6 +2122,7 @@ struct RunningView: View {
             }
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
+                metricSlots = [.distance, .pace, .calories]
                 if viewModel.start() {
                     startNearbyObservationIfNeeded()
                 } else {

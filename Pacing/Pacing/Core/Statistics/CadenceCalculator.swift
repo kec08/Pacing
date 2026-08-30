@@ -37,6 +37,8 @@ struct CadenceAccumulator {
     }
 
     mutating func resetBaseline(at startDate: Date? = nil) {
+        totalSteps = 0
+        activeDuration = 0
         previousSample = nil
         segmentStartDate = startDate
     }
@@ -64,6 +66,10 @@ struct CadenceAccumulator {
         guard interval > 0,
               stepDelta >= 0
         else {
+            if stepDelta < 0 {
+                totalSteps = 0
+                activeDuration = 0
+            }
             self.previousSample = sample
             return validatedCurrentCadence(from: sample)
         }
