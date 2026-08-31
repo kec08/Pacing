@@ -128,6 +128,22 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 20, accuracy: 0.001)
     }
 
+    func testElevationGainIgnoresRepeatedAltitudeNoise() {
+        let start = Date(timeIntervalSince1970: 2_500)
+        let altitudes = [100.0, 106.0, 101.0, 107.0, 102.0, 106.0, 100.0]
+        let locations = altitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 10,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
     func testPaceFromDistanceAndElapsedTimeUsesMinutesPerKilometer() {
         let distanceKilometers = 5.0
         let elapsedSeconds = 1_500
@@ -285,7 +301,7 @@ final class PacingTests: XCTestCase {
         guard let elevationGain = RunMetricsCalculator.elevationGain(from: locations) else {
             return XCTFail("유효한 고도 샘플이 있으면 상승 고도를 계산해야 합니다.")
         }
-        XCTAssertEqual(elevationGain, 9, accuracy: 0.0001)
+        XCTAssertEqual(elevationGain, 10, accuracy: 0.0001)
     }
 
     func testCadenceAccumulatorConvertsCurrentCadenceToStepsPerMinute() {

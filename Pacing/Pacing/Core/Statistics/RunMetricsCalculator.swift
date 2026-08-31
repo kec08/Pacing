@@ -63,13 +63,13 @@ enum RunMetricsCalculator {
 
     /// 유효한 수직 정확도를 가진 위치 샘플만 사용해 누적 상승 고도를 계산합니다.
     ///
-    /// GPS 고도는 한 샘플만으로 크게 튈 수 있으므로 3개 샘플의 중앙값으로
-    /// 완화한 뒤, 실제 상승으로 볼 수 있는 범위의 변화만 누적합니다.
+    /// GPS 고도는 한 샘플만으로 크게 튈 수 있으므로 5개 샘플의 중앙값으로
+    /// 완화한 뒤, 상승·하강 기준선을 벗어난 변화만 누적합니다.
     static func elevationGain(
         from locations: [CLLocation],
         maximumVerticalAccuracy: CLLocationAccuracy = 20,
-        minimumPositiveDelta: CLLocationDistance = 3,
-        maximumPositiveDelta: CLLocationDistance = 15
+        minimumPositiveDelta: CLLocationDistance = 5,
+        maximumPositiveDelta: CLLocationDistance = 12
     ) -> CLLocationDistance? {
         let valid = locations.filter {
             $0.verticalAccuracy > 0
@@ -83,18 +83,22 @@ enum RunMetricsCalculator {
                 return valid[index].altitude
             }
 
-            let lowerBound = max(valid.startIndex, index - 1)
-            let upperBound = min(valid.index(before: valid.endIndex), index + 1)
+            let lowerBound = max(valid.startIndex, index - 2)
+            let upperBound = min(valid.index(before: valid.endIndex), index + 2)
             return valid[lowerBound...upperBound]
                 .map(\.altitude)
                 .sorted()[((upperBound - lowerBound) / 2)]
         }
 
         var gain = 0.0
-        for pair in zip(smoothedAltitudes, smoothedAltitudes.dropFirst()) {
-            let delta = pair.1 - pair.0
+        var baseline = smoothedAltitudes[0]
+        for altitude in smoothedAltitudes.dropFirst() {
+            let delta = altitude - baseline
             if delta >= minimumPositiveDelta, delta <= maximumPositiveDelta {
                 gain += delta
+                baseline = altitude
+            } else if delta <= -minimumPositiveDelta {
+                baseline = altitude
             }
         }
         return gain

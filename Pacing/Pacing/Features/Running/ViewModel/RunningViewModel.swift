@@ -162,6 +162,7 @@ final class RunningViewModel: ObservableObject {
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
         state = .finished
+        let lastLiveCadence = currentCadenceStepsPerMinute
 
         await finalizeCadence(at: endedAt)
 
@@ -176,6 +177,8 @@ final class RunningViewModel: ObservableObject {
             )
         }
         averageCadence = cadenceAccumulator.averageStepsPerMinute
+            ?? currentCadenceStepsPerMinute
+            ?? lastLiveCadence
         currentCadenceStepsPerMinute = nil
     }
 
@@ -292,7 +295,9 @@ final class RunningViewModel: ObservableObject {
         }
 
         guard let sample else { return }
-        currentCadenceStepsPerMinute = cadenceAccumulator.ingest(sample)
+        if let cadence = cadenceAccumulator.ingest(sample) {
+            currentCadenceStepsPerMinute = cadence
+        }
     }
 
     private func updateDistance(with locations: [CLLocation]) {
