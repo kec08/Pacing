@@ -170,7 +170,7 @@ struct RunActivityDetailView: View {
         guard completedKilometers > 0, record.isPaceValid else { return [] }
 
         return (1...completedKilometers).map {
-            RunLapPace(kilometer: $0, pace: record.avgPace)
+            RunLapPace(kilometer: $0, pace: record.displayPace)
         }
     }
 

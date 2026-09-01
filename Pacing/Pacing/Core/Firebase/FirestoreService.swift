@@ -72,6 +72,9 @@ final class FirestoreService {
             "distance": record.distance,
             "avgPace": record.avgPace
         ]
+        if let movingDuration = record.movingDuration {
+            data["movingDuration"] = movingDuration
+        }
         let geoPoints = record.routeCoordinates.map {
             GeoPoint(latitude: $0.latitude, longitude: $0.longitude)
         }
@@ -108,6 +111,7 @@ final class FirestoreService {
 
             // Firestore는 정수값을 Int64로 저장하므로 NSNumber로 통일해서 읽기
             let duration = (d["duration"] as? NSNumber)?.intValue ?? 0
+            let movingDuration = (d["movingDuration"] as? NSNumber)?.intValue
             let distance = (d["distance"] as? NSNumber)?.doubleValue ?? 0
             let avgPace  = (d["avgPace"]  as? NSNumber)?.doubleValue ?? 0
             let elevationGainMeters = (d["elevationGainMeters"] as? NSNumber)?.doubleValue
@@ -132,6 +136,7 @@ final class FirestoreService {
                 id: doc.documentID,
                 startedAt: ts.dateValue(),
                 duration: duration,
+                movingDuration: movingDuration,
                 distance: distance,
                 avgPace: avgPace,
                 routeCoordinates: coords,

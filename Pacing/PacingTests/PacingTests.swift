@@ -176,7 +176,41 @@ final class PacingTests: XCTestCase {
         )
 
         XCTAssertTrue(validRecord.isPaceValid)
-        XCTAssertEqual(RunRecord.formattedPace(validRecord.displayPace), "30'00\"")
+        XCTAssertEqual(RunRecord.formattedPace(validRecord.displayPace), "15'00\"")
+    }
+
+    func testRunRecordUsesMovingDurationForAveragePace() {
+        let record = RunRecord(
+            id: "moving-time",
+            startedAt: .now,
+            duration: 1_800,
+            movingDuration: 1_500,
+            distance: 5,
+            avgPace: 6,
+            routeCoordinates: [],
+            lapPaces: []
+        )
+
+        XCTAssertEqual(record.displayPace, 5, accuracy: 0.0001)
+    }
+
+    func testRunRecordUsesLapPacesForLegacyAveragePace() {
+        let record = RunRecord(
+            id: "legacy-laps",
+            startedAt: .now,
+            duration: 1_800,
+            distance: 4.46,
+            avgPace: 6.5,
+            routeCoordinates: [],
+            lapPaces: [
+                RunLapPace(kilometer: 1, pace: 5.5),
+                RunLapPace(kilometer: 2, pace: 5.45),
+                RunLapPace(kilometer: 3, pace: 5.23),
+                RunLapPace(kilometer: 4, pace: 5.2)
+            ]
+        )
+
+        XCTAssertEqual(record.displayPace, 5.345, accuracy: 0.0001)
     }
 
     func testEmailValidatorRejectsInvalidEmail() {

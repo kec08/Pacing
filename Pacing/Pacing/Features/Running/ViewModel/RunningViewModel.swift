@@ -372,6 +372,7 @@ final class RunningViewModel: ObservableObject {
             id: "validation",
             startedAt: Date(),
             duration: savedElapsedSeconds,
+            movingDuration: Int(activeElapsedSeconds.rounded()),
             distance: savedDistance,
             avgPace: rawAveragePace,
             routeCoordinates: [],

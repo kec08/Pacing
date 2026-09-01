@@ -12,6 +12,7 @@ struct RunRecord: Identifiable {
     let id: String
     let startedAt: Date
     let duration: Int          // 초
+    let movingDuration: Int?   // 실제 이동 시간(초), 일시정지·대기 제외
     let distance: Double       // km
     let avgPace: Double        // 분/km
     let routeCoordinates: [CLLocationCoordinate2D]
@@ -24,6 +25,7 @@ struct RunRecord: Identifiable {
         id: String,
         startedAt: Date,
         duration: Int,
+        movingDuration: Int? = nil,
         distance: Double,
         avgPace: Double,
         routeCoordinates: [CLLocationCoordinate2D],
@@ -35,6 +37,7 @@ struct RunRecord: Identifiable {
         self.id = id
         self.startedAt = startedAt
         self.duration = duration
+        self.movingDuration = movingDuration
         self.distance = distance
         self.avgPace = avgPace
         self.routeCoordinates = routeCoordinates
@@ -50,14 +53,28 @@ extension RunRecord {
     /// 15분/km보다 느린 기록은 러닝이 아닌 대기·GPS 미수신 기록으로 간주합니다.
     static let maximumValidPace: Double = 15.0
 
-    var isPaceValid: Bool {
-        distance.isFinite && duration > 0 && avgPace.isFinite
-            && distance >= Self.minimumValidDistance
-            && avgPace > 0
-            && avgPace <= Self.maximumValidPace
+    var effectivePace: Double {
+        if let movingDuration, movingDuration > 0, distance > 0 {
+            return Double(movingDuration) / 60.0 / distance
+        }
+
+        let validLapPaces = lapPaces.map(\.pace).filter {
+            $0.isFinite && $0 > 0 && $0 <= Self.maximumValidPace
+        }
+        if !validLapPaces.isEmpty {
+            return validLapPaces.reduce(0, +) / Double(validLapPaces.count)
+        }
+        return avgPace
     }
 
-    var displayPace: Double { isPaceValid ? avgPace : 0 }
+    var isPaceValid: Bool {
+        distance.isFinite && duration > 0 && effectivePace.isFinite
+            && distance >= Self.minimumValidDistance
+            && effectivePace > 0
+            && effectivePace <= Self.maximumValidPace
+    }
+
+    var displayPace: Double { isPaceValid ? effectivePace : 0 }
 
     static func formattedPace(_ pace: Double) -> String {
         guard pace.isFinite, pace > 0, pace <= maximumValidPace else { return "--'--\"" }

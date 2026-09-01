@@ -20,7 +20,7 @@ enum RunStatisticsCalculator {
             totalDistance += record.distance
             totalDuration += record.duration
             validDistance += record.distance
-            validDuration += record.duration
+            validDuration += Int((record.displayPace * record.distance * 60.0).rounded())
         }
 
         let averagePace = validDistance > 0
