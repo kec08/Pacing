@@ -64,18 +64,20 @@ enum RunMetricsCalculator {
     /// 유효한 수직 정확도를 가진 위치 샘플만 사용해 누적 상승 고도를 계산합니다.
     ///
     /// GPS 고도는 한 샘플만으로 크게 튈 수 있으므로 5개 샘플의 중앙값으로
-    /// 완화한 뒤, 상승·하강 기준선을 벗어난 변화만 누적합니다.
+    /// 완화한 뒤, 연속된 상승 추세가 확인된 변화만 누적합니다.
     static func elevationGain(
         from locations: [CLLocation],
-        maximumVerticalAccuracy: CLLocationAccuracy = 20,
+        maximumVerticalAccuracy: CLLocationAccuracy = 10,
         minimumPositiveDelta: CLLocationDistance = 5,
-        maximumPositiveDelta: CLLocationDistance = 12
+        maximumPositiveDelta: CLLocationDistance = 12,
+        minimumConsecutiveRises: Int = 2
     ) -> CLLocationDistance? {
+        guard minimumConsecutiveRises > 0 else { return nil }
         let valid = locations.filter {
             $0.verticalAccuracy > 0
                 && $0.verticalAccuracy <= maximumVerticalAccuracy
                 && $0.altitude.isFinite
-        }
+        }.sorted { $0.timestamp < $1.timestamp }
         guard valid.count >= 2 else { return nil }
 
         let smoothedAltitudes = valid.indices.map { index in
@@ -91,15 +93,25 @@ enum RunMetricsCalculator {
         }
 
         var gain = 0.0
-        var baseline = smoothedAltitudes[0]
+        var previousAltitude = smoothedAltitudes[0]
+        var pendingGain = 0.0
+        var consecutiveRises = 0
+
         for altitude in smoothedAltitudes.dropFirst() {
-            let delta = altitude - baseline
+            let delta = altitude - previousAltitude
             if delta >= minimumPositiveDelta, delta <= maximumPositiveDelta {
-                gain += delta
-                baseline = altitude
+                pendingGain += delta
+                consecutiveRises += 1
+                if consecutiveRises >= minimumConsecutiveRises {
+                    gain += pendingGain
+                    pendingGain = 0
+                    consecutiveRises = 0
+                }
             } else if delta <= -minimumPositiveDelta {
-                baseline = altitude
+                pendingGain = 0
+                consecutiveRises = 0
             }
+            previousAltitude = altitude
         }
         return gain
     }

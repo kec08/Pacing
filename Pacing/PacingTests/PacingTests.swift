@@ -110,7 +110,7 @@ final class PacingTests: XCTestCase {
             CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 200, horizontalAccuracy: 5, verticalAccuracy: 30, timestamp: start.addingTimeInterval(25))
         ]
 
-        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 9, accuracy: 0.001)
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
     }
 
     func testElevationGainKeepsSustainedClimbWithinAllowedDelta() {
@@ -335,7 +335,7 @@ final class PacingTests: XCTestCase {
         guard let elevationGain = RunMetricsCalculator.elevationGain(from: locations) else {
             return XCTFail("유효한 고도 샘플이 있으면 상승 고도를 계산해야 합니다.")
         }
-        XCTAssertEqual(elevationGain, 10, accuracy: 0.0001)
+        XCTAssertEqual(elevationGain, 0, accuracy: 0.0001)
     }
 
     func testCadenceAccumulatorConvertsCurrentCadenceToStepsPerMinute() {
