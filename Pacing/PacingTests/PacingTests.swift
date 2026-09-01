@@ -76,8 +76,8 @@ final class PacingTests: XCTestCase {
 
     func testPaceRemainsHiddenUntilMeaningfulDistanceIsRecorded() {
         XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0, elapsedSeconds: 30))
-        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.019, elapsedSeconds: 30))
-        XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.02, elapsedSeconds: 30))
+        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.099, elapsedSeconds: 30))
+        XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.10, elapsedSeconds: 30))
     }
 
     func testPacePolicyRejectsStationaryGPSDriftAndAcceptsRunningSegment() {

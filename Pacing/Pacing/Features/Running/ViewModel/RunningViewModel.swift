@@ -14,7 +14,7 @@ enum RunningState {
 
 enum RunningPacePolicy {
     /// 정지 상태의 GPS 흔들림으로 페이스가 표시되는 것을 막기 위한 최소 유효 이동 거리입니다.
-    static let minimumDistanceForPaceKilometers = 0.02
+    static let minimumDistanceForPaceKilometers = 0.10
     private static let minimumRunningSpeedMetersPerSecond = 0.8
     private static let maximumRunningSpeedMetersPerSecond = 10.0
 
@@ -60,6 +60,8 @@ final class RunningViewModel: ObservableObject {
 
     private var timer: AnyCancellable?
     private var lastLocation: CLLocation?
+    private var activeElapsedSeconds: TimeInterval = 0
+    private var activeElevationLocations: [CLLocation] = []
     private var cancellables = Set<AnyCancellable>()
     private var nextLapDistanceMark: Double = 1.0
     private var lapStartDistance: Double = 0
@@ -104,6 +106,8 @@ final class RunningViewModel: ObservableObject {
         distance = 0
         currentPace = 0
         lastLocation = nil
+        activeElapsedSeconds = 0
+        activeElevationLocations = []
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
         let startedAt = Date()
@@ -143,6 +147,8 @@ final class RunningViewModel: ObservableObject {
         runningStartedAt = resumedAt
         state = .running
         lastLocation = nil
+        activeElapsedSeconds = 0
+        activeElevationLocations = []
         locationManager.startTracking()
         startTimer()
         cadenceAccumulator.resetBaseline(at: resumedAt)
@@ -167,7 +173,7 @@ final class RunningViewModel: ObservableObject {
         await finalizeCadence(at: endedAt)
 
         elevationGainMeters = RunMetricsCalculator.elevationGain(
-            from: locationManager.recordedLocations
+            from: activeElevationLocations
         )
         if let healthStartedAt {
             _ = await healthAuthorizationTask?.value
@@ -226,8 +232,11 @@ final class RunningViewModel: ObservableObject {
     }
 
     var avgPace: Double {
-        guard distance > 0 else { return 0 }
-        return Double(elapsedSeconds) / 60.0 / distance
+        guard RunningPacePolicy.canDisplayPace(
+            distanceKilometers: distance,
+            elapsedSeconds: Int(activeElapsedSeconds)
+        ) else { return 0 }
+        return activeElapsedSeconds / 60.0 / distance
     }
 
     var formattedAvgPace: String {
@@ -329,6 +338,11 @@ final class RunningViewModel: ObservableObject {
 
             let deltaKm = deltaMeters / 1000.0
             distance += deltaKm
+            activeElapsedSeconds += timeDelta
+            if activeElevationLocations.isEmpty {
+                activeElevationLocations.append(last)
+            }
+            activeElevationLocations.append(location)
             hasDistanceChanged = true
         }
 
@@ -337,7 +351,7 @@ final class RunningViewModel: ObservableObject {
         }
 
         elevationGainMeters = RunMetricsCalculator.elevationGain(
-            from: locationManager.recordedLocations
+            from: activeElevationLocations
         ) ?? 0
     }
 
@@ -443,7 +457,7 @@ final class RunningViewModel: ObservableObject {
     private func completePendingLapsIfNeeded() {
         while distance >= nextLapDistanceMark {
             let lapDistance = nextLapDistanceMark - lapStartDistance
-            let lapElapsedSeconds = elapsedSeconds - lapStartElapsedSeconds
+            let lapElapsedSeconds = Int(activeElapsedSeconds) - lapStartElapsedSeconds
 
             if lapDistance > 0, lapElapsedSeconds > 0 {
                 let lapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
@@ -457,7 +471,7 @@ final class RunningViewModel: ObservableObject {
             }
 
             lapStartDistance = nextLapDistanceMark
-            lapStartElapsedSeconds = elapsedSeconds
+            lapStartElapsedSeconds = Int(activeElapsedSeconds)
             nextLapDistanceMark += 1.0
         }
     }
