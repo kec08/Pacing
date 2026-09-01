@@ -47,7 +47,8 @@ struct RunRecord: Identifiable {
 
 extension RunRecord {
     static let minimumValidDistance: Double = 0.10
-    static let maximumValidPace: Double = 30.0
+    /// 15분/km보다 느린 기록은 러닝이 아닌 대기·GPS 미수신 기록으로 간주합니다.
+    static let maximumValidPace: Double = 15.0
 
     var isPaceValid: Bool {
         distance.isFinite && duration > 0 && avgPace.isFinite

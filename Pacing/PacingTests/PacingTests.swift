@@ -159,7 +159,7 @@ final class PacingTests: XCTestCase {
             routeCoordinates: [], lapPaces: []
         )
         let extremePace = RunRecord(
-            id: "extreme", startedAt: .now, duration: 300, distance: 0.20, avgPace: 30.01,
+            id: "extreme", startedAt: .now, duration: 300, distance: 0.20, avgPace: 15.01,
             routeCoordinates: [], lapPaces: []
         )
 
@@ -171,7 +171,7 @@ final class PacingTests: XCTestCase {
 
     func testRunRecordAcceptsPaceAtValidationBoundaries() {
         let validRecord = RunRecord(
-            id: "valid", startedAt: .now, duration: 180, distance: 0.10, avgPace: 30.0,
+            id: "valid", startedAt: .now, duration: 180, distance: 0.10, avgPace: 15.0,
             routeCoordinates: [], lapPaces: []
         )
 
@@ -248,8 +248,8 @@ final class PacingTests: XCTestCase {
 
         let summary = RunStatisticsCalculator.summary(from: [validRecord, invalidRecord])
 
-        XCTAssertEqual(summary.totalDistance, 2.01, accuracy: 0.0001)
-        XCTAssertEqual(summary.totalDuration, 900)
+        XCTAssertEqual(summary.totalDistance, 2.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.totalDuration, 600)
         XCTAssertEqual(summary.averagePace, 5, accuracy: 0.0001)
     }
 
