@@ -1967,6 +1967,25 @@ struct RunningView: View {
         return UIImage(data: data)
     }
 
+    private func matchingArtwork(
+        for session: ListenSession?,
+        snapshot: PlayerSongSnapshot?
+    ) -> UIImage? {
+        guard let session,
+              !session.songTitle.isEmpty
+        else { return nil }
+        if snapshot?.title == session.songTitle,
+           snapshot?.artistName == session.artistName,
+           let artwork = snapshot?.artwork {
+            return artwork
+        }
+        guard let playerItem = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem,
+              playerItem.title == session.songTitle,
+              playerItem.artist == session.artistName
+        else { return nil }
+        return playerItem.artwork?.image(at: CGSize(width: 320, height: 320))
+    }
+
     private var listenArtworkPlaceholder: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 18)

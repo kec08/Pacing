@@ -384,8 +384,9 @@ final class ListenTogetherViewModel: ObservableObject {
             ?? mediaItem?.artist?.nonEmpty
             ?? ""
         let artworkURL = musicSnapshot?.artworkURL ?? ""
+        let mediaArtwork = mediaItem?.artwork?.image(at: CGSize(width: 320, height: 320))
         let artworkData = includesArtworkData
-            ? encodedArtworkData(from: musicSnapshot?.artwork)
+            ? encodedArtworkData(from: musicSnapshot?.artwork ?? mediaArtwork)
             : ""
         return (storeID, title, artist, artworkURL, artworkData)
     }
