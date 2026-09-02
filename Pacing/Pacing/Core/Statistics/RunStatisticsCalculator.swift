@@ -16,14 +16,11 @@ enum RunStatisticsCalculator {
         var validDistance = 0.0
         var validDuration = 0
 
-        for record in records.lazy where isIncluded(record) {
+        for record in records.lazy where isIncluded(record) && record.isPaceValid {
             totalDistance += record.distance
             totalDuration += record.duration
-
-            if record.isPaceValid {
-                validDistance += record.distance
-                validDuration += record.duration
-            }
+            validDistance += record.distance
+            validDuration += Int((record.displayPace * record.distance * 60.0).rounded())
         }
 
         let averagePace = validDistance > 0

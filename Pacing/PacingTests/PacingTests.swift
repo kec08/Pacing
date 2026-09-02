@@ -76,8 +76,8 @@ final class PacingTests: XCTestCase {
 
     func testPaceRemainsHiddenUntilMeaningfulDistanceIsRecorded() {
         XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0, elapsedSeconds: 30))
-        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.019, elapsedSeconds: 30))
-        XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.02, elapsedSeconds: 30))
+        XCTAssertFalse(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.099, elapsedSeconds: 30))
+        XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.10, elapsedSeconds: 30))
     }
 
     func testPacePolicyRejectsStationaryGPSDriftAndAcceptsRunningSegment() {
@@ -99,13 +99,83 @@ final class PacingTests: XCTestCase {
         )
     }
 
+    func testElevationGainIgnoresLowAccuracyAndSinglePointSpikes() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let locations = [
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 100, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 103, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(5)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 150, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(10)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 106, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(15)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 109, horizontalAccuracy: 5, verticalAccuracy: 10, timestamp: start.addingTimeInterval(20)),
+            CLLocation(coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127), altitude: 200, horizontalAccuracy: 5, verticalAccuracy: 30, timestamp: start.addingTimeInterval(25))
+        ]
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
+    func testElevationGainKeepsSustainedClimbWithinAllowedDelta() {
+        let start = Date(timeIntervalSince1970: 2_000)
+        let locations = (0..<5).map { index in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+                altitude: 100 + Double(index * 5),
+                horizontalAccuracy: 5,
+                verticalAccuracy: 10,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 20, accuracy: 0.001)
+    }
+
+    func testElevationGainIgnoresRepeatedAltitudeNoise() {
+        let start = Date(timeIntervalSince1970: 2_500)
+        let altitudes = [100.0, 106.0, 101.0, 107.0, 102.0, 106.0, 100.0]
+        let locations = altitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37, longitude: 127),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 10,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
+    func testElevationGainIsBoundedByDistanceBasedSanityLimit() {
+        let start = Date(timeIntervalSince1970: 3_000)
+        let locations = (0..<7).map { index in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37 + Double(index) * 0.001, longitude: 127),
+                altitude: Double(index * 10),
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        let elevationGain = RunMetricsCalculator.elevationGain(from: locations) ?? -1
+        XCTAssertLessThanOrEqual(elevationGain, 30.0 * 0.667 + 0.001)
+    }
+
+    func testPaceFromDistanceAndElapsedTimeUsesMinutesPerKilometer() {
+        let distanceKilometers = 5.0
+        let elapsedSeconds = 1_500
+
+        let pace = Double(elapsedSeconds) / 60.0 / distanceKilometers
+
+        XCTAssertEqual(pace, 5.0, accuracy: 0.001)
+    }
+
     func testRunRecordHidesPaceForShortDistanceAndExcludesExtremePace() {
         let shortDistance = RunRecord(
             id: "short", startedAt: .now, duration: 314, distance: 0.01, avgPace: 523.3,
             routeCoordinates: [], lapPaces: []
         )
         let extremePace = RunRecord(
-            id: "extreme", startedAt: .now, duration: 300, distance: 0.20, avgPace: 30.01,
+            id: "extreme", startedAt: .now, duration: 300, distance: 0.20, avgPace: 15.01,
             routeCoordinates: [], lapPaces: []
         )
 
@@ -117,12 +187,46 @@ final class PacingTests: XCTestCase {
 
     func testRunRecordAcceptsPaceAtValidationBoundaries() {
         let validRecord = RunRecord(
-            id: "valid", startedAt: .now, duration: 180, distance: 0.10, avgPace: 30.0,
+            id: "valid", startedAt: .now, duration: 180, distance: 0.10, avgPace: 15.0,
             routeCoordinates: [], lapPaces: []
         )
 
         XCTAssertTrue(validRecord.isPaceValid)
-        XCTAssertEqual(RunRecord.formattedPace(validRecord.displayPace), "30'00\"")
+        XCTAssertEqual(RunRecord.formattedPace(validRecord.displayPace), "15'00\"")
+    }
+
+    func testRunRecordUsesMovingDurationForAveragePace() {
+        let record = RunRecord(
+            id: "moving-time",
+            startedAt: .now,
+            duration: 1_800,
+            movingDuration: 1_500,
+            distance: 5,
+            avgPace: 6,
+            routeCoordinates: [],
+            lapPaces: []
+        )
+
+        XCTAssertEqual(record.displayPace, 5, accuracy: 0.0001)
+    }
+
+    func testRunRecordUsesLapPacesForLegacyAveragePace() {
+        let record = RunRecord(
+            id: "legacy-laps",
+            startedAt: .now,
+            duration: 1_800,
+            distance: 4.46,
+            avgPace: 6.5,
+            routeCoordinates: [],
+            lapPaces: [
+                RunLapPace(kilometer: 1, pace: 5.5),
+                RunLapPace(kilometer: 2, pace: 5.45),
+                RunLapPace(kilometer: 3, pace: 5.23),
+                RunLapPace(kilometer: 4, pace: 5.2)
+            ]
+        )
+
+        XCTAssertEqual(record.displayPace, 5.345, accuracy: 0.0001)
     }
 
     func testEmailValidatorRejectsInvalidEmail() {
@@ -194,8 +298,8 @@ final class PacingTests: XCTestCase {
 
         let summary = RunStatisticsCalculator.summary(from: [validRecord, invalidRecord])
 
-        XCTAssertEqual(summary.totalDistance, 2.01, accuracy: 0.0001)
-        XCTAssertEqual(summary.totalDuration, 900)
+        XCTAssertEqual(summary.totalDistance, 2.0, accuracy: 0.0001)
+        XCTAssertEqual(summary.totalDuration, 600)
         XCTAssertEqual(summary.averagePace, 5, accuracy: 0.0001)
     }
 
@@ -247,7 +351,7 @@ final class PacingTests: XCTestCase {
         guard let elevationGain = RunMetricsCalculator.elevationGain(from: locations) else {
             return XCTFail("유효한 고도 샘플이 있으면 상승 고도를 계산해야 합니다.")
         }
-        XCTAssertEqual(elevationGain, 10, accuracy: 0.0001)
+        XCTAssertEqual(elevationGain, 0, accuracy: 0.0001)
     }
 
     func testCadenceAccumulatorConvertsCurrentCadenceToStepsPerMinute() {

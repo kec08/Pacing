@@ -135,15 +135,14 @@ final class MyViewModel: ObservableObject {
         let now = Date()
         let filtered = filter(records: records)
 
-        let totalDist = filtered.reduce(0) { $0 + $1.distance }
-        let totalTime = filtered.reduce(0) { $0 + $1.duration }
-        let avgPace = filtered.isEmpty ? 0 : filtered.reduce(0) { $0 + $1.avgPace } / Double(filtered.count)
+        let validRecords = filtered.filter(\.isPaceValid)
+        let summary = RunStatisticsCalculator.summary(from: validRecords)
 
         stats = MyStats(
-            totalDistance: totalDist,
-            totalRuns: filtered.count,
-            avgPace: avgPace,
-            totalTime: totalTime
+            totalDistance: summary.totalDistance,
+            totalRuns: validRecords.count,
+            avgPace: summary.averagePace,
+            totalTime: summary.totalDuration
         )
 
         chartEntries = buildChartEntries(from: filtered)

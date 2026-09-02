@@ -62,26 +62,63 @@ enum RunMetricsCalculator {
     }
 
     /// 유효한 수직 정확도를 가진 위치 샘플만 사용해 누적 상승 고도를 계산합니다.
-    /// 작은 상승은 GPS 고도 노이즈로 간주해 제거합니다.
+    ///
+    /// GPS 고도는 한 샘플만으로 크게 튈 수 있으므로 5개 샘플의 중앙값으로
+    /// 완화한 뒤, 연속된 상승 추세가 확인된 변화만 누적합니다.
     static func elevationGain(
         from locations: [CLLocation],
-        maximumVerticalAccuracy: CLLocationAccuracy = 30,
-        minimumPositiveDelta: CLLocationDistance = 2
+        maximumVerticalAccuracy: CLLocationAccuracy = 10,
+        minimumPositiveDelta: CLLocationDistance = 5,
+        maximumPositiveDelta: CLLocationDistance = 12,
+        minimumConsecutiveRises: Int = 2,
+        maximumGainPerKilometer: CLLocationDistance = 30
     ) -> CLLocationDistance? {
+        guard minimumConsecutiveRises > 0, maximumGainPerKilometer > 0 else { return nil }
         let valid = locations.filter {
             $0.verticalAccuracy > 0
                 && $0.verticalAccuracy <= maximumVerticalAccuracy
                 && $0.altitude.isFinite
-        }
+        }.sorted { $0.timestamp < $1.timestamp }
         guard valid.count >= 2 else { return nil }
 
-        var gain = 0.0
-        for pair in zip(valid, valid.dropFirst()) {
-            let delta = pair.1.altitude - pair.0.altitude
-            if delta >= minimumPositiveDelta {
-                gain += delta
+        let smoothedAltitudes = valid.indices.map { index in
+            guard index > valid.startIndex, index < valid.index(before: valid.endIndex) else {
+                return valid[index].altitude
             }
+
+            let lowerBound = max(valid.startIndex, index - 2)
+            let upperBound = min(valid.index(before: valid.endIndex), index + 2)
+            return valid[lowerBound...upperBound]
+                .map(\.altitude)
+                .sorted()[((upperBound - lowerBound) / 2)]
         }
-        return gain
+
+        var gain = 0.0
+        var horizontalDistance = 0.0
+        var previousAltitude = smoothedAltitudes[0]
+        var pendingGain = 0.0
+        var consecutiveRises = 0
+
+        for (locationPair, altitude) in zip(zip(valid, valid.dropFirst()), smoothedAltitudes.dropFirst()) {
+            horizontalDistance += locationPair.1.distance(from: locationPair.0)
+            let delta = altitude - previousAltitude
+            if delta >= minimumPositiveDelta, delta <= maximumPositiveDelta {
+                pendingGain += delta
+                consecutiveRises += 1
+                if consecutiveRises >= minimumConsecutiveRises {
+                    gain += pendingGain
+                    pendingGain = 0
+                    consecutiveRises = 0
+                }
+            } else if delta <= -minimumPositiveDelta {
+                pendingGain = 0
+                consecutiveRises = 0
+            }
+            previousAltitude = altitude
+        }
+
+        guard horizontalDistance > 0 else { return 0 }
+        let maximumReasonableGain = horizontalDistance / 1_000.0 * maximumGainPerKilometer
+        return min(gain, maximumReasonableGain)
     }
 }
