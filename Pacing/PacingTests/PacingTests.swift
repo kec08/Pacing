@@ -144,6 +144,22 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
     }
 
+    func testElevationGainIsBoundedByDistanceBasedSanityLimit() {
+        let start = Date(timeIntervalSince1970: 3_000)
+        let locations = (0..<7).map { index in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37 + Double(index) * 0.001, longitude: 127),
+                altitude: Double(index * 10),
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        let elevationGain = RunMetricsCalculator.elevationGain(from: locations) ?? -1
+        XCTAssertLessThanOrEqual(elevationGain, 30.0 * 0.667 + 0.001)
+    }
+
     func testPaceFromDistanceAndElapsedTimeUsesMinutesPerKilometer() {
         let distanceKilometers = 5.0
         let elapsedSeconds = 1_500

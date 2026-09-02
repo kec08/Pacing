@@ -70,9 +70,10 @@ enum RunMetricsCalculator {
         maximumVerticalAccuracy: CLLocationAccuracy = 10,
         minimumPositiveDelta: CLLocationDistance = 5,
         maximumPositiveDelta: CLLocationDistance = 12,
-        minimumConsecutiveRises: Int = 2
+        minimumConsecutiveRises: Int = 2,
+        maximumGainPerKilometer: CLLocationDistance = 30
     ) -> CLLocationDistance? {
-        guard minimumConsecutiveRises > 0 else { return nil }
+        guard minimumConsecutiveRises > 0, maximumGainPerKilometer > 0 else { return nil }
         let valid = locations.filter {
             $0.verticalAccuracy > 0
                 && $0.verticalAccuracy <= maximumVerticalAccuracy
@@ -93,11 +94,13 @@ enum RunMetricsCalculator {
         }
 
         var gain = 0.0
+        var horizontalDistance = 0.0
         var previousAltitude = smoothedAltitudes[0]
         var pendingGain = 0.0
         var consecutiveRises = 0
 
-        for altitude in smoothedAltitudes.dropFirst() {
+        for (locationPair, altitude) in zip(zip(valid, valid.dropFirst()), smoothedAltitudes.dropFirst()) {
+            horizontalDistance += locationPair.1.distance(from: locationPair.0)
             let delta = altitude - previousAltitude
             if delta >= minimumPositiveDelta, delta <= maximumPositiveDelta {
                 pendingGain += delta
@@ -113,6 +116,9 @@ enum RunMetricsCalculator {
             }
             previousAltitude = altitude
         }
-        return gain
+
+        guard horizontalDistance > 0 else { return 0 }
+        let maximumReasonableGain = horizontalDistance / 1_000.0 * maximumGainPerKilometer
+        return min(gain, maximumReasonableGain)
     }
 }
