@@ -1698,10 +1698,6 @@ struct RunningView: View {
                         if listenSheetDetent == .large {
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 20) {
-                                    Text("같이 듣는 중")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.main500)
-
                                     listenArtwork(
                                         session: session,
                                         size: 240,
@@ -1763,9 +1759,10 @@ struct RunningView: View {
                                 .background(Color.main500)
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 32)
                     }
+                    .animation(.easeInOut(duration: 0.28), value: listenSheetDetent)
                 } else {
                     Spacer()
                     VStack(spacing: 12) {
