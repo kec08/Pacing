@@ -43,7 +43,7 @@ final class NearbyRunnerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.allRunners = runners
                 self?.filterRunners()
-                await self?.loadProfileImages(for: runners.map(\.id))
+                await self?.loadProfileImages(for: self?.profileImageCandidateIDs() ?? [])
             }
         } onError: { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -57,12 +57,15 @@ final class NearbyRunnerViewModel: ObservableObject {
         isObserving = false
         nearbyRunners = []
         activeFriendRunners = []
+        loadedProfileImageIDs = []
+        friendProfileImages = [:]
         loadError = nil
     }
 
     func updateMyLocation(_ coord: CLLocationCoordinate2D) {
         myLocation = coord
         filterRunners()
+        Task { await loadProfileImages(for: profileImageCandidateIDs()) }
     }
 
     func changeFilter(_ filter: RunnerFilter) {
@@ -124,6 +127,7 @@ final class NearbyRunnerViewModel: ObservableObject {
                 }
             )
             filterRunners()
+            await loadProfileImages(for: profileImageCandidateIDs())
         } catch {
             friendIDs = []
             friendProfileImages = [:]
@@ -152,6 +156,20 @@ final class NearbyRunnerViewModel: ObservableObject {
             }
         }
         filterRunners()
+    }
+
+    private func profileImageCandidateIDs() -> [String] {
+        guard let myLocation else { return [] }
+        let myPoint = CLLocation(latitude: myLocation.latitude, longitude: myLocation.longitude)
+
+        return allRunners.compactMap { runner in
+            let point = CLLocation(
+                latitude: runner.coordinate.latitude,
+                longitude: runner.coordinate.longitude
+            )
+            let isNearby = myPoint.distance(from: point) <= radiusMeters
+            return isNearby || friendIDs.contains(runner.id) ? runner.id : nil
+        }
     }
 
     func formattedDistance(_ runner: NearbyRunner) -> String {
