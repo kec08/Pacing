@@ -1762,7 +1762,7 @@ struct RunningView: View {
                             .padding(.horizontal, 20)
                             .padding(.bottom, 32)
                     }
-                    .animation(.easeInOut(duration: 0.28), value: listenSheetDetent)
+                    .animation(.easeInOut(duration: 0.16), value: listenSheetDetent)
                 } else {
                     Spacer()
                     VStack(spacing: 12) {
