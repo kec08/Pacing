@@ -55,6 +55,7 @@ struct RunningView: View {
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
     @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
+    @State private var listenSheetDetent: PresentationDetent = .medium
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -236,7 +237,10 @@ struct RunningView: View {
                 VStack {
                     HStack {
                         Spacer()
-                        Button { showListenSheet = true } label: {
+                        Button {
+                            listenSheetDetent = .medium
+                            showListenSheet = true
+                        } label: {
                             ZStack(alignment: .topTrailing) {
                                 ZStack {
                                     Circle()
@@ -1691,35 +1695,61 @@ struct RunningView: View {
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
                     VStack(spacing: 18) {
-                        listenAlbumHeader(session: session)
-                            .padding(.top, 8)
+                        if listenSheetDetent == .large {
+                            ScrollView(showsIndicators: false) {
+                                VStack(spacing: 20) {
+                                    Text("같이 듣는 중")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.main500)
 
-                        ScrollView(showsIndicators: false) {
-                            VStack(spacing: 6) {
-                                    listenParticipantCard(
-                                        name: myName,
-                                        imageBase64: session.profileImageBase64(for: myUID),
-                                        isMe: true,
-                                        role: listenVM.isHost ? "호스트" : "게스트",
-                                        song: session.songTitle,
-                                        artist: session.artistName,
+                                    listenArtwork(
+                                        session: session,
+                                        size: 240,
+                                        localArtwork: musicVM.currentSongSnapshot()?.artwork,
+                                        localMusicArtwork: musicVM.currentMusicArtwork
+                                    )
+
+                                    VStack(spacing: 4) {
+                                        Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
+                                            .font(.system(size: 23, weight: .bold))
+                                            .foregroundStyle(Color.textPrimary)
+                                            .lineLimit(1)
+                                        Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(Color.textSecondary)
+                                            .lineLimit(1)
+                                    }
+
+                                    listenParticipantRows(
+                                        session: session,
+                                        myUID: myUID,
+                                        myName: myName,
+                                        partnerName: partnerName,
                                         duration: listenDuration
                                     )
-                                    listenParticipantCard(
-                                        name: partnerName,
-                                        imageBase64: session.profileImageBase64(for: session.partnerUID(for: myUID)),
-                                        isMe: false,
-                                        role: listenVM.isHost ? "게스트" : "호스트",
-                                        song: session.songTitle,
-                                        artist: session.artistName,
-                                        duration: listenDuration
-                                    )
+                                    .padding(.horizontal, 24)
+                                }
+                                .padding(.top, 20)
+                                .padding(.bottom, 18)
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.top, 4)
-                        }
+                        } else {
+                            listenAlbumHeader(session: session)
+                                .padding(.top, 8)
 
-                        Spacer()
+                            ScrollView(showsIndicators: false) {
+                                listenParticipantRows(
+                                    session: session,
+                                    myUID: myUID,
+                                    myName: myName,
+                                    partnerName: partnerName,
+                                    duration: listenDuration
+                                )
+                                .padding(.horizontal, 24)
+                                .padding(.top, 4)
+                            }
+
+                            Spacer()
+                        }
 
                         Button {
                             listenVM.endSession()
@@ -1759,9 +1789,39 @@ struct RunningView: View {
             }
             } // TimelineView
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $listenSheetDetent)
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
+    }
+
+    @ViewBuilder
+    private func listenParticipantRows(
+        session: ListenSession,
+        myUID: String,
+        myName: String,
+        partnerName: String,
+        duration: Int
+    ) -> some View {
+        VStack(spacing: 6) {
+            listenParticipantCard(
+                name: myName,
+                imageBase64: session.profileImageBase64(for: myUID),
+                isMe: true,
+                role: listenVM.isHost ? "호스트" : "게스트",
+                song: session.songTitle,
+                artist: session.artistName,
+                duration: duration
+            )
+            listenParticipantCard(
+                name: partnerName,
+                imageBase64: session.profileImageBase64(for: session.partnerUID(for: myUID)),
+                isMe: false,
+                role: listenVM.isHost ? "게스트" : "호스트",
+                song: session.songTitle,
+                artist: session.artistName,
+                duration: duration
+            )
+        }
     }
 
     private func listenParticipantCard(name: String, imageBase64: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
