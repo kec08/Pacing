@@ -1611,11 +1611,11 @@ struct RunningView: View {
     private func incomingRequestBanner(session: ListenSession) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(Color.main500).frame(width: 36, height: 36)
-                    Text(String(session.hostNickname.prefix(1)))
-                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                }
+                listenParticipantAvatar(
+                    name: session.hostNickname,
+                    imageBase64: session.hostProfileImageBase64,
+                    isMe: false
+                )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("같이 듣기 요청")
                         .font(.system(size: 12, weight: .semibold))
@@ -1657,10 +1657,6 @@ struct RunningView: View {
         .padding(14)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.55), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
         .padding(.horizontal, 16)
         .padding(.top, 56)
@@ -1677,37 +1673,59 @@ struct RunningView: View {
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
-                    VStack(spacing: 18) {
-                        listenAlbumHeader(session: session)
-                            .padding(.top, 8)
+                    VStack(spacing: 0) {
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 22) {
+                                let localSnapshot = musicVM.currentSongSnapshot()
+                                let localArtwork = localSnapshot?.artwork
 
-                        // 참여자 카드 목록
-                        ScrollView {
-                            VStack(spacing: 6) {
-                                listenParticipantCard(
-                                    name: myName,
-                                    isMe: true,
-                                    role: listenVM.isHost ? "호스트" : "게스트",
-                                    song: session.songTitle,
-                                    artist: session.artistName,
-                                    duration: listenDuration
-                                )
-                                listenParticipantCard(
-                                    name: partnerName,
-                                    isMe: false,
-                                    role: listenVM.isHost ? "게스트" : "호스트",
-                                    song: session.songTitle,
-                                    artist: session.artistName,
-                                    duration: listenDuration
-                                )
+                                VStack(spacing: 14) {
+                                    Text("같이 듣는 중")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(Color.main500)
+                                        .textCase(.uppercase)
+
+                                    listenArtwork(session: session, size: 276, localArtwork: localArtwork)
+                                        .id("listen-sheet-hero-\(session.playbackEventID)-\(session.songStoreID)")
+
+                                    VStack(spacing: 5) {
+                                        Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
+                                            .font(.system(size: 24, weight: .bold))
+                                            .foregroundStyle(Color.textPrimary)
+                                            .lineLimit(1)
+                                        Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(Color.textSecondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                                .padding(.top, 24)
+
+                                VStack(spacing: 0) {
+                                    listenParticipantCard(
+                                        name: myName,
+                                        imageBase64: session.profileImageBase64(for: myUID),
+                                        isMe: true,
+                                        role: listenVM.isHost ? "호스트" : "게스트",
+                                        song: session.songTitle,
+                                        artist: session.artistName,
+                                        duration: listenDuration
+                                    )
+                                    listenParticipantCard(
+                                        name: partnerName,
+                                        imageBase64: session.profileImageBase64(for: session.partnerUID(for: myUID)),
+                                        isMe: false,
+                                        role: listenVM.isHost ? "게스트" : "호스트",
+                                        song: session.songTitle,
+                                        artist: session.artistName,
+                                        duration: listenDuration
+                                    )
+                                }
+                                .padding(.horizontal, 24)
+                                .padding(.bottom, 18)
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.top, 4)
                         }
 
-                        Spacer()
-
-                        // 종료 버튼
                         Button {
                             listenVM.endSession()
                             showListenSheet = false
@@ -1721,7 +1739,8 @@ struct RunningView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                         .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                        .padding(.top, 12)
+                        .padding(.bottom, 24)
                     }
                 } else {
                     Spacer()
@@ -1751,16 +1770,9 @@ struct RunningView: View {
         .presentationBackground(Color(.systemBackground))
     }
 
-    private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
+    private func listenParticipantCard(name: String, imageBase64: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
         HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
-                    .frame(width: 42, height: 42)
-                Text(String(name.prefix(1)))
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(isMe ? .white : Color.main500)
-            }
+            listenParticipantAvatar(name: name, imageBase64: imageBase64, isMe: isMe)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1793,6 +1805,26 @@ struct RunningView: View {
             Spacer()
         }
         .padding(.vertical, 10)
+    }
+
+    @ViewBuilder
+    private func listenParticipantAvatar(name: String, imageBase64: String, isMe: Bool) -> some View {
+        if let data = Data(base64Encoded: imageBase64), let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
+        } else {
+            ZStack {
+                Circle()
+                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
+                    .frame(width: 48, height: 48)
+                Text(String(name.prefix(1)))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isMe ? .white : Color.main500)
+            }
+        }
     }
 
     private func listenAlbumHeader(session: ListenSession) -> some View {
