@@ -1631,7 +1631,9 @@ struct RunningView: View {
                     GeometryReader { proxy in
                         listenArtwork(
                             session: session,
-                            size: min(proxy.size.width, 156)
+                            size: min(proxy.size.width, 156),
+                            localArtwork: musicVM.currentSongSnapshot()?.artwork,
+                            localMusicArtwork: musicVM.currentMusicArtwork
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -1822,7 +1824,12 @@ struct RunningView: View {
     private func listenAlbumHeader(session: ListenSession) -> some View {
         HStack(spacing: 12) {
             let localArtwork = musicVM.currentSongSnapshot()?.artwork
-            listenArtwork(session: session, size: 66, localArtwork: localArtwork)
+            listenArtwork(
+                session: session,
+                size: 66,
+                localArtwork: localArtwork,
+                localMusicArtwork: musicVM.currentMusicArtwork
+            )
                 .frame(width: 66, height: 66)
                 .accessibilityHidden(true)
             
@@ -1844,7 +1851,12 @@ struct RunningView: View {
     }
 
     @ViewBuilder
-    private func listenArtwork(session: ListenSession, size: CGFloat = 220, localArtwork: UIImage? = nil) -> some View {
+    private func listenArtwork(
+        session: ListenSession,
+        size: CGFloat = 220,
+        localArtwork: UIImage? = nil,
+        localMusicArtwork: Artwork? = nil
+    ) -> some View {
         if let sessionArtwork = decodedArtworkData(session.artworkData) {
             Image(uiImage: sessionArtwork)
                 .resizable()
@@ -1860,7 +1872,15 @@ struct RunningView: View {
                         .resizable()
                         .scaledToFill()
                 default:
-                    listenArtworkPlaceholder
+                    if let localArtwork {
+                        Image(uiImage: localArtwork)
+                            .resizable()
+                            .scaledToFill()
+                    } else if let localMusicArtwork {
+                        ArtworkImage(localMusicArtwork, width: size, height: size)
+                    } else {
+                        listenArtworkPlaceholder
+                    }
                 }
             }
             .frame(width: size, height: size)
@@ -1871,6 +1891,10 @@ struct RunningView: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
+        } else if let localMusicArtwork {
+            ArtworkImage(localMusicArtwork, width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
                 .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         } else {
