@@ -339,8 +339,7 @@ struct RunningView: View {
                     uid: uid,
                     nickname: nickname,
                     coord: viewModel.locationManager.currentLocation?.coordinate,
-                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? ""),
-                    profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64")
+                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? "")
                 )
             }
             // 호스트면 세션에도 브로드캐스트

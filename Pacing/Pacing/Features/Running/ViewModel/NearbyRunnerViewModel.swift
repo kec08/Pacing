@@ -31,6 +31,7 @@ final class NearbyRunnerViewModel: ObservableObject {
     private var allRunners: [ActiveRunner] = []
     private var friendIDs: Set<String> = []
     private var friendProfileImages: [String: String] = [:]
+    private var loadedProfileImageIDs: Set<String> = []
     private var myLocation: CLLocationCoordinate2D?
 
     func startObserving(uid: String) {
@@ -42,6 +43,7 @@ final class NearbyRunnerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.allRunners = runners
                 self?.filterRunners()
+                await self?.loadProfileImages(for: runners.map(\.id))
             }
         } onError: { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -87,7 +89,7 @@ final class NearbyRunnerViewModel: ObservableObject {
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
-                    profileImageBase64: friendProfileImages[runner.id] ?? runner.profileImageBase64,
+                    profileImageBase64: friendProfileImages[runner.id],
                     distance: dist,
                     isMe: false
                 )
@@ -128,6 +130,28 @@ final class NearbyRunnerViewModel: ObservableObject {
             loadError = "친구 위치를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
             filterRunners()
         }
+    }
+
+    private func loadProfileImages(for runnerIDs: [String]) async {
+        let idsToLoad = Set(runnerIDs).subtracting(loadedProfileImageIDs)
+        guard !idsToLoad.isEmpty else { return }
+        loadedProfileImageIDs.formUnion(idsToLoad)
+
+        await withTaskGroup(of: (String, String?).self) { group in
+            for id in idsToLoad {
+                group.addTask {
+                    let profile = try? await FirestoreService.shared.fetchUserProfile(uid: id)
+                    return (id, profile?["profileImageBase64"] as? String)
+                }
+            }
+
+            for await (id, image) in group {
+                if let image, !image.isEmpty {
+                    friendProfileImages[id] = image
+                }
+            }
+        }
+        filterRunners()
     }
 
     func formattedDistance(_ runner: NearbyRunner) -> String {

@@ -10,7 +10,6 @@ struct ActiveRunner: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let songTitle: String
     let artist: String
-    let profileImageBase64: String?
     let updatedAt: TimeInterval
 
     func isFresh(referenceDate: Date = .now) -> Bool {
@@ -33,7 +32,6 @@ final class RealtimeDBService {
         nickname: String,
         locationProvider: @escaping () -> CLLocationCoordinate2D?,
         songProvider: @escaping () -> (title: String, artist: String),
-        profileImageProvider: @escaping () -> String?,
         onError: @escaping (Error) -> Void = { _ in }
     ) {
         guard !uid.isEmpty else { return }
@@ -46,8 +44,7 @@ final class RealtimeDBService {
         broadcastTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             let coord = locationProvider()
             let song = songProvider()
-            let profileImageBase64 = profileImageProvider()
-            self?.upload(uid: uid, nickname: nickname, coord: coord, song: song, profileImageBase64: profileImageBase64)
+            self?.upload(uid: uid, nickname: nickname, coord: coord, song: song)
         }
         broadcastTimer?.fire()
     }
@@ -56,18 +53,16 @@ final class RealtimeDBService {
         uid: String,
         nickname: String,
         coord: CLLocationCoordinate2D?,
-        song: (title: String, artist: String),
-        profileImageBase64: String? = nil
+        song: (title: String, artist: String)
     ) {
-        upload(uid: uid, nickname: nickname, coord: coord, song: song, profileImageBase64: profileImageBase64)
+        upload(uid: uid, nickname: nickname, coord: coord, song: song)
     }
 
     private func upload(
         uid: String,
         nickname: String,
         coord: CLLocationCoordinate2D?,
-        song: (title: String, artist: String),
-        profileImageBase64: String?
+        song: (title: String, artist: String)
     ) {
         guard !uid.isEmpty,
               let coord,
@@ -79,9 +74,6 @@ final class RealtimeDBService {
             "currentArtist": song.artist,
             "updatedAt": ServerValue.timestamp()
         ]
-        if let profileImageBase64, !profileImageBase64.isEmpty {
-            data["profileImageBase64"] = profileImageBase64
-        }
         data["latitude"] = coord.latitude
         data["longitude"] = coord.longitude
         db.child("activeRunners").child(uid).updateChildValues(data) { [weak self] error, _ in
@@ -124,7 +116,6 @@ final class RealtimeDBService {
                     coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
                     songTitle: d["currentSongTitle"] as? String ?? "",
                     artist: d["currentArtist"] as? String ?? "",
-                    profileImageBase64: d["profileImageBase64"] as? String,
                     updatedAt: updatedAt
                 )
                 if runner.isFresh() {

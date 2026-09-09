@@ -86,8 +86,6 @@ struct MainTabView: View {
         } songProvider: {
             let item = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
             return (item?.title ?? "", item?.artist ?? "")
-        } profileImageProvider: {
-            UserDefaults.standard.string(forKey: "profileImageBase64")
         } onError: { error in
             DispatchQueue.main.async {
                 guard lastPresenceErrorDate?.addingTimeInterval(30) ?? .distantPast < .now else { return }
@@ -109,8 +107,7 @@ struct MainTabView: View {
             uid: uid,
             nickname: nickname,
             coord: coordinate,
-            song: (item?.title ?? "", item?.artist ?? ""),
-            profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64")
+            song: (item?.title ?? "", item?.artist ?? "")
         )
     }
 
