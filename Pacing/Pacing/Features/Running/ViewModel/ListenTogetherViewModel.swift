@@ -507,11 +507,11 @@ final class ListenTogetherViewModel: ObservableObject {
     private func playRequestHapticPattern() {
         requestHapticTask?.cancel()
         requestHapticTask = Task { @MainActor in
-            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             for _ in 0..<2 {
                 try? await Task.sleep(for: .milliseconds(320))
                 guard !Task.isCancelled else { return }
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 1.0)
             }
         }
     }

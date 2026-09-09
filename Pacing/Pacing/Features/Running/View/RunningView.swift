@@ -1627,19 +1627,27 @@ struct RunningView: View {
                 Spacer()
             }
             if !session.songTitle.isEmpty {
-                HStack(spacing: 10) {
-                    listenArtwork(session: session, size: 54)
-                    VStack(alignment: .leading, spacing: 3) {
+                VStack(spacing: 10) {
+                    GeometryReader { proxy in
+                        listenArtwork(
+                            session: session,
+                            size: min(proxy.size.width, 156)
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: 156)
+
+                    VStack(spacing: 3) {
                         Text(session.songTitle)
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(Color.textPrimary)
                             .lineLimit(1)
                         Text(session.artistName)
-                            .font(.system(size: 12))
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(Color.textSecondary)
                             .lineLimit(1)
                     }
-                    Spacer(minLength: 0)
                 }
             }
             HStack(spacing: 10) {
