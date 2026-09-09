@@ -58,14 +58,20 @@ final class ListenTogetherViewModel: ObservableObject {
         let latestGuestProfileImage = storedGuestProfileImage.isEmpty
             ? ((try? await FirestoreService.shared.fetchUserProfile(uid: runner.id))?["profileImageBase64"] as? String ?? "")
             : storedGuestProfileImage
+        let requestSong = currentSongSnapshot(
+            from: musicVM,
+            player: MPMusicPlayerController.systemMusicPlayer
+        )
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
             hostProfileImageBase64: hostProfileImageBase64,
             guestUID: runner.id, guestNickname: runner.nickname,
             guestProfileImageBase64: latestGuestProfileImage,
-            songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
-            artworkURL: "",
-            artworkData: "",
+            songStoreID: requestSong.storeID,
+            songTitle: requestSong.title.isEmpty ? runner.songTitle : requestSong.title,
+            artistName: requestSong.artist.isEmpty ? runner.artist : requestSong.artist,
+            artworkURL: requestSong.artworkURL,
+            artworkData: requestSong.artworkData,
             position: 0
         )
 
@@ -74,9 +80,11 @@ final class ListenTogetherViewModel: ObservableObject {
             hostProfileImageBase64: hostProfileImageBase64,
             guestUID: runner.id, guestNickname: runner.nickname,
             guestProfileImageBase64: latestGuestProfileImage,
-            songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
-            artworkURL: "",
-            artworkData: "",
+            songStoreID: requestSong.storeID,
+            songTitle: requestSong.title.isEmpty ? runner.songTitle : requestSong.title,
+            artistName: requestSong.artist.isEmpty ? runner.artist : requestSong.artist,
+            artworkURL: requestSong.artworkURL,
+            artworkData: requestSong.artworkData,
             playbackEventID: UUID().uuidString,
             playbackPosition: 0,
             serverTimestamp: Date().timeIntervalSince1970,

@@ -1623,17 +1623,24 @@ struct RunningView: View {
                     Text("\(session.hostNickname)님이 함께 듣고 싶어해요")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
-                    if !session.songTitle.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "music.note")
-                                .font(.system(size: 11)).foregroundStyle(Color.main500)
-                            Text("\(session.songTitle) - \(session.artistName)")
-                                .font(.system(size: 12)).foregroundStyle(Color.textSecondary)
-                                .lineLimit(1)
-                        }
-                    }
                 }
                 Spacer()
+            }
+            if !session.songTitle.isEmpty {
+                HStack(spacing: 10) {
+                    listenArtwork(session: session, size: 54)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(session.songTitle)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.textPrimary)
+                            .lineLimit(1)
+                        Text(session.artistName)
+                            .font(.system(size: 12))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
             }
             HStack(spacing: 10) {
                 Button {
