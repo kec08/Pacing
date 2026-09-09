@@ -34,7 +34,7 @@ final class ListenTogetherViewModel: ObservableObject {
                         self.lastIncomingRequestID = session.id
                         self.playRequestHapticPattern()
                     }
-                    self.incomingRequest = session
+                    self.incomingRequest = await self.resolvedProfileImages(for: session)
                 }
             }
         }
@@ -97,7 +97,7 @@ final class ListenTogetherViewModel: ObservableObject {
         let song = currentSongSnapshot(from: musicVM, player: player)
         let position = player.currentPlaybackTime
 
-        var sourceSession = session
+        var sourceSession = await resolvedProfileImages(for: session)
         sourceSession.songStoreID = song.storeID
         sourceSession.songTitle = song.title
         sourceSession.artistName = song.artist
@@ -186,8 +186,9 @@ final class ListenTogetherViewModel: ObservableObject {
         RealtimeDBService.shared.observeSession(sessionID: sessionID) { [weak self] session in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                let resolvedSession = await self.resolvedProfileImages(for: session)
 
-                switch session.status {
+                switch resolvedSession.status {
                 case "rejected", "ended":
                     self.cleanup()
                 case "active":
@@ -196,25 +197,25 @@ final class ListenTogetherViewModel: ObservableObject {
                     }
                     if !self.isHost {
                         // 이후의 위치 갱신이 같은 전환 이벤트를 중복 처리하지 않도록 먼저 반영합니다.
-                        self.activeSession = session
+                        self.activeSession = resolvedSession
                         // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
-                        if self.shouldSyncMusic(with: session) {
-                            await self.syncMusic(session: session)
+                        if self.shouldSyncMusic(with: resolvedSession) {
+                            await self.syncMusic(session: resolvedSession)
                         }
-                        guard self.activeSession?.playbackEventID == session.playbackEventID else {
+                        guard self.activeSession?.playbackEventID == resolvedSession.playbackEventID else {
                             return
                         }
                         // 재생/일시정지 동기화
                         let player = MPMusicPlayerController.systemMusicPlayer
-                        if session.isPlaying && player.playbackState != .playing {
+                        if resolvedSession.isPlaying && player.playbackState != .playing {
                             player.play()
-                        } else if !session.isPlaying && player.playbackState == .playing {
+                        } else if !resolvedSession.isPlaying && player.playbackState == .playing {
                             player.pause()
                         }
                     }
-                    self.activeSession = session
+                    self.activeSession = resolvedSession
                 default:
-                    self.activeSession = session
+                    self.activeSession = resolvedSession
                 }
             }
         }
@@ -467,6 +468,32 @@ final class ListenTogetherViewModel: ObservableObject {
         inFlightPlaybackEventID = nil
         lastAppliedPlaybackEventID = ""
         lastHostedTrackKey = ""
+    }
+
+    private func resolvedProfileImages(for session: ListenSession) async -> ListenSession {
+        var resolved = session
+        let participantIDs = [session.hostUID, session.guestUID]
+
+        for uid in participantIDs where !uid.isEmpty && resolved.profileImageBase64(for: uid).isEmpty {
+            let cachedImage = uid == myUID
+                ? UserDefaults.standard.string(forKey: "profileImageBase64")
+                : nil
+            let image: String?
+            if let cachedImage, !cachedImage.isEmpty {
+                image = cachedImage
+            } else {
+                image = (try? await FirestoreService.shared.fetchUserProfile(uid: uid))?["profileImageBase64"] as? String
+            }
+
+            guard let image, !image.isEmpty else { continue }
+            if uid == resolved.hostUID {
+                resolved.hostProfileImageBase64 = image
+            } else if uid == resolved.guestUID {
+                resolved.guestProfileImageBase64 = image
+            }
+        }
+
+        return resolved
     }
 
     private func playRequestHapticPattern() {
