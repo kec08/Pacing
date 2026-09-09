@@ -936,10 +936,9 @@ struct RunningView: View {
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
-                            // 선택한 플레이리스트의 곡 목록은 ApplicationMusicPlayer 재생 중에도
-                            // 기존처럼 스크롤해 다음/이전 곡으로 전환할 수 있어야 한다.
-                            } else if !isActiveListenGuest,
-                                      !musicVM.queueSongs.isEmpty {
+                                    .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
@@ -991,6 +990,7 @@ struct RunningView: View {
                         .scaleEffect(musicVM.isPlaying ? 1.0 : 0.88)
                         .shadow(color: .black.opacity(musicVM.isPlaying ? 0.3 : 0.15), radius: musicVM.isPlaying ? 20 : 10, y: 8)
                         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: musicVM.isPlaying)
+                        .animation(.easeInOut(duration: 0.28), value: listenSession?.playbackEventID)
                         .padding(.top, 28)
                         .padding(.bottom, 28)
 
@@ -1239,13 +1239,13 @@ struct RunningView: View {
                 }
             }
             // 곡이 바뀌면 스크러버 초기화 (드래그 잔상 방지)
-            .onChange(of: musicVM.currentSong?.id) { _, _ in
-                isSeeking = false
-                seekValue = 0
-                clearLocalPlaybackClock()
-            }
+        .onChange(of: musicVM.currentSong?.id) { _, _ in
+            isSeeking = false
+            seekValue = 0
+            clearLocalPlaybackClock()
         }
         .presentationBackground(.ultraThinMaterial)
+    }
     }
 
     private var playlistPickerPanel: some View {
@@ -1698,7 +1698,7 @@ struct RunningView: View {
                         if listenSheetDetent == .large {
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 20) {
-                                    listenArtwork(
+                                    animatedListenArtwork(
                                         session: session,
                                         size: 240,
                                         localArtwork: musicVM.currentSongSnapshot()?.artwork,
@@ -1881,7 +1881,7 @@ struct RunningView: View {
     private func listenAlbumHeader(session: ListenSession) -> some View {
         HStack(spacing: 12) {
             let localArtwork = musicVM.currentSongSnapshot()?.artwork
-            listenArtwork(
+            animatedListenArtwork(
                 session: session,
                 size: 66,
                 localArtwork: localArtwork,
@@ -1905,6 +1905,27 @@ struct RunningView: View {
         }
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func animatedListenArtwork(
+        session: ListenSession,
+        size: CGFloat = 220,
+        localArtwork: UIImage? = nil,
+        localMusicArtwork: Artwork? = nil
+    ) -> some View {
+        let artworkID = "\(session.playbackEventID)|\(session.songStoreID)|\(session.artworkURL)"
+        ZStack {
+            listenArtwork(
+                session: session,
+                size: size,
+                localArtwork: localArtwork,
+                localMusicArtwork: localMusicArtwork
+            )
+            .id(artworkID)
+            .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        }
+        .animation(.easeInOut(duration: 0.28), value: artworkID)
     }
 
     @ViewBuilder
