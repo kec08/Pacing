@@ -291,17 +291,33 @@ final class RunningMusicViewModel: ObservableObject {
         position: TimeInterval,
         isPlaying: Bool
     ) async -> Bool {
-        guard isUsingApplicationPlayer else { return false }
-
         let targetIndex = queueSongs.firstIndex { song in
             (!songStoreID.isEmpty && "\(song.id)" == songStoreID)
                 || (song.title.caseInsensitiveCompare(title) == .orderedSame
                     && song.artistName.caseInsensitiveCompare(artist) == .orderedSame)
         }
-        guard let targetIndex else { return false }
-
-        if targetIndex != currentSongIndex {
-            await play(at: targetIndex, from: currentSongIndex)
+        let targetSong: Song
+        if let targetIndex {
+            targetSong = queueSongs[targetIndex]
+            if targetIndex != currentSongIndex || !isUsingApplicationPlayer {
+                await play(at: targetIndex, from: currentSongIndex)
+            }
+        } else {
+            let resolvedSong: Song?
+            if !songStoreID.isEmpty {
+                resolvedSong = await musicService.resolveCatalogSong(id: MusicItemID(songStoreID))
+            } else {
+                resolvedSong = await musicService.resolveCatalogSong(title: title, artist: artist)
+            }
+            guard let resolvedSong else { return false }
+            targetSong = resolvedSong
+            queueSongs = [targetSong]
+            currentSongIndex = 0
+            currentSong = targetSong
+            musicService.playbackContext.configure(songs: [targetSong], startingAt: targetSong)
+            applicationPlayer.queue = .init(for: [targetSong])
+            NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+            try? await applicationPlayer.prepareToPlay()
         }
 
         let boundedPosition = max(0, min(position, playbackDuration > 0 ? playbackDuration : position))

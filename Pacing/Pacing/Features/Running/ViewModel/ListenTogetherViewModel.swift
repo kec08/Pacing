@@ -223,18 +223,22 @@ final class ListenTogetherViewModel: ObservableObject {
                         // 이후의 위치 갱신이 같은 전환 이벤트를 중복 처리하지 않도록 먼저 반영합니다.
                         self.activeSession = resolvedSession
                         // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
-                        if self.shouldSyncMusic(with: resolvedSession) {
+                        if self.shouldSyncMusic(with: resolvedSession, musicVM: musicVM) {
                             await self.syncMusic(session: resolvedSession, musicVM: musicVM)
                         }
                         guard self.activeSession?.playbackEventID == resolvedSession.playbackEventID else {
                             return
                         }
-                        // 재생/일시정지 동기화
-                        let player = MPMusicPlayerController.systemMusicPlayer
-                        if resolvedSession.isPlaying && player.playbackState != .playing {
-                            player.play()
-                        } else if !resolvedSession.isPlaying && player.playbackState == .playing {
-                            player.pause()
+                        // ApplicationMusicPlayer 세션은 syncMusic에서 재생 상태까지 반영한다.
+                        // 시스템 플레이어를 다시 조작하면 게스트 큐가 매 위치 갱신마다
+                        // 다른 곡으로 재구성될 수 있어 legacy 재생에서만 사용한다.
+                        if !musicVM.isUsingApplicationPlayer {
+                            let player = MPMusicPlayerController.systemMusicPlayer
+                            if resolvedSession.isPlaying && player.playbackState != .playing {
+                                player.play()
+                            } else if !resolvedSession.isPlaying && player.playbackState == .playing {
+                                player.pause()
+                            }
                         }
                     }
                     self.activeSession = resolvedSession
@@ -248,7 +252,6 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - MusicKit 싱크 (게스트)
     private func syncMusic(session: ListenSession, musicVM: RunningMusicViewModel) async {
         guard !session.songStoreID.isEmpty || !session.songTitle.isEmpty else { return }
-        let player = MPMusicPlayerController.systemMusicPlayer
         let eventID = effectivePlaybackEventID(for: session)
 
         // Firebase의 위치 보정 값은 매초 바뀐다. 동일한 곡 전환을 준비 중이면 새 작업을 시작하지 않는다.
@@ -279,34 +282,11 @@ final class ListenTogetherViewModel: ObservableObject {
             return
         }
 
-        if isCurrentTrackMatching(session: session, player: player) {
-            syncCurrentTrackPosition(
-                targetPosition: targetPosition,
-                isPlaying: session.isPlaying,
-                player: player
-            )
-            lastAppliedPlaybackEventID = eventID
-            return
-        }
-
-        if await syncByStoreID(
-            session: session,
-            targetPosition: targetPosition,
-            player: player,
-            syncToken: syncToken
-        ) {
-            lastAppliedPlaybackEventID = eventID
-            return
-        }
-
-        if await syncByLibrarySearch(
-            session: session,
-            targetPosition: targetPosition,
-            player: player,
-            syncToken: syncToken
-        ) {
-            lastAppliedPlaybackEventID = eventID
-        }
+        // 러닝 앱의 주 재생기는 ApplicationMusicPlayer다. 카탈로그에서 곡을 찾지
+        // 못한 경우 systemMusicPlayer 큐를 반복 재구성하지 않아 다른 곡이 계속
+        // 로딩되는 현상을 막는다. 다음 실제 곡 전환 이벤트에서 다시 시도한다.
+        lastAppliedPlaybackEventID = eventID
+        print("[ListenTogether] application player sync failed: \(session.songTitle) - \(session.artistName)")
     }
 
     private func syncByStoreID(
@@ -366,15 +346,32 @@ final class ListenTogetherViewModel: ObservableObject {
         }
     }
 
-    private func shouldSyncMusic(with session: ListenSession) -> Bool {
+    private func shouldSyncMusic(with session: ListenSession, musicVM: RunningMusicViewModel) -> Bool {
         if activeSession?.status != session.status {
             return true
         }
-        let player = MPMusicPlayerController.systemMusicPlayer
         let eventID = effectivePlaybackEventID(for: session)
         if inFlightPlaybackEventID == eventID {
             return false
         }
+        if let snapshot = musicVM.currentSongSnapshot() {
+            let isSameSong = (!session.songStoreID.isEmpty && snapshot.songStoreID == session.songStoreID)
+                || (snapshot.title == session.songTitle && snapshot.artistName == session.artistName)
+            if !isSameSong {
+                return true
+            }
+            let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
+            let expectedPosition = max(0, session.playbackPosition + latency)
+            if abs(musicVM.currentPlaybackTime - expectedPosition) > 2.5 {
+                return true
+            }
+            if session.isPlaying != musicVM.isPlaying {
+                return true
+            }
+            return lastAppliedPlaybackEventID != eventID
+        }
+
+        let player = MPMusicPlayerController.systemMusicPlayer
         let currentStoreID = player.nowPlayingItem?.playbackStoreID ?? ""
         if !session.songStoreID.isEmpty, currentStoreID != session.songStoreID {
             return true
