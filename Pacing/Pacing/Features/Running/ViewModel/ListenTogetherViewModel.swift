@@ -391,8 +391,8 @@ final class ListenTogetherViewModel: ObservableObject {
     ) -> (storeID: String, title: String, artist: String, artworkURL: String, artworkData: String) {
         let musicSnapshot = musicVM.currentSongSnapshot()
         let mediaItem = player.nowPlayingItem
-        let storeID = mediaItem?.playbackStoreID.nonEmpty
-            ?? musicSnapshot?.songStoreID.nonEmpty
+        let storeID = musicSnapshot?.songStoreID.nonEmpty
+            ?? mediaItem?.playbackStoreID.nonEmpty
             ?? ""
         let title = musicSnapshot?.title.nonEmpty
             ?? mediaItem?.title?.nonEmpty
