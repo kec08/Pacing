@@ -351,7 +351,7 @@ struct RunningView: View {
         }
         // 시스템 플레이어의 현재 곡 변경은 `currentSong` 갱신보다 먼저 도착할 수 있습니다.
         // 호스트는 이 시점에 전환 이벤트를 즉시 전송해 게스트의 다음 1초 타이머 대기를 없앱니다.
-        .onChange(of: musicVM.nowPlayingSnapshot?.songStoreID) { _, _ in
+        .onChange(of: musicVM.nowPlayingSnapshot) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {

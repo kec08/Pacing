@@ -305,7 +305,11 @@ final class RunningMusicViewModel: ObservableObject {
         } else {
             let resolvedSong: Song?
             if !songStoreID.isEmpty {
-                resolvedSong = await musicService.resolveCatalogSong(id: MusicItemID(songStoreID))
+                if let songByID = await musicService.resolveCatalogSong(id: MusicItemID(songStoreID)) {
+                    resolvedSong = songByID
+                } else {
+                    resolvedSong = await musicService.resolveCatalogSong(title: title, artist: artist)
+                }
             } else {
                 resolvedSong = await musicService.resolveCatalogSong(title: title, artist: artist)
             }
