@@ -1688,35 +1688,12 @@ struct RunningView: View {
                     let myName = session.hostUID == myUID ? session.hostNickname : session.guestNickname
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
-                    VStack(spacing: 0) {
+                    VStack(spacing: 18) {
+                        listenAlbumHeader(session: session)
+                            .padding(.top, 8)
+
                         ScrollView(showsIndicators: false) {
-                            VStack(spacing: 22) {
-                                let localSnapshot = musicVM.currentSongSnapshot()
-                                let localArtwork = localSnapshot?.artwork
-
-                                VStack(spacing: 14) {
-                                    Text("같이 듣는 중")
-                                        .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(Color.main500)
-                                        .textCase(.uppercase)
-
-                                    listenArtwork(session: session, size: 276, localArtwork: localArtwork)
-                                        .id("listen-sheet-hero-\(session.playbackEventID)-\(session.songStoreID)")
-
-                                    VStack(spacing: 5) {
-                                        Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
-                                            .font(.system(size: 24, weight: .bold))
-                                            .foregroundStyle(Color.textPrimary)
-                                            .lineLimit(1)
-                                        Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
-                                            .font(.system(size: 15, weight: .medium))
-                                            .foregroundStyle(Color.textSecondary)
-                                            .lineLimit(1)
-                                    }
-                                }
-                                .padding(.top, 24)
-
-                                VStack(spacing: 0) {
+                            VStack(spacing: 6) {
                                     listenParticipantCard(
                                         name: myName,
                                         imageBase64: session.profileImageBase64(for: myUID),
@@ -1735,11 +1712,12 @@ struct RunningView: View {
                                         artist: session.artistName,
                                         duration: listenDuration
                                     )
-                                }
-                                .padding(.horizontal, 24)
-                                .padding(.bottom, 18)
                             }
+                            .padding(.horizontal, 24)
+                            .padding(.top, 4)
                         }
+
+                        Spacer()
 
                         Button {
                             listenVM.endSession()
@@ -1754,8 +1732,7 @@ struct RunningView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
                         .padding(.horizontal, 20)
-                        .padding(.top, 12)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 32)
                     }
                 } else {
                     Spacer()
