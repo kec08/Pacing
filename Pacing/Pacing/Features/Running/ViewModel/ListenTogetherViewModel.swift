@@ -58,10 +58,12 @@ final class ListenTogetherViewModel: ObservableObject {
         let latestGuestProfileImage = storedGuestProfileImage.isEmpty
             ? ((try? await FirestoreService.shared.fetchUserProfile(uid: runner.id))?["profileImageBase64"] as? String ?? "")
             : storedGuestProfileImage
+        let player = MPMusicPlayerController.systemMusicPlayer
         let requestSong = currentSongSnapshot(
             from: musicVM,
-            player: MPMusicPlayerController.systemMusicPlayer
+            player: player
         )
+        let playbackEventID = UUID().uuidString
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
             hostProfileImageBase64: hostProfileImageBase64,
@@ -72,7 +74,9 @@ final class ListenTogetherViewModel: ObservableObject {
             artistName: requestSong.artist.isEmpty ? runner.artist : requestSong.artist,
             artworkURL: requestSong.artworkURL,
             artworkData: requestSong.artworkData,
-            position: 0
+            playbackEventID: playbackEventID,
+            position: player.currentPlaybackTime,
+            isPlaying: player.playbackState == .playing
         )
 
         activeSession = ListenSession(
@@ -85,10 +89,10 @@ final class ListenTogetherViewModel: ObservableObject {
             artistName: requestSong.artist.isEmpty ? runner.artist : requestSong.artist,
             artworkURL: requestSong.artworkURL,
             artworkData: requestSong.artworkData,
-            playbackEventID: UUID().uuidString,
-            playbackPosition: 0,
-            serverTimestamp: Date().timeIntervalSince1970,
-            status: "pending", isPlaying: true
+            playbackEventID: playbackEventID,
+            playbackPosition: player.currentPlaybackTime,
+            serverTimestamp: Date().timeIntervalSince1970 * 1000,
+            status: "pending", isPlaying: player.playbackState == .playing
         )
         isHost = false
         sessionStartDate = Date()

@@ -150,7 +150,8 @@ final class RealtimeDBService {
         artworkURL: String = "",
         artworkData: String = "",
         playbackEventID: String = UUID().uuidString,
-        position: Double
+        position: Double,
+        isPlaying: Bool
     ) -> String {
         guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
         let sessionRef = db.child("listenSessions").childByAutoId()
@@ -171,7 +172,7 @@ final class RealtimeDBService {
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "status": "pending",
-            "isPlaying": true
+            "isPlaying": isPlaying
         ]
         sessionRef.setValue(data)
         // 게스트에게 수신 알림 경로에도 기록
