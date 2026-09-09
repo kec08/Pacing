@@ -1825,7 +1825,7 @@ struct RunningView: View {
     }
 
     private func listenParticipantCard(name: String, imageBase64: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
-        HStack(spacing: 14) {
+        return HStack(spacing: 14) {
             listenParticipantAvatar(name: name, imageBase64: imageBase64, isMe: isMe)
 
             VStack(alignment: .leading, spacing: 4) {
@@ -2081,7 +2081,12 @@ struct RunningView: View {
     }
 
     private func nearbyRunnerCard(runner: NearbyRunner) -> some View {
-        HStack(spacing: 14) {
+        let sessionStatus = listenVM.activeSession?.status
+        let isWaitingForListenRequest = sessionStatus == "pending"
+        let isListeningTogether = sessionStatus == "active"
+        let isListenButtonDisabled = isWaitingForListenRequest || isListeningTogether
+
+        return HStack(spacing: 14) {
             runnerAvatar(runner: runner, size: 44, fontSize: 18, fallbackColor: .main500)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -2123,17 +2128,19 @@ struct RunningView: View {
                     await listenVM.sendRequest(to: runner, musicVM: musicVM)
                 }
             } label: {
-                Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
+                Text(
+                    isWaitingForListenRequest
+                        ? "대기중"
+                        : isListeningTogether ? "듣는 중" : "같이 듣기"
+                )
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(listenVM.activeSession != nil ? Color.textSecondary : Color.main500)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(listenVM.activeSession != nil ? Color.gray300 : Color.main500, lineWidth: 1)
-                    )
+                    .background(isListenButtonDisabled ? Color.gray300 : Color.main500)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .disabled(listenVM.activeSession != nil)
+            .disabled(isListenButtonDisabled)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
