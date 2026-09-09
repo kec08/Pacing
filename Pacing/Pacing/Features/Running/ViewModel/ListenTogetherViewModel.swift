@@ -22,6 +22,7 @@ final class ListenTogetherViewModel: ObservableObject {
     private var lastAppliedPlaybackEventID = ""
     private var inFlightPlaybackEventID: String?
     private var activePlaybackSyncToken: UUID?
+    private var requestHapticTask: Task<Void, Never>?
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -30,8 +31,8 @@ final class ListenTogetherViewModel: ObservableObject {
                 guard let self else { return }
                 if let session = session, session.status == "pending" {
                     if self.lastIncomingRequestID != session.id {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         self.lastIncomingRequestID = session.id
+                        self.playRequestHapticPattern()
                     }
                     self.incomingRequest = session
                 }
@@ -41,6 +42,8 @@ final class ListenTogetherViewModel: ObservableObject {
 
     func stopObservingRequests() {
         RealtimeDBService.shared.stopObservingIncomingRequests(uid: myUID)
+        requestHapticTask?.cancel()
+        requestHapticTask = nil
     }
 
     // MARK: - 같이 듣기 요청 보내기
@@ -51,11 +54,15 @@ final class ListenTogetherViewModel: ObservableObject {
         if !hostProfileImageBase64.isEmpty {
             UserDefaults.standard.set(hostProfileImageBase64, forKey: "profileImageBase64")
         }
+        let storedGuestProfileImage = runner.profileImageBase64 ?? ""
+        let latestGuestProfileImage = storedGuestProfileImage.isEmpty
+            ? ((try? await FirestoreService.shared.fetchUserProfile(uid: runner.id))?["profileImageBase64"] as? String ?? "")
+            : storedGuestProfileImage
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
             hostProfileImageBase64: hostProfileImageBase64,
             guestUID: runner.id, guestNickname: runner.nickname,
-            guestProfileImageBase64: runner.profileImageBase64 ?? "",
+            guestProfileImageBase64: latestGuestProfileImage,
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",
@@ -66,7 +73,7 @@ final class ListenTogetherViewModel: ObservableObject {
             id: sessionID, hostUID: myUID, hostNickname: myNickname,
             hostProfileImageBase64: hostProfileImageBase64,
             guestUID: runner.id, guestNickname: runner.nickname,
-            guestProfileImageBase64: runner.profileImageBase64 ?? "",
+            guestProfileImageBase64: latestGuestProfileImage,
             songStoreID: "", songTitle: runner.songTitle, artistName: runner.artist,
             artworkURL: "",
             artworkData: "",
@@ -84,6 +91,8 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - 요청 수락 (게스트)
     func acceptRequest(musicVM: RunningMusicViewModel) async {
         guard let session = incomingRequest else { return }
+        requestHapticTask?.cancel()
+        requestHapticTask = nil
         let player = MPMusicPlayerController.systemMusicPlayer
         let song = currentSongSnapshot(from: musicVM, player: player)
         let position = player.currentPlaybackTime
@@ -128,6 +137,8 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - 요청 거절
     func declineRequest() {
         guard let session = incomingRequest else { return }
+        requestHapticTask?.cancel()
+        requestHapticTask = nil
         RealtimeDBService.shared.rejectSession(sessionID: session.id, guestUID: myUID)
         incomingRequest = nil
         lastIncomingRequestID = nil
@@ -443,6 +454,8 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     private func cleanup() {
+        requestHapticTask?.cancel()
+        requestHapticTask = nil
         stopHostBroadcasting()
         RealtimeDBService.shared.stopObservingSession()
         activeSession = nil
@@ -454,6 +467,18 @@ final class ListenTogetherViewModel: ObservableObject {
         inFlightPlaybackEventID = nil
         lastAppliedPlaybackEventID = ""
         lastHostedTrackKey = ""
+    }
+
+    private func playRequestHapticPattern() {
+        requestHapticTask?.cancel()
+        requestHapticTask = Task { @MainActor in
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            for _ in 0..<2 {
+                try? await Task.sleep(for: .milliseconds(320))
+                guard !Task.isCancelled else { return }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            }
+        }
     }
 }
 
