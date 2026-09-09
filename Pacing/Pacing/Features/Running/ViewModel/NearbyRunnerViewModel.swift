@@ -139,17 +139,22 @@ final class NearbyRunnerViewModel: ObservableObject {
     private func loadProfileImages(for runnerIDs: [String]) async {
         let idsToLoad = Set(runnerIDs).subtracting(loadedProfileImageIDs)
         guard !idsToLoad.isEmpty else { return }
-        loadedProfileImageIDs.formUnion(idsToLoad)
 
-        await withTaskGroup(of: (String, String?).self) { group in
+        await withTaskGroup(of: (String, String?, Bool).self) { group in
             for id in idsToLoad {
                 group.addTask {
-                    let profile = try? await FirestoreService.shared.fetchUserProfile(uid: id)
-                    return (id, profile?["profileImageBase64"] as? String)
+                    do {
+                        let profile = try await FirestoreService.shared.fetchUserProfile(uid: id)
+                        return (id, profile["profileImageBase64"] as? String, true)
+                    } catch {
+                        return (id, nil, false)
+                    }
                 }
             }
 
-            for await (id, image) in group {
+            for await (id, image, succeeded) in group {
+                guard succeeded else { continue }
+                loadedProfileImageIDs.insert(id)
                 if let image, !image.isEmpty {
                     friendProfileImages[id] = image
                 }
