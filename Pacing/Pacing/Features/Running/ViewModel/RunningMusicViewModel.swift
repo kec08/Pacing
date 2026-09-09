@@ -281,6 +281,41 @@ final class RunningMusicViewModel: ObservableObject {
         return nowPlayingSnapshot
     }
 
+    /// 같이 듣기 게스트가 호스트의 곡 전환을 현재 러닝 큐에 반영합니다.
+    /// 러닝 화면과 같은 ApplicationMusicPlayer를 사용해야 노래바·앨범·재생 곡이
+    /// 하나의 큐를 기준으로 함께 갱신됩니다.
+    func syncToListenSession(
+        songStoreID: String,
+        title: String,
+        artist: String,
+        position: TimeInterval,
+        isPlaying: Bool
+    ) async -> Bool {
+        guard isUsingApplicationPlayer else { return false }
+
+        let targetIndex = queueSongs.firstIndex { song in
+            (!songStoreID.isEmpty && "\(song.id)" == songStoreID)
+                || (song.title.caseInsensitiveCompare(title) == .orderedSame
+                    && song.artistName.caseInsensitiveCompare(artist) == .orderedSame)
+        }
+        guard let targetIndex else { return false }
+
+        if targetIndex != currentSongIndex {
+            await play(at: targetIndex, from: currentSongIndex)
+        }
+
+        let boundedPosition = max(0, min(position, playbackDuration > 0 ? playbackDuration : position))
+        applicationPlayer.playbackTime = boundedPosition
+        displayPlaybackTime = boundedPosition
+        if isPlaying {
+            try? await applicationPlayer.play()
+        } else {
+            applicationPlayer.pause()
+        }
+        syncCurrentState()
+        return true
+    }
+
     func artworkURL(for song: Song?) -> String? {
         guard let song else { return nil }
 

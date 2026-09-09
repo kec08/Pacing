@@ -212,7 +212,7 @@ final class ListenTogetherViewModel: ObservableObject {
                         self.activeSession = resolvedSession
                         // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
                         if self.shouldSyncMusic(with: resolvedSession) {
-                            await self.syncMusic(session: resolvedSession)
+                            await self.syncMusic(session: resolvedSession, musicVM: musicVM)
                         }
                         guard self.activeSession?.playbackEventID == resolvedSession.playbackEventID else {
                             return
@@ -234,7 +234,7 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     // MARK: - MusicKit 싱크 (게스트)
-    private func syncMusic(session: ListenSession) async {
+    private func syncMusic(session: ListenSession, musicVM: RunningMusicViewModel) async {
         guard !session.songStoreID.isEmpty || !session.songTitle.isEmpty else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
         let eventID = effectivePlaybackEventID(for: session)
@@ -253,6 +253,19 @@ final class ListenTogetherViewModel: ObservableObject {
 
         let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
         let targetPosition = max(0, session.playbackPosition + latency)
+
+        // 러닝 화면은 ApplicationMusicPlayer를 사용하므로, 먼저 동일한 큐에서
+        // 곡을 전환해야 노래바와 같이 듣기 재생 곡이 어긋나지 않습니다.
+        if await musicVM.syncToListenSession(
+            songStoreID: session.songStoreID,
+            title: session.songTitle,
+            artist: session.artistName,
+            position: targetPosition,
+            isPlaying: session.isPlaying
+        ) {
+            lastAppliedPlaybackEventID = eventID
+            return
+        }
 
         if isCurrentTrackMatching(session: session, player: player) {
             syncCurrentTrackPosition(
