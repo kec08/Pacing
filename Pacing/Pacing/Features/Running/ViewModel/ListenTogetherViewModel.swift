@@ -64,6 +64,12 @@ final class ListenTogetherViewModel: ObservableObject {
             player: player
         )
         let playbackEventID = UUID().uuidString
+        let playbackPosition = musicVM.isUsingApplicationPlayer
+            ? musicVM.currentPlaybackTime
+            : player.currentPlaybackTime
+        let isPlaying = musicVM.isUsingApplicationPlayer
+            ? musicVM.isPlaying
+            : player.playbackState == .playing
         let sessionID = RealtimeDBService.shared.createListenSession(
             hostUID: myUID, hostNickname: myNickname,
             hostProfileImageBase64: hostProfileImageBase64,
@@ -75,8 +81,8 @@ final class ListenTogetherViewModel: ObservableObject {
             artworkURL: requestSong.artworkURL,
             artworkData: requestSong.artworkData,
             playbackEventID: playbackEventID,
-            position: player.currentPlaybackTime,
-            isPlaying: player.playbackState == .playing
+            position: playbackPosition,
+            isPlaying: isPlaying
         )
 
         activeSession = ListenSession(
@@ -90,9 +96,9 @@ final class ListenTogetherViewModel: ObservableObject {
             artworkURL: requestSong.artworkURL,
             artworkData: requestSong.artworkData,
             playbackEventID: playbackEventID,
-            playbackPosition: player.currentPlaybackTime,
+            playbackPosition: playbackPosition,
             serverTimestamp: Date().timeIntervalSince1970 * 1000,
-            status: "pending", isPlaying: player.playbackState == .playing
+            status: "pending", isPlaying: isPlaying
         )
         isHost = false
         sessionStartDate = Date()
@@ -167,6 +173,12 @@ final class ListenTogetherViewModel: ObservableObject {
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
+        let playbackPosition = musicVM.isUsingApplicationPlayer
+            ? musicVM.currentPlaybackTime
+            : player.currentPlaybackTime
+        let isPlaying = musicVM.isUsingApplicationPlayer
+            ? musicVM.isPlaying
+            : player.playbackState == .playing
         let metadata = currentSongSnapshot(from: musicVM, player: player, includesArtworkData: false)
         let trackKey = [metadata.storeID, metadata.title, metadata.artist].joined(separator: "|")
         let isTrackTransition = !trackKey.isEmpty && trackKey != lastHostedTrackKey
@@ -188,8 +200,8 @@ final class ListenTogetherViewModel: ObservableObject {
             artworkURL: isTrackTransition ? song.artworkURL : nil,
             artworkData: isTrackTransition ? song.artworkData : nil,
             playbackEventID: hostPlaybackEventID,
-            position: player.currentPlaybackTime,
-            isPlaying: player.playbackState == .playing
+            position: playbackPosition,
+            isPlaying: isPlaying
         )
     }
 
