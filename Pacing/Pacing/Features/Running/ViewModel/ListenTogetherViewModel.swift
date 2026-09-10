@@ -51,55 +51,44 @@ final class ListenTogetherViewModel: ObservableObject {
     func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) async {
         let cachedProfileImage = UserDefaults.standard.string(forKey: "profileImageBase64") ?? ""
         let latestProfileImage = (try? await FirestoreService.shared.fetchUserProfile(uid: myUID))?["profileImageBase64"] as? String
-        let hostProfileImageBase64 = latestProfileImage?.isEmpty == false ? latestProfileImage! : cachedProfileImage
-        if !hostProfileImageBase64.isEmpty {
-            UserDefaults.standard.set(hostProfileImageBase64, forKey: "profileImageBase64")
+        let guestProfileImageBase64 = latestProfileImage?.isEmpty == false ? latestProfileImage! : cachedProfileImage
+        if !guestProfileImageBase64.isEmpty {
+            UserDefaults.standard.set(guestProfileImageBase64, forKey: "profileImageBase64")
         }
-        let storedGuestProfileImage = runner.profileImageBase64 ?? ""
-        let latestGuestProfileImage = storedGuestProfileImage.isEmpty
+        let storedHostProfileImage = runner.profileImageBase64 ?? ""
+        let latestHostProfileImage = storedHostProfileImage.isEmpty
             ? ((try? await FirestoreService.shared.fetchUserProfile(uid: runner.id))?["profileImageBase64"] as? String ?? "")
-            : storedGuestProfileImage
-        let player = MPMusicPlayerController.systemMusicPlayer
-        let requestSong = currentSongSnapshot(
-            from: musicVM,
-            player: player
-        )
+            : storedHostProfileImage
         let playbackEventID = UUID().uuidString
-        let playbackPosition = musicVM.isUsingApplicationPlayer
-            ? musicVM.currentPlaybackTime
-            : player.currentPlaybackTime
-        let isPlaying = musicVM.isUsingApplicationPlayer
-            ? musicVM.isPlaying
-            : player.playbackState == .playing
         let sessionID = RealtimeDBService.shared.createListenSession(
-            hostUID: myUID, hostNickname: myNickname,
-            hostProfileImageBase64: hostProfileImageBase64,
-            guestUID: runner.id, guestNickname: runner.nickname,
-            guestProfileImageBase64: latestGuestProfileImage,
-            songStoreID: requestSong.storeID,
-            songTitle: requestSong.title.isEmpty ? runner.songTitle : requestSong.title,
-            artistName: requestSong.artist.isEmpty ? runner.artist : requestSong.artist,
-            artworkURL: requestSong.artworkURL,
-            artworkData: requestSong.artworkData,
+            hostUID: runner.id, hostNickname: runner.nickname,
+            hostProfileImageBase64: latestHostProfileImage,
+            guestUID: myUID, guestNickname: myNickname,
+            guestProfileImageBase64: guestProfileImageBase64,
+            songStoreID: "",
+            songTitle: runner.songTitle,
+            artistName: runner.artist,
+            artworkURL: "",
+            artworkData: "",
             playbackEventID: playbackEventID,
-            position: playbackPosition,
-            isPlaying: isPlaying
+            position: 0,
+            isPlaying: false
         )
 
         activeSession = ListenSession(
-            id: sessionID, hostUID: myUID, hostNickname: myNickname,
-            hostProfileImageBase64: hostProfileImageBase64,
-            guestUID: runner.id, guestNickname: runner.nickname,
-            guestProfileImageBase64: latestGuestProfileImage,
-            songStoreID: requestSong.storeID,
-            songTitle: requestSong.title.isEmpty ? runner.songTitle : requestSong.title,
-            artistName: requestSong.artist.isEmpty ? runner.artist : requestSong.artist,
-            artworkURL: requestSong.artworkURL,
-            artworkData: requestSong.artworkData,
+            id: sessionID, hostUID: runner.id, hostNickname: runner.nickname,
+            hostProfileImageBase64: latestHostProfileImage,
+            guestUID: myUID, guestNickname: myNickname,
+            guestProfileImageBase64: guestProfileImageBase64,
+            songStoreID: "",
+            songTitle: runner.songTitle,
+            artistName: runner.artist,
+            artworkURL: "",
+            artworkData: "",
             playbackEventID: playbackEventID,
-            playbackPosition: playbackPosition,
+            playbackPosition: 0,
             serverTimestamp: Date().timeIntervalSince1970 * 1000,
-            status: "pending", isPlaying: isPlaying
+            status: "pending", isPlaying: false
         )
         isHost = false
         sessionStartDate = Date()
@@ -107,7 +96,7 @@ final class ListenTogetherViewModel: ObservableObject {
         observeSession(sessionID: sessionID, musicVM: musicVM)
     }
 
-    // MARK: - 요청 수락 (게스트)
+    // MARK: - 요청 수락 (호스트)
     func acceptRequest(musicVM: RunningMusicViewModel) async {
         guard let session = incomingRequest else { return }
         requestHapticTask?.cancel()
