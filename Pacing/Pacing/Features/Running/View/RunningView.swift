@@ -1630,15 +1630,15 @@ struct RunningView: View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
                 listenParticipantAvatar(
-                    name: session.hostNickname,
-                    imageBase64: session.hostProfileImageBase64,
+                    name: session.guestNickname,
+                    imageBase64: session.guestProfileImageBase64,
                     isMe: false
                 )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("같이 듣기 요청")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.main500)
-                    Text("\(session.hostNickname)님이 함께 듣고 싶어해요")
+                    Text("\(session.guestNickname)님이 함께 듣고 싶어해요")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
                 }
