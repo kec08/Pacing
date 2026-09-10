@@ -354,6 +354,7 @@ private struct FriendRecentRunRow: View {
                     RunActivityDetailView(
                         record: activity.run,
                         owner: RunActivityOwner(
+                            uid: activity.friendUID,
                             nickname: activity.friendNickname,
                             profileImageBase64: activity.profileImageBase64,
                             statusText: activity.statusText
@@ -410,7 +411,7 @@ private struct FriendRecentRunAvatar: View {
                 }
             }
         }
-        .frame(width: 30, height: 30)
+        .frame(width: 26, height: 26)
         .clipShape(Circle())
         .overlay { Circle().stroke(Color.surfaceBorder, lineWidth: 1) }
     }

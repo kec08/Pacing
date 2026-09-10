@@ -3,6 +3,7 @@ import MapKit
 import CoreLocation
 
 struct RunActivityOwner {
+    let uid: String
     let nickname: String
     let profileImageBase64: String?
     let statusText: String
@@ -39,18 +40,31 @@ struct RunActivityDetailView: View {
     private var activityHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
             if let owner {
-                HStack(spacing: 10) {
-                    RunActivityOwnerAvatar(owner: owner)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(owner.nickname)
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(Color.textPrimary)
-                        Text(owner.statusText)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.textSecondary)
-                            .lineLimit(1)
+                NavigationLink {
+                    FriendProfileView(
+                        friend: FriendUser(
+                            id: owner.uid,
+                            nickname: owner.nickname,
+                            profileImageBase64: owner.profileImageBase64,
+                            statusText: owner.statusText,
+                            source: .friend
+                        )
+                    )
+                } label: {
+                    HStack(spacing: 10) {
+                        RunActivityOwnerAvatar(owner: owner)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(owner.nickname)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.textPrimary)
+                            Text(owner.statusText)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.textSecondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                .buttonStyle(.plain)
                 .padding(.bottom, 14)
             }
             Text(startedAtText)
@@ -301,7 +315,7 @@ private struct RunActivityOwnerAvatar: View {
                 }
             }
         }
-        .frame(width: 38, height: 38)
+        .frame(width: 32, height: 32)
         .clipShape(Circle())
         .overlay { Circle().stroke(Color.surfaceBorder, lineWidth: 1) }
     }
