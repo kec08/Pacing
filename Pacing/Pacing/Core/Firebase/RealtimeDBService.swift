@@ -139,6 +139,38 @@ final class RealtimeDBService {
         }
     }
 
+    /// 요청 버튼을 누른 순간의 상대방 재생 곡을 한 번 읽습니다.
+    /// 화면에 캐시된 NearbyRunner 값은 실시간 갱신 사이에 이전 곡일 수 있으므로
+    /// 요청 생성 시에는 activeRunners의 최신 값을 기준으로 사용합니다.
+    func fetchActiveRunner(uid: String) async throws -> ActiveRunner? {
+        guard !uid.isEmpty else { return nil }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            db.child("activeRunners").child(uid).observeSingleEvent(of: .value) { snapshot in
+                guard let d = snapshot.value as? [String: Any],
+                      let lat = Self.doubleValue(d["latitude"]),
+                      let lng = Self.doubleValue(d["longitude"]),
+                      let updatedAt = Self.doubleValue(d["updatedAt"]),
+                      CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lng))
+                else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+
+                continuation.resume(returning: ActiveRunner(
+                    id: snapshot.key,
+                    nickname: d["nickname"] as? String ?? "러너",
+                    coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+                    songTitle: d["currentSongTitle"] as? String ?? "",
+                    artist: d["currentArtist"] as? String ?? "",
+                    updatedAt: updatedAt
+                ))
+            } withCancel: { error in
+                continuation.resume(throwing: error)
+            }
+        }
+    }
+
     // MARK: - 같이 듣기 세션 생성 (호스트)
     @discardableResult
     func createListenSession(
@@ -150,7 +182,8 @@ final class RealtimeDBService {
         artworkURL: String = "",
         artworkData: String = "",
         playbackEventID: String = UUID().uuidString,
-        position: Double
+        position: Double,
+        isPlaying: Bool
     ) -> String {
         guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
         let sessionRef = db.child("listenSessions").childByAutoId()
@@ -171,19 +204,20 @@ final class RealtimeDBService {
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "status": "pending",
-            "isPlaying": true
+            "isPlaying": isPlaying
         ]
         sessionRef.setValue(data)
-        // 게스트에게 수신 알림 경로에도 기록
-        db.child("incomingRequests").child(guestUID).child(sessionID).setValue(data)
+        // 요청을 받은 호스트에게 수신 알림 경로에도 기록합니다.
+        // 세션의 guestUID는 요청자이므로 알림 수신자와 분리해야 합니다.
+        db.child("incomingRequests").child(hostUID).child(sessionID).setValue(data)
         return sessionID
     }
 
     // MARK: - 세션 수락 (게스트)
-    func acceptSession(sessionID: String, guestUID: String) {
-        guard !sessionID.isEmpty, !guestUID.isEmpty else { return }
+    func acceptSession(sessionID: String, hostUID: String) {
+        guard !sessionID.isEmpty, !hostUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "active"])
-        db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
+        db.child("incomingRequests").child(hostUID).child(sessionID).removeValue()
     }
 
     // MARK: - 세션 거절 (게스트)

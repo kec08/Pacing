@@ -351,7 +351,7 @@ struct RunningView: View {
         }
         // 시스템 플레이어의 현재 곡 변경은 `currentSong` 갱신보다 먼저 도착할 수 있습니다.
         // 호스트는 이 시점에 전환 이벤트를 즉시 전송해 게스트의 다음 1초 타이머 대기를 없앱니다.
-        .onChange(of: musicVM.nowPlayingSnapshot?.songStoreID) { _, _ in
+        .onChange(of: musicVM.nowPlayingSnapshot) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
@@ -921,6 +921,17 @@ struct RunningView: View {
                         let listenSession = listenVM.activeSession
                         let sessionArtwork = decodedArtworkData(listenSession?.artworkData ?? "")
                         let listenArtwork = isActiveListenGuest ? sessionArtwork : nil
+                        let matchedListenArtwork = isActiveListenGuest
+                            ? matchingArtwork(for: listenSession, snapshot: displaySnapshot)
+                            : nil
+                        let matchedDisplaySong = matchingQueueSong(for: displaySnapshot)
+                        let matchedListenQueueSong = isActiveListenGuest
+                            ? matchingQueueSong(
+                                title: listenSession?.songTitle ?? "",
+                                artist: listenSession?.artistName ?? "",
+                                storeID: listenSession?.songStoreID ?? ""
+                            ) ?? matchedDisplaySong
+                            : matchedDisplaySong
                         let visibleSongTitle = isActiveListenGuest
                             ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))
                             : displaySnapshotTitle(displaySnapshot)
@@ -930,16 +941,15 @@ struct RunningView: View {
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
                         Group {
-                            if let listenArtwork {
-                                Image(uiImage: listenArtwork)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                            // 선택한 플레이리스트의 곡 목록은 ApplicationMusicPlayer 재생 중에도
-                            // 기존처럼 스크롤해 다음/이전 곡으로 전환할 수 있어야 한다.
-                            } else if !isActiveListenGuest,
-                                      !musicVM.queueSongs.isEmpty {
+                            if isActiveListenGuest, let listenSession {
+                                animatedListenArtwork(
+                                    session: listenSession,
+                                    size: artSize,
+                                    localArtwork: listenArtwork ?? matchedListenArtwork ?? displaySnapshot?.artwork,
+                                    localMusicArtwork: musicVM.currentMusicArtwork
+                                )
+                                .id("listen-sheet-\(listenSession.playbackEventID)-\(listenSession.songStoreID)-\(listenSession.artworkURL)")
+                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
@@ -969,6 +979,20 @@ struct RunningView: View {
                                 }
                                 .tabViewStyle(.page(indexDisplayMode: .never))
                                 .frame(width: artSize, height: artSize)
+                            } else if let song = matchedListenQueueSong,
+                                      let artwork = song.artwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? "")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if let song = matchedListenQueueSong,
+                                      let artworkURL = musicVM.artworkURL(for: song) {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? artworkURL)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if let artwork = displaySnapshot?.artwork {
                                 Image(uiImage: artwork)
                                     .resizable()
@@ -991,6 +1015,7 @@ struct RunningView: View {
                         .scaleEffect(musicVM.isPlaying ? 1.0 : 0.88)
                         .shadow(color: .black.opacity(musicVM.isPlaying ? 0.3 : 0.15), radius: musicVM.isPlaying ? 20 : 10, y: 8)
                         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: musicVM.isPlaying)
+                        .animation(.easeInOut(duration: 0.28), value: listenSession?.playbackEventID)
                         .padding(.top, 28)
                         .padding(.bottom, 28)
 
@@ -1024,7 +1049,11 @@ struct RunningView: View {
                         // MARK: 스크러버
                         TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
                             let duration = musicVM.playbackDuration
-                            let localCurrent = localPlaybackCurrentTime(at: timeline.date, duration: duration)
+                            // 게스트는 호스트가 보낸 위치를 ApplicationMusicPlayer에 반영하므로
+                            // 로컬 기준시각을 우선하면 seek 이후에도 이전 위치에서 계속 증가한다.
+                            let localCurrent = isActiveListenGuest
+                                ? nil
+                                : localPlaybackCurrentTime(at: timeline.date, duration: duration)
                             let current: Double = isSeeking
                                 ? seekValue
                                 : (localCurrent ?? (duration > 0 ? min(musicVM.currentPlaybackTime, duration) : 0))
@@ -1051,7 +1080,12 @@ struct RunningView: View {
                                             let targetTime = seekValue
                                             isFinishingSeek = true
                                             musicVM.seek(to: targetTime)
-                                            startLocalPlaybackClock(from: targetTime)
+                                            if isActiveListenGuest {
+                                                clearLocalPlaybackClock()
+                                            } else {
+                                                startLocalPlaybackClock(from: targetTime)
+                                                listenVM.broadcastSeekIfHost(musicVM: musicVM)
+                                            }
 
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                                 isSeeking = false
@@ -1096,12 +1130,16 @@ struct RunningView: View {
                             .accessibilityLabel("이전 곡")
 
                             Button {
-                                if shouldRunLocalPlaybackClock {
-                                    stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                if isActiveListenGuest {
+                                    Task { await listenVM.toggleGuestPlayback(musicVM: musicVM) }
                                 } else {
-                                    startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                    if shouldRunLocalPlaybackClock {
+                                        stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                    } else {
+                                        startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                    }
+                                    Task { await musicVM.togglePlayPause() }
                                 }
-                                Task { await musicVM.togglePlayPause() }
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.system(size: 68))
@@ -1201,8 +1239,17 @@ struct RunningView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                     .shadow(color: .black.opacity(0.08), radius: 8, y: -2)
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: musicSheetPanel)
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: musicSheetPanel)
+            }
+            .task(id: "\(listenVM.activeSession?.playbackEventID ?? "")|\(listenVM.activeSession?.songStoreID ?? "")|\(listenVM.activeSession?.artworkURL ?? "")") {
+                guard isActiveListenGuest, let session = listenVM.activeSession else { return }
+                await musicVM.refreshListenSessionArtwork(
+                    songStoreID: session.songStoreID,
+                    title: session.songTitle,
+                    artist: session.artistName,
+                    artworkURL: session.artworkURL
+                )
             }
             .navigationTitle("음악")
             .navigationBarTitleDisplayMode(.inline)
@@ -1239,13 +1286,20 @@ struct RunningView: View {
                 }
             }
             // 곡이 바뀌면 스크러버 초기화 (드래그 잔상 방지)
-            .onChange(of: musicVM.currentSong?.id) { _, _ in
-                isSeeking = false
-                seekValue = 0
-                clearLocalPlaybackClock()
+        .onChange(of: musicVM.currentSong?.id) { _, _ in
+            isSeeking = false
+            seekValue = 0
+            clearLocalPlaybackClock()
+        }
+        .onChange(of: musicVM.isPlaying) { _, isPlaying in
+            if isPlaying {
+                startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+            } else {
+                stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
             }
         }
         .presentationBackground(.ultraThinMaterial)
+    }
     }
 
     private var playlistPickerPanel: some View {
@@ -1495,6 +1549,26 @@ struct RunningView: View {
         return title
     }
 
+    private func matchingQueueSong(for snapshot: PlayerSongSnapshot?) -> Song? {
+        guard let snapshot else { return nil }
+        return musicVM.queueSongs.first { song in
+            song.title.caseInsensitiveCompare(snapshot.title) == .orderedSame
+                && song.artistName.caseInsensitiveCompare(snapshot.artistName) == .orderedSame
+        }
+    }
+
+    private func matchingQueueSong(title: String, artist: String, storeID: String) -> Song? {
+        guard !title.isEmpty || !storeID.isEmpty else { return nil }
+
+        return musicVM.queueSongs.first { song in
+            let storeIDMatches = !storeID.isEmpty && "\(song.id)" == storeID
+            let metadataMatches = !title.isEmpty
+                && song.title.caseInsensitiveCompare(title) == .orderedSame
+                && song.artistName.caseInsensitiveCompare(artist) == .orderedSame
+            return storeIDMatches || metadataMatches
+        }
+    }
+
     private func displaySnapshotArtist(_ snapshot: PlayerSongSnapshot?) -> String? {
         guard let artist = snapshot?.artistName, !artist.isEmpty else { return nil }
         return artist
@@ -1616,15 +1690,15 @@ struct RunningView: View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
                 listenParticipantAvatar(
-                    name: session.hostNickname,
-                    imageBase64: session.hostProfileImageBase64,
+                    name: session.guestNickname,
+                    imageBase64: session.guestProfileImageBase64,
                     isMe: false
                 )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("같이 듣기 요청")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.main500)
-                    Text("\(session.hostNickname)님이 함께 듣고 싶어해요")
+                    Text("\(session.guestNickname)님이 함께 듣고 싶어해요")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
                 }
@@ -1636,8 +1710,14 @@ struct RunningView: View {
                         listenArtwork(
                             session: session,
                             size: min(proxy.size.width, 156),
-                            localArtwork: musicVM.currentSongSnapshot()?.artwork,
-                            localMusicArtwork: musicVM.currentMusicArtwork
+                            localArtwork: matchingArtwork(
+                                for: session,
+                                snapshot: musicVM.currentSongSnapshot()
+                            ),
+                            localMusicArtwork: matchingMusicArtwork(
+                                for: session,
+                                snapshot: musicVM.currentSongSnapshot()
+                            )
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -1698,11 +1778,17 @@ struct RunningView: View {
                         if listenSheetDetent == .large {
                             ScrollView(showsIndicators: false) {
                                 VStack(spacing: 20) {
-                                    listenArtwork(
+                                    animatedListenArtwork(
                                         session: session,
                                         size: 240,
-                                        localArtwork: musicVM.currentSongSnapshot()?.artwork,
-                                        localMusicArtwork: musicVM.currentMusicArtwork
+                                        localArtwork: matchingArtwork(
+                                            for: session,
+                                            snapshot: musicVM.currentSongSnapshot()
+                                        ),
+                                        localMusicArtwork: matchingMusicArtwork(
+                                            for: session,
+                                            snapshot: musicVM.currentSongSnapshot()
+                                        )
                                     )
 
                                     VStack(spacing: 4) {
@@ -1880,12 +1966,12 @@ struct RunningView: View {
 
     private func listenAlbumHeader(session: ListenSession) -> some View {
         HStack(spacing: 12) {
-            let localArtwork = musicVM.currentSongSnapshot()?.artwork
-            listenArtwork(
+            let snapshot = musicVM.currentSongSnapshot()
+            animatedListenArtwork(
                 session: session,
                 size: 66,
-                localArtwork: localArtwork,
-                localMusicArtwork: musicVM.currentMusicArtwork
+                localArtwork: matchingArtwork(for: session, snapshot: snapshot),
+                localMusicArtwork: matchingMusicArtwork(for: session, snapshot: snapshot)
             )
                 .frame(width: 66, height: 66)
                 .accessibilityHidden(true)
@@ -1905,6 +1991,30 @@ struct RunningView: View {
         }
         .padding(.horizontal, 24)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func animatedListenArtwork(
+        session: ListenSession,
+        size: CGFloat = 220,
+        localArtwork: UIImage? = nil,
+        localMusicArtwork: Artwork? = nil
+    ) -> some View {
+        let artworkFingerprint = session.artworkData.isEmpty
+            ? session.artworkURL
+            : "\(session.artworkURL)|\(session.artworkData.hashValue)"
+        let artworkID = "\(session.playbackEventID)|\(session.songStoreID)|\(artworkFingerprint)"
+        ZStack {
+            listenArtwork(
+                session: session,
+                size: size,
+                localArtwork: localArtwork,
+                localMusicArtwork: localMusicArtwork
+            )
+            .id(artworkID)
+            .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        }
+        .animation(.easeInOut(duration: 0.28), value: artworkID)
     }
 
     @ViewBuilder
@@ -1965,6 +2075,37 @@ struct RunningView: View {
     private func decodedArtworkData(_ value: String) -> UIImage? {
         guard !value.isEmpty, let data = Data(base64Encoded: value) else { return nil }
         return UIImage(data: data)
+    }
+
+    private func matchingArtwork(
+        for session: ListenSession?,
+        snapshot: PlayerSongSnapshot?
+    ) -> UIImage? {
+        guard let session,
+              !session.songTitle.isEmpty
+        else { return nil }
+        if snapshot?.title == session.songTitle,
+           snapshot?.artistName == session.artistName,
+           let artwork = snapshot?.artwork {
+            return artwork
+        }
+        guard let playerItem = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem,
+              playerItem.title == session.songTitle,
+              playerItem.artist == session.artistName
+        else { return nil }
+        return playerItem.artwork?.image(at: CGSize(width: 320, height: 320))
+    }
+
+    private func matchingMusicArtwork(
+        for session: ListenSession?,
+        snapshot: PlayerSongSnapshot?
+    ) -> Artwork? {
+        guard let session,
+              let snapshot,
+              snapshot.title == session.songTitle,
+              snapshot.artistName == session.artistName
+        else { return nil }
+        return musicVM.currentMusicArtwork
     }
 
     private var listenArtworkPlaceholder: some View {
