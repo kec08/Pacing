@@ -128,7 +128,7 @@ final class ListenTogetherViewModel: ObservableObject {
             position: position,
             isPlaying: player.playbackState == .playing
         )
-        RealtimeDBService.shared.acceptSession(sessionID: session.id, guestUID: myUID)
+        RealtimeDBService.shared.acceptSession(sessionID: session.id, hostUID: myUID)
 
         activeSession = sourceSession
         isHost = true

@@ -175,16 +175,17 @@ final class RealtimeDBService {
             "isPlaying": isPlaying
         ]
         sessionRef.setValue(data)
-        // 게스트에게 수신 알림 경로에도 기록
-        db.child("incomingRequests").child(guestUID).child(sessionID).setValue(data)
+        // 요청을 받은 호스트에게 수신 알림 경로에도 기록합니다.
+        // 세션의 guestUID는 요청자이므로 알림 수신자와 분리해야 합니다.
+        db.child("incomingRequests").child(hostUID).child(sessionID).setValue(data)
         return sessionID
     }
 
     // MARK: - 세션 수락 (게스트)
-    func acceptSession(sessionID: String, guestUID: String) {
-        guard !sessionID.isEmpty, !guestUID.isEmpty else { return }
+    func acceptSession(sessionID: String, hostUID: String) {
+        guard !sessionID.isEmpty, !hostUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "active"])
-        db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
+        db.child("incomingRequests").child(hostUID).child(sessionID).removeValue()
     }
 
     // MARK: - 세션 거절 (게스트)
