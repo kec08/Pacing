@@ -965,6 +965,30 @@ struct RunningView: View {
                                     .frame(width: artSize, height: artSize)
                                     .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
                                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if isActiveListenGuest,
+                                      let artwork = displaySnapshot?.artwork {
+                                Image(uiImage: artwork)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                                    .id(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if isActiveListenGuest,
+                                      let artwork = musicVM.currentMusicArtwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                                    .id(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if isActiveListenGuest,
+                                      let artworkURL = displaySnapshot?.artworkURL,
+                                      !artworkURL.isEmpty {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id("snapshot-\(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")-\(artworkURL)")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if let song = matchedListenQueueSong,
                                       let artwork = song.artwork {
                                 ArtworkImage(artwork, width: artSize, height: artSize)
