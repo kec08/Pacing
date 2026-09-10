@@ -51,7 +51,7 @@ struct RunActivityDetailView: View {
                             .lineLimit(1)
                     }
                 }
-                .padding(.bottom, 4)
+                .padding(.bottom, 14)
             }
             Text(startedAtText)
                 .font(.system(size: 14))

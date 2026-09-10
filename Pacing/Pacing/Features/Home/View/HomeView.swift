@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
@@ -323,52 +324,100 @@ private struct FriendRecentRunRow: View {
     let vm: HomeViewModel
 
     var body: some View {
-        NavigationLink {
-            RunActivityDetailView(
-                record: activity.run,
-                owner: RunActivityOwner(
-                    nickname: activity.friendNickname,
-                    profileImageBase64: activity.profileImageBase64,
-                    statusText: activity.statusText
-                )
-            )
-        } label: {
-            HStack(spacing: 14) {
-                RunRouteThumbnailView(coordinates: activity.run.routeCoordinates)
-                    .frame(width: 56, height: 56)
+        HStack(spacing: 14) {
+            RunRouteThumbnailView(coordinates: activity.run.routeCoordinates)
+                .frame(width: 56, height: 56)
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(activity.friendNickname)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.main500)
-                        .lineLimit(1)
-                    HStack(spacing: 6) {
-                        Text(vm.formatDate(activity.run.startedAt))
-                        Text("·")
-                        Text(vm.formatDistance(activity.run.distance))
+            VStack(alignment: .leading, spacing: 6) {
+                NavigationLink {
+                    FriendProfileView(
+                        friend: FriendUser(
+                            id: activity.friendUID,
+                            nickname: activity.friendNickname,
+                            profileImageBase64: activity.profileImageBase64,
+                            statusText: activity.statusText,
+                            source: .friend
+                        )
+                    )
+                } label: {
+                    HStack(spacing: 8) {
+                        FriendRecentRunAvatar(activity: activity)
+                        Text(activity.friendNickname)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Color.main500)
+                            .lineLimit(1)
                     }
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.textSecondary)
-
-                    HStack(spacing: 12) {
-                        Text(vm.formatDuration(activity.run.duration))
-                        Text(vm.formatPace(activity.run.displayPace) + "/km")
-                    }
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(Color.textPrimary)
                 }
+                .buttonStyle(.plain)
 
-                Spacer()
+                NavigationLink {
+                    RunActivityDetailView(
+                        record: activity.run,
+                        owner: RunActivityOwner(
+                            nickname: activity.friendNickname,
+                            profileImageBase64: activity.profileImageBase64,
+                            statusText: activity.statusText
+                        )
+                    )
+                } label: {
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(vm.formatDate(activity.run.startedAt))
+                            Text("·")
+                            Text(vm.formatDistance(activity.run.distance))
+                        }
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.textSecondary)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(Color.gray300)
+                        HStack(spacing: 12) {
+                            Text(vm.formatDuration(activity.run.duration))
+                            Text(vm.formatPace(activity.run.displayPace) + "/km")
+                        }
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(Color.textPrimary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
             }
-            .padding(14)
-            .background(Color.backgroundPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.gray300)
         }
-        .buttonStyle(.plain)
+        .padding(14)
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .accessibilityHint("친구의 러닝 활동 상세를 엽니다")
+    }
+}
+
+private struct FriendRecentRunAvatar: View {
+    let activity: FriendRecentRunActivity
+
+    var body: some View {
+        Group {
+            if let image = decodedImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Circle().fill(Color.main200.opacity(0.8))
+                    Text(activity.friendNickname.prefix(1).isEmpty ? "러" : String(activity.friendNickname.prefix(1)))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.main500)
+                }
+            }
+        }
+        .frame(width: 30, height: 30)
+        .clipShape(Circle())
+        .overlay { Circle().stroke(Color.surfaceBorder, lineWidth: 1) }
+    }
+
+    private var decodedImage: UIImage? {
+        guard let encoded = activity.profileImageBase64,
+              let data = Data(base64Encoded: encoded) else { return nil }
+        return UIImage(data: data)
     }
 }

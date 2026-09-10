@@ -215,6 +215,8 @@ struct MyProfileDetailView: View {
                         )
                     }
                 }
+                .background(Color.backgroundPrimary)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }
@@ -320,6 +322,12 @@ private struct MyRecentSongRow: View {
             .padding(.vertical, 12)
         }
         .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.gray300.opacity(0.35))
+                .frame(height: 1)
+                .padding(.leading, 70)
+        }
     }
 
     private var artwork: some View {
