@@ -949,75 +949,6 @@ struct RunningView: View {
                                     localMusicArtwork: musicVM.currentMusicArtwork
                                 )
                                 .id("listen-sheet-\(listenSession.playbackEventID)-\(listenSession.songStoreID)-\(listenSession.artworkURL)")
-                            } else if let listenArtwork {
-                                Image(uiImage: listenArtwork)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                                    .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if isActiveListenGuest,
-                                      let artworkURL = listenSession?.artworkURL,
-                                      !artworkURL.isEmpty {
-                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
-                                    .frame(width: artSize, height: artSize)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .id("listen-\(listenSession?.playbackEventID ?? "")-\(artworkURL)")
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if let matchedListenArtwork {
-                                Image(uiImage: matchedListenArtwork)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                                    .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if isActiveListenGuest,
-                                      let artwork = displaySnapshot?.artwork {
-                                Image(uiImage: artwork)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                                    .id(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if isActiveListenGuest,
-                                      let artwork = musicVM.currentMusicArtwork {
-                                ArtworkImage(artwork, width: artSize, height: artSize)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                                    .id(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if isActiveListenGuest,
-                                      let artworkURL = musicVM.artworkURL(for: musicVM.currentSong) {
-                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
-                                    .frame(width: artSize, height: artSize)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .id("current-\(musicVM.currentSong?.id.rawValue ?? "")-\(artworkURL)")
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if isActiveListenGuest,
-                                      let artworkURL = displaySnapshot?.artworkURL,
-                                      !artworkURL.isEmpty {
-                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
-                                    .frame(width: artSize, height: artSize)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .id("snapshot-\(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")-\(artworkURL)")
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if let song = matchedListenQueueSong,
-                                      let artwork = song.artwork {
-                                ArtworkImage(artwork, width: artSize, height: artSize)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? "")
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
-                            } else if let song = matchedListenQueueSong,
-                                      let artworkURL = musicVM.artworkURL(for: song) {
-                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
-                                    .frame(width: artSize, height: artSize)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? artworkURL)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
@@ -1048,9 +979,20 @@ struct RunningView: View {
                                 }
                                 .tabViewStyle(.page(indexDisplayMode: .never))
                                 .frame(width: artSize, height: artSize)
-                            } else if isActiveListenGuest {
-                                artworkPlaceholder
+                            } else if let song = matchedListenQueueSong,
+                                      let artwork = song.artwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
+                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? "")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if let song = matchedListenQueueSong,
+                                      let artworkURL = musicVM.artworkURL(for: song) {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? artworkURL)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if let artwork = displaySnapshot?.artwork {
                                 Image(uiImage: artwork)
                                     .resizable()
