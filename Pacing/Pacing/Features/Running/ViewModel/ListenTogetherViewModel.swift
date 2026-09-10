@@ -19,6 +19,7 @@ final class ListenTogetherViewModel: ObservableObject {
     private weak var hostMusicViewModel: RunningMusicViewModel?
     private var hostPlaybackEventID = UUID().uuidString
     private var lastHostedTrackKey = ""
+    private var lastHostedArtworkURL = ""
     private var lastAppliedPlaybackEventID = ""
     private var inFlightPlaybackEventID: String?
     private var activePlaybackSyncToken: UUID?
@@ -144,6 +145,7 @@ final class ListenTogetherViewModel: ObservableObject {
         isHost = true
         hostPlaybackEventID = sourceSession.playbackEventID
         lastHostedTrackKey = [song.storeID, song.title, song.artist].joined(separator: "|")
+        lastHostedArtworkURL = song.artworkURL
         incomingRequest = nil
         lastIncomingRequestID = nil
         sessionStartDate = Date()
@@ -182,6 +184,7 @@ final class ListenTogetherViewModel: ObservableObject {
         let metadata = currentSongSnapshot(from: musicVM, player: player, includesArtworkData: false)
         let trackKey = [metadata.storeID, metadata.title, metadata.artist].joined(separator: "|")
         let isTrackTransition = !trackKey.isEmpty && trackKey != lastHostedTrackKey
+        let isArtworkUpdate = isTrackTransition || metadata.artworkURL != lastHostedArtworkURL
 
         // 타이머에 의한 위치 갱신은 같은 이벤트 ID를 유지합니다. 실제 곡 전환만 새 이벤트로
         // 기록해 게스트가 매초 큐를 재구성하지 않도록 합니다.
@@ -189,16 +192,19 @@ final class ListenTogetherViewModel: ObservableObject {
             lastHostedTrackKey = trackKey
             hostPlaybackEventID = UUID().uuidString
         }
-        let song = isTrackTransition
+        let song = isArtworkUpdate
             ? currentSongSnapshot(from: musicVM, player: player)
             : metadata
+        if isArtworkUpdate {
+            lastHostedArtworkURL = song.artworkURL
+        }
         RealtimeDBService.shared.updateSessionPlayback(
             sessionID: session.id,
             songStoreID: song.storeID,
             songTitle: song.title,
             artistName: song.artist,
-            artworkURL: isTrackTransition ? song.artworkURL : nil,
-            artworkData: isTrackTransition ? song.artworkData : nil,
+            artworkURL: isArtworkUpdate ? song.artworkURL : nil,
+            artworkData: isArtworkUpdate ? song.artworkData : nil,
             playbackEventID: hostPlaybackEventID,
             position: playbackPosition,
             isPlaying: isPlaying
@@ -503,6 +509,7 @@ final class ListenTogetherViewModel: ObservableObject {
         inFlightPlaybackEventID = nil
         lastAppliedPlaybackEventID = ""
         lastHostedTrackKey = ""
+        lastHostedArtworkURL = ""
     }
 
     private func resolvedProfileImages(for session: ListenSession) async -> ListenSession {
