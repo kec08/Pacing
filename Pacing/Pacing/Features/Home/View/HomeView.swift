@@ -325,8 +325,13 @@ private struct FriendRecentRunRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            RunRouteThumbnailView(coordinates: activity.run.routeCoordinates)
-                .frame(width: 56, height: 56)
+            NavigationLink {
+                activityDetailView
+            } label: {
+                RunRouteThumbnailView(coordinates: activity.run.routeCoordinates)
+                    .frame(width: 56, height: 56)
+            }
+            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 6) {
                 NavigationLink {
@@ -351,45 +356,54 @@ private struct FriendRecentRunRow: View {
                 .buttonStyle(.plain)
 
                 NavigationLink {
-                    RunActivityDetailView(
-                        record: activity.run,
-                        owner: RunActivityOwner(
-                            uid: activity.friendUID,
-                            nickname: activity.friendNickname,
-                            profileImageBase64: activity.profileImageBase64,
-                            statusText: activity.statusText
-                        )
-                    )
+                    activityDetailView
                 } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 6) {
-                            Text(vm.formatDate(activity.run.startedAt))
-                            Text("·")
-                            Text(vm.formatDistance(activity.run.distance))
-                        }
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.textSecondary)
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack(spacing: 6) {
+                                Text(vm.formatDate(activity.run.startedAt))
+                                Text("·")
+                                Text(vm.formatDistance(activity.run.distance))
+                            }
+                            .font(.system(size: 13))
+                            .foregroundStyle(Color.textSecondary)
 
-                        HStack(spacing: 12) {
-                            Text(vm.formatDuration(activity.run.duration))
-                            Text(vm.formatPace(activity.run.displayPace) + "/km")
+                            HStack(spacing: 12) {
+                                Text(vm.formatDuration(activity.run.duration))
+                                Text(vm.formatPace(activity.run.displayPace) + "/km")
+                            }
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.textPrimary)
                         }
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(Color.textPrimary)
+
+                        Spacer(minLength: 8)
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(Color.gray300)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.gray300)
         }
         .padding(14)
         .background(Color.backgroundPrimary)
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .accessibilityHint("친구의 러닝 활동 상세를 엽니다")
+    }
+
+    private var activityDetailView: some View {
+        RunActivityDetailView(
+            record: activity.run,
+            owner: RunActivityOwner(
+                uid: activity.friendUID,
+                nickname: activity.friendNickname,
+                profileImageBase64: activity.profileImageBase64,
+                statusText: activity.statusText
+            )
+        )
     }
 }
 
