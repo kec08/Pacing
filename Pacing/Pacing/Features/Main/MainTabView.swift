@@ -86,6 +86,8 @@ struct MainTabView: View {
             locationManager.currentLocation?.coordinate
         } songProvider: {
             currentPresenceSong()
+        } isRunningProvider: {
+            selection == .running
         } onError: { error in
             DispatchQueue.main.async {
                 guard lastPresenceErrorDate?.addingTimeInterval(30) ?? .distantPast < .now else { return }
@@ -105,7 +107,8 @@ struct MainTabView: View {
             uid: uid,
             nickname: nickname,
             coord: coordinate,
-            song: currentPresenceSong()
+            song: currentPresenceSong(),
+            isRunning: selection == .running
         )
     }
 

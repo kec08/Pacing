@@ -343,7 +343,8 @@ struct RunningView: View {
                     uid: uid,
                     nickname: nickname,
                     coord: viewModel.locationManager.currentLocation?.coordinate,
-                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? "")
+                    song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? ""),
+                    isRunning: viewModel.state == .running || viewModel.state == .paused
                 )
             }
             // 호스트면 세션에도 브로드캐스트
