@@ -930,7 +930,7 @@ struct RunningView: View {
                                 title: listenSession?.songTitle ?? "",
                                 artist: listenSession?.artistName ?? "",
                                 storeID: listenSession?.songStoreID ?? ""
-                            )
+                            ) ?? matchedDisplaySong
                             : matchedDisplaySong
                         let visibleSongTitle = isActiveListenGuest
                             ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))

@@ -530,6 +530,7 @@ final class RunningMusicViewModel: ObservableObject {
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? artworkURL(for: currentSong)
                     ?? resolvedApplicationArtworkURLsByEntryKey[entryKey],
                 artwork: nil
             )
