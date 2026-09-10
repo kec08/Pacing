@@ -1180,12 +1180,16 @@ struct RunningView: View {
                             .accessibilityLabel("이전 곡")
 
                             Button {
-                                if shouldRunLocalPlaybackClock {
-                                    stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                if isActiveListenGuest {
+                                    Task { await listenVM.toggleGuestPlayback(musicVM: musicVM) }
                                 } else {
-                                    startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                    if shouldRunLocalPlaybackClock {
+                                        stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                    } else {
+                                        startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                    }
+                                    Task { await musicVM.togglePlayPause() }
                                 }
-                                Task { await musicVM.togglePlayPause() }
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.system(size: 68))

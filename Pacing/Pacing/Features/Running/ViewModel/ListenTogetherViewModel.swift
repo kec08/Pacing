@@ -23,6 +23,7 @@ final class ListenTogetherViewModel: ObservableObject {
     private var lastAppliedPlaybackEventID = ""
     private var inFlightPlaybackEventID: String?
     private var activePlaybackSyncToken: UUID?
+    private var guestLocallyPaused = false
     private var requestHapticTask: Task<Void, Never>?
 
     // MARK: - 요청 수신 감지 시작
@@ -183,6 +184,24 @@ final class ListenTogetherViewModel: ObservableObject {
         broadcastIfHost(musicVM: musicVM)
     }
 
+    /// 게스트는 자신의 기기에서만 재생을 멈추고, 다시 재생할 때 호스트 위치로 보정합니다.
+    func toggleGuestPlayback(musicVM: RunningMusicViewModel) async {
+        guard !isHost, activeSession?.status == "active" else { return }
+
+        if musicVM.isPlaying {
+            guestLocallyPaused = true
+            await musicVM.togglePlayPause()
+            return
+        }
+
+        guestLocallyPaused = false
+        if let session = activeSession {
+            await syncMusic(session: session, musicVM: musicVM)
+        } else {
+            await musicVM.togglePlayPause()
+        }
+    }
+
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
@@ -299,7 +318,7 @@ final class ListenTogetherViewModel: ObservableObject {
             artist: session.artistName,
             artworkURL: session.artworkURL,
             position: targetPosition,
-            isPlaying: session.isPlaying
+            isPlaying: session.isPlaying && !guestLocallyPaused
         ) {
             lastAppliedPlaybackEventID = eventID
             return
@@ -391,6 +410,9 @@ final class ListenTogetherViewModel: ObservableObject {
                 || (snapshot.title == session.songTitle && snapshot.artistName == session.artistName)
             if !isSameSong {
                 return true
+            }
+            if guestLocallyPaused {
+                return false
             }
             let latency = Date().timeIntervalSince1970 - (session.serverTimestamp / 1000.0)
             let expectedPosition = max(0, session.playbackPosition + latency)
@@ -539,6 +561,7 @@ final class ListenTogetherViewModel: ObservableObject {
         activePlaybackSyncToken = nil
         inFlightPlaybackEventID = nil
         lastAppliedPlaybackEventID = ""
+        guestLocallyPaused = false
         lastHostedTrackKey = ""
         lastHostedArtworkURL = ""
     }
