@@ -49,6 +49,16 @@ final class ListenTogetherViewModel: ObservableObject {
 
     // MARK: - 같이 듣기 요청 보내기
     func sendRequest(to runner: NearbyRunner, musicVM: RunningMusicViewModel) async {
+        let latestRunner = try? await RealtimeDBService.shared.fetchActiveRunner(uid: runner.id)
+        let requestedSongTitle = latestRunner?.songTitle.isEmpty == false
+            ? latestRunner!.songTitle
+            : runner.songTitle
+        let requestedArtist = latestRunner?.artist.isEmpty == false
+            ? latestRunner!.artist
+            : runner.artist
+        let requestedNickname = latestRunner?.nickname.isEmpty == false
+            ? latestRunner!.nickname
+            : runner.nickname
         let cachedProfileImage = UserDefaults.standard.string(forKey: "profileImageBase64") ?? ""
         let latestProfileImage = (try? await FirestoreService.shared.fetchUserProfile(uid: myUID))?["profileImageBase64"] as? String
         let guestProfileImageBase64 = latestProfileImage?.isEmpty == false ? latestProfileImage! : cachedProfileImage
@@ -61,13 +71,13 @@ final class ListenTogetherViewModel: ObservableObject {
             : storedHostProfileImage
         let playbackEventID = UUID().uuidString
         let sessionID = RealtimeDBService.shared.createListenSession(
-            hostUID: runner.id, hostNickname: runner.nickname,
+            hostUID: runner.id, hostNickname: requestedNickname,
             hostProfileImageBase64: latestHostProfileImage,
             guestUID: myUID, guestNickname: myNickname,
             guestProfileImageBase64: guestProfileImageBase64,
             songStoreID: "",
-            songTitle: runner.songTitle,
-            artistName: runner.artist,
+            songTitle: requestedSongTitle,
+            artistName: requestedArtist,
             artworkURL: "",
             artworkData: "",
             playbackEventID: playbackEventID,
@@ -76,13 +86,13 @@ final class ListenTogetherViewModel: ObservableObject {
         )
 
         activeSession = ListenSession(
-            id: sessionID, hostUID: runner.id, hostNickname: runner.nickname,
+            id: sessionID, hostUID: runner.id, hostNickname: requestedNickname,
             hostProfileImageBase64: latestHostProfileImage,
             guestUID: myUID, guestNickname: myNickname,
             guestProfileImageBase64: guestProfileImageBase64,
             songStoreID: "",
-            songTitle: runner.songTitle,
-            artistName: runner.artist,
+            songTitle: requestedSongTitle,
+            artistName: requestedArtist,
             artworkURL: "",
             artworkData: "",
             playbackEventID: playbackEventID,

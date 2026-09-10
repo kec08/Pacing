@@ -1940,7 +1940,10 @@ struct RunningView: View {
         localArtwork: UIImage? = nil,
         localMusicArtwork: Artwork? = nil
     ) -> some View {
-        let artworkID = "\(session.playbackEventID)|\(session.songStoreID)|\(session.artworkURL)"
+        let artworkFingerprint = session.artworkData.isEmpty
+            ? session.artworkURL
+            : "\(session.artworkURL)|\(session.artworkData.hashValue)"
+        let artworkID = "\(session.playbackEventID)|\(session.songStoreID)|\(artworkFingerprint)"
         ZStack {
             listenArtwork(
                 session: session,
