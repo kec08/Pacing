@@ -351,6 +351,54 @@ final class RunningMusicViewModel: ObservableObject {
         queueArtworkURLsBySongID["\(song.id)"] = artworkURL
     }
 
+    /// 게스트 음악 시트가 열린 뒤에도 현재 세션 곡의 커버를 보강합니다.
+    /// 곡 전환 이벤트가 먼저 처리되고 커버 메타데이터가 늦게 도착하는 경우를 위한 재시도 경로입니다.
+    func refreshListenSessionArtwork(
+        songStoreID: String,
+        title: String,
+        artist: String,
+        artworkURL: String
+    ) async {
+        let targetSong: Song?
+        if let queueSong = queueSongs.first(where: {
+            (!songStoreID.isEmpty && "\($0.id)" == songStoreID)
+                || ($0.title.caseInsensitiveCompare(title) == .orderedSame
+                    && $0.artistName.caseInsensitiveCompare(artist) == .orderedSame)
+        }) {
+            targetSong = queueSong
+        } else if !songStoreID.isEmpty {
+            targetSong = await musicService.resolveCatalogSong(id: MusicItemID(songStoreID))
+        } else {
+            targetSong = await musicService.resolveCatalogSong(title: title, artist: artist)
+        }
+
+        guard let targetSong else { return }
+        let targetID = "\(targetSong.id)"
+        var resolvedArtworkURL: String?
+        if let url = URL(string: artworkURL),
+           ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+            resolvedArtworkURL = artworkURL
+        } else {
+            let resolvedURLs = await musicService.resolvedArtworkURLs(for: [targetSong])
+            if let url = resolvedURLs[targetID] {
+                resolvedArtworkURL = url
+            } else {
+                resolvedArtworkURL = await musicService.resolvedRecentSongArtworkURL(
+                    title: title.isEmpty ? targetSong.title : title,
+                    artistName: artist.isEmpty ? targetSong.artistName : artist
+                )
+            }
+        }
+
+        guard let resolvedArtworkURL,
+              !resolvedArtworkURL.isEmpty,
+              !Task.isCancelled
+        else { return }
+
+        queueArtworkURLsBySongID[targetID] = resolvedArtworkURL
+        syncCurrentState()
+    }
+
     private func resolveListenSessionArtworkIfNeeded(
         for song: Song,
         title: String,

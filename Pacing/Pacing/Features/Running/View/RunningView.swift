@@ -1289,8 +1289,17 @@ struct RunningView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                     .shadow(color: .black.opacity(0.08), radius: 8, y: -2)
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: musicSheetPanel)
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: musicSheetPanel)
+            }
+            .task(id: "\(listenVM.activeSession?.playbackEventID ?? "")|\(listenVM.activeSession?.songStoreID ?? "")|\(listenVM.activeSession?.artworkURL ?? "")") {
+                guard isActiveListenGuest, let session = listenVM.activeSession else { return }
+                await musicVM.refreshListenSessionArtwork(
+                    songStoreID: session.songStoreID,
+                    title: session.songTitle,
+                    artist: session.artistName,
+                    artworkURL: session.artworkURL
+                )
             }
             .navigationTitle("음악")
             .navigationBarTitleDisplayMode(.inline)
