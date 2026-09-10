@@ -2,8 +2,20 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
+struct RunActivityOwner {
+    let nickname: String
+    let profileImageBase64: String?
+    let statusText: String
+}
+
 struct RunActivityDetailView: View {
     let record: RunRecord
+    let owner: RunActivityOwner?
+
+    init(record: RunRecord, owner: RunActivityOwner? = nil) {
+        self.record = record
+        self.owner = owner
+    }
 
     @State private var cameraPosition: MapCameraPosition = .automatic
 
@@ -26,6 +38,21 @@ struct RunActivityDetailView: View {
 
     private var activityHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let owner {
+                HStack(spacing: 10) {
+                    RunActivityOwnerAvatar(owner: owner)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(owner.nickname)
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                        Text(owner.statusText)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
+                .padding(.bottom, 4)
+            }
             Text(startedAtText)
                 .font(.system(size: 14))
                 .foregroundStyle(Color.textSecondary)
@@ -253,6 +280,36 @@ struct RunActivityDetailView: View {
             minimumDelta: 0.003
         ) else { return }
         cameraPosition = .region(region)
+    }
+}
+
+private struct RunActivityOwnerAvatar: View {
+    let owner: RunActivityOwner
+
+    var body: some View {
+        Group {
+            if let image = decodedImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Circle().fill(Color.main200.opacity(0.8))
+                    Text(owner.nickname.prefix(1).isEmpty ? "러" : String(owner.nickname.prefix(1)))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.main500)
+                }
+            }
+        }
+        .frame(width: 38, height: 38)
+        .clipShape(Circle())
+        .overlay { Circle().stroke(Color.surfaceBorder, lineWidth: 1) }
+    }
+
+    private var decodedImage: UIImage? {
+        guard let encoded = owner.profileImageBase64,
+              let data = Data(base64Encoded: encoded) else { return nil }
+        return UIImage(data: data)
     }
 }
 

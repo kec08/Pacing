@@ -324,7 +324,14 @@ private struct FriendRecentRunRow: View {
 
     var body: some View {
         NavigationLink {
-            RunActivityDetailView(record: activity.run)
+            RunActivityDetailView(
+                record: activity.run,
+                owner: RunActivityOwner(
+                    nickname: activity.friendNickname,
+                    profileImageBase64: activity.profileImageBase64,
+                    statusText: activity.statusText
+                )
+            )
         } label: {
             HStack(spacing: 14) {
                 RunRouteThumbnailView(coordinates: activity.run.routeCoordinates)

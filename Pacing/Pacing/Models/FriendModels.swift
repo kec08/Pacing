@@ -83,6 +83,8 @@ struct FriendRecentSongActivity: Identifiable, Equatable {
 struct FriendRecentRunActivity: Identifiable {
     let friendUID: String
     let friendNickname: String
+    let profileImageBase64: String?
+    let statusText: String
     let run: RunRecord
 
     var id: String {

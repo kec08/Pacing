@@ -300,11 +300,18 @@ final class FirestoreService {
                 continue
             }
 
-            let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
+            let friendData = friendDocument.data()
+            let nickname = friendData["nickname"] as? String ?? "러너"
+            var profileImageBase64 = friendData["profileImageBase64"] as? String
+            if profileImageBase64 == nil || profileImageBase64?.isEmpty == true {
+                profileImageBase64 = (try? await fetchUserProfile(uid: friendDocument.documentID))?["profileImageBase64"] as? String
+            }
             activities.append(
                 FriendRecentRunActivity(
                     friendUID: friendDocument.documentID,
                     friendNickname: nickname,
+                    profileImageBase64: profileImageBase64,
+                    statusText: FriendActivityText.runningStatus(lastRunDate: run.startedAt),
                     run: run
                 )
             )
@@ -321,19 +328,57 @@ final class FirestoreService {
             .getDocuments()
 
         var friends: [FriendUser] = []
+        var friendIDsNeedingProfileImage: [String] = []
         friends.reserveCapacity(snapshot.documents.count)
         for doc in snapshot.documents {
             let data = doc.data()
             let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
+            let profileImageBase64 = data["profileImageBase64"] as? String
+            if profileImageBase64 == nil || profileImageBase64?.isEmpty == true {
+                friendIDsNeedingProfileImage.append(doc.documentID)
+            }
             friends.append(FriendUser(
                 id: doc.documentID,
                 nickname: data["nickname"] as? String ?? "러너",
-                profileImageBase64: data["profileImageBase64"] as? String,
+                profileImageBase64: profileImageBase64,
                 statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
                 source: .friend
             ))
         }
-        return friends
+
+        guard !friendIDsNeedingProfileImage.isEmpty else { return friends }
+        let refreshedImages = await fetchProfileImages(for: friendIDsNeedingProfileImage)
+        return friends.map { friend in
+            guard friend.profileImageBase64 == nil || friend.profileImageBase64?.isEmpty == true else {
+                return friend
+            }
+            return FriendUser(
+                id: friend.id,
+                nickname: friend.nickname,
+                profileImageBase64: refreshedImages[friend.id],
+                statusText: friend.statusText,
+                source: friend.source
+            )
+        }
+    }
+
+    private func fetchProfileImages(for uids: [String]) async -> [String: String] {
+        var images: [String: String] = [:]
+        for startIndex in stride(from: 0, to: uids.count, by: 4) {
+            let batch = uids[startIndex..<min(startIndex + 4, uids.count)]
+            await withTaskGroup(of: (String, String?).self) { group in
+                for uid in batch {
+                    group.addTask { [db] in
+                        let profile = try? await db.collection("users").document(uid).getDocument()
+                        return (uid, profile?.data()?["profileImageBase64"] as? String)
+                    }
+                }
+                for await (uid, image) in group {
+                    if let image, !image.isEmpty { images[uid] = image }
+                }
+            }
+        }
+        return images
     }
 
     // MARK: - 친구 프로필 조회
