@@ -8,6 +8,8 @@ final class MyProfileDetailViewModel: ObservableObject {
     @Published var recentSongs: [FriendRecentSong] = []
     @Published var recentRuns: [RunRecord] = []
     @Published var recentSongArtworkURLs: [String: String] = [:]
+    @Published private(set) var playingSongID: String?
+    @Published private(set) var playbackError: String?
     @Published var isLoading: Bool = false
     @Published var errorMessage: String?
 
@@ -51,6 +53,26 @@ final class MyProfileDetailViewModel: ObservableObject {
             }
         }
         return urls
+    }
+
+    func playRecentSong(_ song: FriendRecentSong) async {
+        guard let songStoreID = song.songStoreID,
+              !songStoreID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            playbackError = "재생 정보를 찾을 수 없어요"
+            playingSongID = nil
+            return
+        }
+
+        playingSongID = song.id
+        playbackError = nil
+
+        do {
+            try await musicService.playTracks(with: [songStoreID])
+        } catch {
+            playbackError = "재생을 시작하지 못했어요"
+            playingSongID = nil
+        }
     }
 
     var formattedAveragePace: String {
