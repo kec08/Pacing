@@ -21,6 +21,9 @@ final class ListenTogetherViewModel: ObservableObject {
     private var lastHostedTrackKey = ""
     private var lastHostedArtworkURL = ""
     private var lastAppliedPlaybackEventID = ""
+    private var lastFailedPlaybackEventID: String?
+    private var lastPlaybackRetryDate: Date?
+    private let playbackRetryInterval: TimeInterval = 3
     private var inFlightPlaybackEventID: String?
     private var activePlaybackSyncToken: UUID?
     private var guestLocallyPaused = false
@@ -301,6 +304,11 @@ final class ListenTogetherViewModel: ObservableObject {
 
         // Firebase의 위치 보정 값은 매초 바뀐다. 동일한 곡 전환을 준비 중이면 새 작업을 시작하지 않는다.
         guard inFlightPlaybackEventID != eventID else { return }
+        if lastFailedPlaybackEventID == eventID,
+           let lastPlaybackRetryDate,
+           Date().timeIntervalSince(lastPlaybackRetryDate) < playbackRetryInterval {
+            return
+        }
 
         let syncToken = UUID()
         inFlightPlaybackEventID = eventID
@@ -325,13 +333,16 @@ final class ListenTogetherViewModel: ObservableObject {
             isPlaying: session.isPlaying && !guestLocallyPaused
         ) {
             lastAppliedPlaybackEventID = eventID
+            lastFailedPlaybackEventID = nil
+            lastPlaybackRetryDate = nil
             return
         }
 
         // 러닝 앱의 주 재생기는 ApplicationMusicPlayer다. 카탈로그에서 곡을 찾지
         // 못한 경우 systemMusicPlayer 큐를 반복 재구성하지 않아 다른 곡이 계속
         // 로딩되는 현상을 막는다. 다음 실제 곡 전환 이벤트에서 다시 시도한다.
-        lastAppliedPlaybackEventID = eventID
+        lastFailedPlaybackEventID = eventID
+        lastPlaybackRetryDate = Date()
         print("[ListenTogether] application player sync failed: \(session.songTitle) - \(session.artistName)")
     }
 
@@ -565,6 +576,8 @@ final class ListenTogetherViewModel: ObservableObject {
         activePlaybackSyncToken = nil
         inFlightPlaybackEventID = nil
         lastAppliedPlaybackEventID = ""
+        lastFailedPlaybackEventID = nil
+        lastPlaybackRetryDate = nil
         guestLocallyPaused = false
         lastHostedTrackKey = ""
         lastHostedArtworkURL = ""
