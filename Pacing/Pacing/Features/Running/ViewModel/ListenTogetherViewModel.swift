@@ -25,6 +25,10 @@ final class ListenTogetherViewModel: ObservableObject {
     private var activePlaybackSyncToken: UUID?
     private var guestLocallyPaused = false
     private var requestHapticTask: Task<Void, Never>?
+    private var profileImageCache: [String: String] = [:]
+    private var profileImageLookupTasks: [String: Task<String?, Never>] = [:]
+    private var missingProfileImageExpiry: [String: Date] = [:]
+    private let missingProfileImageTTL: TimeInterval = 10 * 60
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -571,15 +575,7 @@ final class ListenTogetherViewModel: ObservableObject {
         let participantIDs = [session.hostUID, session.guestUID]
 
         for uid in participantIDs where !uid.isEmpty && resolved.profileImageBase64(for: uid).isEmpty {
-            let cachedImage = uid == myUID
-                ? UserDefaults.standard.string(forKey: "profileImageBase64")
-                : nil
-            let image: String?
-            if let cachedImage, !cachedImage.isEmpty {
-                image = cachedImage
-            } else {
-                image = (try? await FirestoreService.shared.fetchUserProfile(uid: uid))?["profileImageBase64"] as? String
-            }
+            let image = await profileImage(for: uid)
 
             guard let image, !image.isEmpty else { continue }
             if uid == resolved.hostUID {
@@ -590,6 +586,43 @@ final class ListenTogetherViewModel: ObservableObject {
         }
 
         return resolved
+    }
+
+    private func profileImage(for uid: String) async -> String? {
+        if let cachedImage = profileImageCache[uid], !cachedImage.isEmpty {
+            return cachedImage
+        }
+
+        if uid == myUID,
+           let localImage = UserDefaults.standard.string(forKey: "profileImageBase64"),
+           !localImage.isEmpty {
+            profileImageCache[uid] = localImage
+            return localImage
+        }
+
+        if let expiry = missingProfileImageExpiry[uid] {
+            if expiry > Date() { return nil }
+            missingProfileImageExpiry.removeValue(forKey: uid)
+        }
+
+        if let lookupTask = profileImageLookupTasks[uid] {
+            return await lookupTask.value
+        }
+
+        let lookupTask = Task<String?, Never> {
+            (try? await FirestoreService.shared.fetchUserProfile(uid: uid))?["profileImageBase64"] as? String
+        }
+        profileImageLookupTasks[uid] = lookupTask
+        let image = await lookupTask.value
+        profileImageLookupTasks.removeValue(forKey: uid)
+
+        if let image, !image.isEmpty {
+            profileImageCache[uid] = image
+            return image
+        }
+
+        missingProfileImageExpiry[uid] = Date().addingTimeInterval(missingProfileImageTTL)
+        return nil
     }
 
     private func playRequestHapticPattern() {
