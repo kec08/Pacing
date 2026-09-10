@@ -304,8 +304,33 @@ final class RunningMusicViewModel: ObservableObject {
         let targetSong: Song
         if let targetIndex {
             targetSong = queueSongs[targetIndex]
-            if targetIndex != currentSongIndex || !isUsingApplicationPlayer {
+            let currentEntryMatchesTarget = applicationPlayer.queue.currentEntry.map {
+                $0.id == "\(targetSong.id)"
+                    || ($0.title.caseInsensitiveCompare(targetSong.title) == .orderedSame
+                        && ($0.subtitle ?? "").caseInsensitiveCompare(targetSong.artistName) == .orderedSame)
+            } ?? false
+            if targetIndex != currentSongIndex || !isUsingApplicationPlayer || !currentEntryMatchesTarget {
                 await play(at: targetIndex, from: currentSongIndex)
+            }
+
+            // play(at:) may fail while the MusicKit queue is stale or externally changed.
+            // Rebuild the queue before applying the session position so a failed transition
+            // cannot leave the guest on an unrelated track.
+            let queueMatchesTarget = applicationPlayer.queue.currentEntry.map {
+                $0.id == "\(targetSong.id)"
+                    || ($0.title.caseInsensitiveCompare(targetSong.title) == .orderedSame
+                        && ($0.subtitle ?? "").caseInsensitiveCompare(targetSong.artistName) == .orderedSame)
+            } ?? false
+            if !queueMatchesTarget {
+                musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
+                applicationPlayer.queue = .init(for: queueSongs, startingAt: targetSong)
+                NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+                do {
+                    try await applicationPlayer.prepareToPlay()
+                } catch {
+                    print("[RunningMusic] listen session queue preparation failed: \(error.localizedDescription)")
+                    return false
+                }
             }
         } else {
             let resolvedSong: Song?
@@ -326,7 +351,12 @@ final class RunningMusicViewModel: ObservableObject {
             musicService.playbackContext.configure(songs: [targetSong], startingAt: targetSong)
             applicationPlayer.queue = .init(for: [targetSong])
             NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
-            try? await applicationPlayer.prepareToPlay()
+            do {
+                try await applicationPlayer.prepareToPlay()
+            } catch {
+                print("[RunningMusic] listen session catalog preparation failed: \(error.localizedDescription)")
+                return false
+            }
         }
 
         let boundedPosition = max(0, min(position, playbackDuration > 0 ? playbackDuration : position))
@@ -335,7 +365,12 @@ final class RunningMusicViewModel: ObservableObject {
         applicationPlayer.playbackTime = boundedPosition
         displayPlaybackTime = boundedPosition
         if isPlaying {
-            try? await applicationPlayer.play()
+            do {
+                try await applicationPlayer.play()
+            } catch {
+                print("[RunningMusic] listen session playback failed: \(error.localizedDescription)")
+                return false
+            }
         } else {
             applicationPlayer.pause()
         }
