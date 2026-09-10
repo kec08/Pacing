@@ -291,6 +291,7 @@ final class ListenTogetherViewModel: ObservableObject {
             songStoreID: session.songStoreID,
             title: session.songTitle,
             artist: session.artistName,
+            artworkURL: session.artworkURL,
             position: targetPosition,
             isPlaying: session.isPlaying
         ) {

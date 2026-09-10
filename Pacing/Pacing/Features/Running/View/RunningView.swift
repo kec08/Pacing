@@ -982,6 +982,13 @@ struct RunningView: View {
                                     .id(displaySnapshot?.songStoreID ?? listenSession?.songStoreID ?? "")
                                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if isActiveListenGuest,
+                                      let artworkURL = musicVM.artworkURL(for: musicVM.currentSong) {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id("current-\(musicVM.currentSong?.id.rawValue ?? "")-\(artworkURL)")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if isActiveListenGuest,
                                       let artworkURL = displaySnapshot?.artworkURL,
                                       !artworkURL.isEmpty {
                                 RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
