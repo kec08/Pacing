@@ -924,6 +924,7 @@ struct RunningView: View {
                         let matchedListenArtwork = isActiveListenGuest
                             ? matchingArtwork(for: listenSession, snapshot: displaySnapshot)
                             : nil
+                        let matchedDisplaySong = matchingQueueSong(for: displaySnapshot)
                         let visibleSongTitle = isActiveListenGuest
                             ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))
                             : displaySnapshotTitle(displaySnapshot)
@@ -948,6 +949,22 @@ struct RunningView: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
                                     .frame(width: artSize, height: artSize)
                                     .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if !isActiveListenGuest,
+                                      let song = matchedDisplaySong,
+                                      let artwork = song.artwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                                    .id(displaySnapshot?.songStoreID ?? "")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if !isActiveListenGuest,
+                                      let song = matchedDisplaySong,
+                                      let artworkURL = musicVM.artworkURL(for: song) {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id(displaySnapshot?.songStoreID ?? artworkURL)
                                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
@@ -1514,6 +1531,14 @@ struct RunningView: View {
     private func displaySnapshotTitle(_ snapshot: PlayerSongSnapshot?) -> String? {
         guard let title = snapshot?.title, !title.isEmpty else { return nil }
         return title
+    }
+
+    private func matchingQueueSong(for snapshot: PlayerSongSnapshot?) -> Song? {
+        guard let snapshot else { return nil }
+        return musicVM.queueSongs.first { song in
+            song.title.caseInsensitiveCompare(snapshot.title) == .orderedSame
+                && song.artistName.caseInsensitiveCompare(snapshot.artistName) == .orderedSame
+        }
     }
 
     private func displaySnapshotArtist(_ snapshot: PlayerSongSnapshot?) -> String? {
