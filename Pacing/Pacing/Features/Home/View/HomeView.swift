@@ -4,6 +4,7 @@ import UIKit
 struct HomeView: View {
     @StateObject private var vm = HomeViewModel()
     @State private var playingFriendSongID: String?
+    @State private var didLoadHomeData = false
 
     var body: some View {
         NavigationStack {
@@ -22,7 +23,11 @@ struct HomeView: View {
             .refreshable { await vm.loadHomeData() }
             .navigationBarHidden(true)
         }
-        .task { await vm.loadHomeData() }
+        .task {
+            guard !didLoadHomeData else { return }
+            await vm.loadHomeData()
+            didLoadHomeData = true
+        }
     }
 
     // MARK: - 친구 최근 러닝
@@ -377,16 +382,23 @@ private struct FriendRecentRunRow: View {
                         }
 
                         Spacer(minLength: 8)
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Color.gray300)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
+
+            NavigationLink {
+                activityDetailView
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Color.gray300)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
         }
         .padding(14)
         .background(Color.backgroundPrimary)
