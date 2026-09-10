@@ -921,6 +921,9 @@ struct RunningView: View {
                         let listenSession = listenVM.activeSession
                         let sessionArtwork = decodedArtworkData(listenSession?.artworkData ?? "")
                         let listenArtwork = isActiveListenGuest ? sessionArtwork : nil
+                        let matchedListenArtwork = isActiveListenGuest
+                            ? matchingArtwork(for: listenSession, snapshot: displaySnapshot)
+                            : nil
                         let visibleSongTitle = isActiveListenGuest
                             ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))
                             : displaySnapshotTitle(displaySnapshot)
@@ -932,6 +935,14 @@ struct RunningView: View {
                         Group {
                             if let listenArtwork {
                                 Image(uiImage: listenArtwork)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                                    .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if let matchedListenArtwork {
+                                Image(uiImage: matchedListenArtwork)
                                     .resizable()
                                     .scaledToFill()
                                     .clipShape(RoundedRectangle(cornerRadius: 24))
@@ -968,6 +979,9 @@ struct RunningView: View {
                                 }
                                 .tabViewStyle(.page(indexDisplayMode: .never))
                                 .frame(width: artSize, height: artSize)
+                            } else if isActiveListenGuest {
+                                artworkPlaceholder
+                                    .frame(width: artSize, height: artSize)
                             } else if let artwork = displaySnapshot?.artwork {
                                 Image(uiImage: artwork)
                                     .resizable()
@@ -1636,8 +1650,14 @@ struct RunningView: View {
                         listenArtwork(
                             session: session,
                             size: min(proxy.size.width, 156),
-                            localArtwork: musicVM.currentSongSnapshot()?.artwork,
-                            localMusicArtwork: musicVM.currentMusicArtwork
+                            localArtwork: matchingArtwork(
+                                for: session,
+                                snapshot: musicVM.currentSongSnapshot()
+                            ),
+                            localMusicArtwork: matchingMusicArtwork(
+                                for: session,
+                                snapshot: musicVM.currentSongSnapshot()
+                            )
                         )
                         .frame(maxWidth: .infinity)
                     }
@@ -1701,8 +1721,14 @@ struct RunningView: View {
                                     animatedListenArtwork(
                                         session: session,
                                         size: 240,
-                                        localArtwork: musicVM.currentSongSnapshot()?.artwork,
-                                        localMusicArtwork: musicVM.currentMusicArtwork
+                                        localArtwork: matchingArtwork(
+                                            for: session,
+                                            snapshot: musicVM.currentSongSnapshot()
+                                        ),
+                                        localMusicArtwork: matchingMusicArtwork(
+                                            for: session,
+                                            snapshot: musicVM.currentSongSnapshot()
+                                        )
                                     )
 
                                     VStack(spacing: 4) {
@@ -1880,12 +1906,12 @@ struct RunningView: View {
 
     private func listenAlbumHeader(session: ListenSession) -> some View {
         HStack(spacing: 12) {
-            let localArtwork = musicVM.currentSongSnapshot()?.artwork
+            let snapshot = musicVM.currentSongSnapshot()
             animatedListenArtwork(
                 session: session,
                 size: 66,
-                localArtwork: localArtwork,
-                localMusicArtwork: musicVM.currentMusicArtwork
+                localArtwork: matchingArtwork(for: session, snapshot: snapshot),
+                localMusicArtwork: matchingMusicArtwork(for: session, snapshot: snapshot)
             )
                 .frame(width: 66, height: 66)
                 .accessibilityHidden(true)
@@ -2005,6 +2031,18 @@ struct RunningView: View {
               playerItem.artist == session.artistName
         else { return nil }
         return playerItem.artwork?.image(at: CGSize(width: 320, height: 320))
+    }
+
+    private func matchingMusicArtwork(
+        for session: ListenSession?,
+        snapshot: PlayerSongSnapshot?
+    ) -> Artwork? {
+        guard let session,
+              let snapshot,
+              snapshot.title == session.songTitle,
+              snapshot.artistName == session.artistName
+        else { return nil }
+        return musicVM.currentMusicArtwork
     }
 
     private var listenArtworkPlaceholder: some View {
