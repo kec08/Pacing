@@ -11,6 +11,7 @@ struct ActiveRunner: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let songTitle: String
     let artist: String
+    let profileImageBase64: String?
     let updatedAt: TimeInterval
 
     func isFresh(referenceDate: Date = .now) -> Bool {
@@ -199,6 +200,7 @@ final class RealtimeDBService {
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
             songTitle: d["currentSongTitle"] as? String ?? "",
             artist: d["currentArtist"] as? String ?? "",
+            profileImageBase64: d["profileImageBase64"] as? String,
             updatedAt: updatedAt
         )
     }
@@ -290,7 +292,21 @@ final class RealtimeDBService {
             "status": "pending",
             "isPlaying": isPlaying
         ]
-        sessionRef.setValue(["metadata": metadata, "playback": playback])
+        // 루트에는 기존 보안 규칙·구버전 클라이언트 호환에 필요한 작은 메타데이터만
+        // 유지한다. 프로필·앨범 Base64는 metadata 하위 경로에만 저장한다.
+        sessionRef.setValue([
+            "metadata": metadata,
+            "playback": playback,
+            "hostUID": hostUID,
+            "hostNickname": hostNickname,
+            "guestUID": guestUID,
+            "guestNickname": guestNickname,
+            "songStoreID": songStoreID,
+            "songTitle": songTitle,
+            "artistName": artistName,
+            "artworkURL": artworkURL,
+            "status": "pending"
+        ])
         // 요청을 받은 호스트에게 수신 알림 경로에도 기록합니다.
         // 세션의 guestUID는 요청자이므로 알림 수신자와 분리해야 합니다.
         db.child("incomingRequests").child(hostUID).child(sessionID).setValue(metadata.merging(playback) { _, new in new })
@@ -341,6 +357,11 @@ final class RealtimeDBService {
         if let artworkData { metadataUpdate["artworkData"] = artworkData }
         if !metadataUpdate.isEmpty {
             db.child("listenSessions").child(sessionID).child("metadata").updateChildValues(metadataUpdate)
+            // 구버전 클라이언트와 루트 기반 규칙을 위해 작은 문자열 메타데이터만 mirror한다.
+            let rootUpdate = metadataUpdate.filter { $0.key == "artworkURL" }
+            if !rootUpdate.isEmpty {
+                db.child("listenSessions").child(sessionID).updateChildValues(rootUpdate)
+            }
         }
     }
 
@@ -354,7 +375,7 @@ final class RealtimeDBService {
         let reference = db.child("listenSessions").child(sessionID)
         reference.child("metadata").observeSingleEvent(of: .value, with: { [weak self] snapshot in
             guard let self else { return }
-            guard snapshot.value is [String: Any] else {
+            guard snapshot.exists(), snapshot.childrenCount > 0 else {
                 self.legacySessionHandle = reference.observe(.value) { snapshot in
                     guard let d = snapshot.value as? [String: Any],
                           let session = Self.makeListenSession(id: sessionID, data: d)
