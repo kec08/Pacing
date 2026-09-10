@@ -236,10 +236,16 @@ final class ListenTogetherViewModel: ObservableObject {
                         self.startHostBroadcasting(with: musicVM)
                     }
                     if !self.isHost {
+                        let previousSession = self.activeSession
                         // 이후의 위치 갱신이 같은 전환 이벤트를 중복 처리하지 않도록 먼저 반영합니다.
                         self.activeSession = resolvedSession
-                        // 곡이 바뀌었거나 아직 같은 곡을 재생 중이 아니면 동기화
-                        if self.shouldSyncMusic(with: resolvedSession, musicVM: musicVM) {
+                        // 곡·재생 상태뿐 아니라, 같은 이벤트에서 늦게 보강되는 앨범 커버도
+                        // 게스트 큐 캐시에 반영해야 음악 시트가 placeholder에 머물지 않습니다.
+                        if self.shouldSyncMusic(
+                            with: resolvedSession,
+                            previousSession: previousSession,
+                            musicVM: musicVM
+                        ) {
                             await self.syncMusic(session: resolvedSession, musicVM: musicVM)
                         }
                         guard self.activeSession?.playbackEventID == resolvedSession.playbackEventID else {
@@ -363,8 +369,17 @@ final class ListenTogetherViewModel: ObservableObject {
         }
     }
 
-    private func shouldSyncMusic(with session: ListenSession, musicVM: RunningMusicViewModel) -> Bool {
-        if activeSession?.status != session.status {
+    private func shouldSyncMusic(
+        with session: ListenSession,
+        previousSession: ListenSession?,
+        musicVM: RunningMusicViewModel
+    ) -> Bool {
+        if previousSession?.status != session.status {
+            return true
+        }
+        let artworkChanged = previousSession?.artworkURL != session.artworkURL
+            || previousSession?.artworkData != session.artworkData
+        if artworkChanged {
             return true
         }
         let eventID = effectivePlaybackEventID(for: session)
