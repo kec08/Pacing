@@ -1258,6 +1258,13 @@ struct RunningView: View {
             seekValue = 0
             clearLocalPlaybackClock()
         }
+        .onChange(of: musicVM.isPlaying) { _, isPlaying in
+            if isPlaying {
+                startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+            } else {
+                stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+            }
+        }
         .presentationBackground(.ultraThinMaterial)
     }
     }

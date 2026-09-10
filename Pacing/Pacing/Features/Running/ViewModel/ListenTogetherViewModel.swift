@@ -113,7 +113,9 @@ final class ListenTogetherViewModel: ObservableObject {
         requestHapticTask = nil
         let player = MPMusicPlayerController.systemMusicPlayer
         let song = currentSongSnapshot(from: musicVM, player: player)
-        let position = player.currentPlaybackTime
+        let position = musicVM.isUsingApplicationPlayer
+            ? musicVM.currentPlaybackTime
+            : player.currentPlaybackTime
 
         var sourceSession = await resolvedProfileImages(for: session)
         sourceSession.songStoreID = song.storeID
@@ -125,7 +127,9 @@ final class ListenTogetherViewModel: ObservableObject {
         sourceSession.playbackPosition = position
         sourceSession.serverTimestamp = Date().timeIntervalSince1970 * 1000
         sourceSession.status = "active"
-        sourceSession.isPlaying = player.playbackState == .playing
+        sourceSession.isPlaying = musicVM.isUsingApplicationPlayer
+            ? musicVM.isPlaying
+            : player.playbackState == .playing
 
         RealtimeDBService.shared.updateSessionPlayback(
             sessionID: session.id,
@@ -136,7 +140,7 @@ final class ListenTogetherViewModel: ObservableObject {
             artworkData: song.artworkData,
             playbackEventID: sourceSession.playbackEventID,
             position: position,
-            isPlaying: player.playbackState == .playing
+            isPlaying: sourceSession.isPlaying
         )
         RealtimeDBService.shared.acceptSession(sessionID: session.id, hostUID: myUID)
 
@@ -174,12 +178,11 @@ final class ListenTogetherViewModel: ObservableObject {
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
-        let playbackPosition = musicVM.isUsingApplicationPlayer
-            ? musicVM.currentPlaybackTime
-            : player.currentPlaybackTime
-        let isPlaying = musicVM.isUsingApplicationPlayer
-            ? musicVM.isPlaying
-            : player.playbackState == .playing
+        // 같이 듣기 호스트의 기준 플레이어는 러닝 화면과 동일한
+        // RunningMusicViewModel입니다. 시스템 플레이어 상태를 섞으면
+        // 호스트는 정지했는데 세션 위치가 계속 증가하는 문제가 생깁니다.
+        let playbackPosition = musicVM.currentPlaybackTime
+        let isPlaying = musicVM.isPlaying
         let metadata = currentSongSnapshot(from: musicVM, player: player, includesArtworkData: false)
         let trackKey = [metadata.storeID, metadata.title, metadata.artist].joined(separator: "|")
         let isTrackTransition = !trackKey.isEmpty && trackKey != lastHostedTrackKey
