@@ -175,6 +175,14 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     // MARK: - 음악 소스: 재생 상태 브로드캐스트
+    func broadcastSeekIfHost(musicVM: RunningMusicViewModel) {
+        guard isHost, activeSession?.status == "active" else { return }
+        // 위치 이동은 같은 곡이어도 게스트가 반드시 재동기화해야 하므로
+        // 일반 주기 브로드캐스트와 구분되는 이벤트 ID를 발급합니다.
+        hostPlaybackEventID = UUID().uuidString
+        broadcastIfHost(musicVM: musicVM)
+    }
+
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, let session = activeSession, session.status == "active" else { return }
         let player = MPMusicPlayerController.systemMusicPlayer

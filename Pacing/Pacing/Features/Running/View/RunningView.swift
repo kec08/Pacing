@@ -1092,7 +1092,11 @@ struct RunningView: View {
                         // MARK: 스크러버
                         TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
                             let duration = musicVM.playbackDuration
-                            let localCurrent = localPlaybackCurrentTime(at: timeline.date, duration: duration)
+                            // 게스트는 호스트가 보낸 위치를 ApplicationMusicPlayer에 반영하므로
+                            // 로컬 기준시각을 우선하면 seek 이후에도 이전 위치에서 계속 증가한다.
+                            let localCurrent = isActiveListenGuest
+                                ? nil
+                                : localPlaybackCurrentTime(at: timeline.date, duration: duration)
                             let current: Double = isSeeking
                                 ? seekValue
                                 : (localCurrent ?? (duration > 0 ? min(musicVM.currentPlaybackTime, duration) : 0))
@@ -1119,7 +1123,12 @@ struct RunningView: View {
                                             let targetTime = seekValue
                                             isFinishingSeek = true
                                             musicVM.seek(to: targetTime)
-                                            startLocalPlaybackClock(from: targetTime)
+                                            if isActiveListenGuest {
+                                                clearLocalPlaybackClock()
+                                            } else {
+                                                startLocalPlaybackClock(from: targetTime)
+                                                listenVM.broadcastSeekIfHost(musicVM: musicVM)
+                                            }
 
                                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                                                 isSeeking = false
