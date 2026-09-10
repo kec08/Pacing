@@ -942,6 +942,14 @@ struct RunningView: View {
                                     .frame(width: artSize, height: artSize)
                                     .id(listenSession?.playbackEventID ?? listenSession?.songStoreID)
                                     .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if isActiveListenGuest,
+                                      let artworkURL = listenSession?.artworkURL,
+                                      !artworkURL.isEmpty {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id("listen-\(listenSession?.playbackEventID ?? "")-\(artworkURL)")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if let matchedListenArtwork {
                                 Image(uiImage: matchedListenArtwork)
                                     .resizable()

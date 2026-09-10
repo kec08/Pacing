@@ -418,7 +418,12 @@ final class ListenTogetherViewModel: ObservableObject {
             ?? mediaItem?.artist?.nonEmpty
             ?? ""
         let artworkURL = musicSnapshot?.artworkURL ?? ""
-        let mediaArtwork = mediaItem?.artwork?.image(at: CGSize(width: 320, height: 320))
+        // ApplicationMusicPlayer와 시스템 플레이어는 서로 다른 큐를 가질 수 있습니다.
+        // 앱 플레이어를 사용하는 동안 시스템 플레이어의 이전 커버를 세션에 넣으면
+        // 게스트가 곡과 무관한 동일한 고정 이미지만 계속 표시하게 됩니다.
+        let mediaArtwork = musicVM.isUsingApplicationPlayer
+            ? nil
+            : mediaItem?.artwork?.image(at: CGSize(width: 320, height: 320))
         let artworkData = includesArtworkData
             ? encodedArtworkData(from: musicSnapshot?.artwork ?? mediaArtwork)
             : ""
