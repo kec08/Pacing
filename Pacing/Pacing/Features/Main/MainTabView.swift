@@ -2,6 +2,7 @@ import SwiftUI
 import CoreLocation
 import FirebaseAuth
 import MediaPlayer
+import MusicKit
 import Combine
 
 private enum MainTab: Hashable {
@@ -84,8 +85,7 @@ struct MainTabView: View {
         RealtimeDBService.shared.startBroadcast(uid: uid, nickname: nickname) {
             locationManager.currentLocation?.coordinate
         } songProvider: {
-            let item = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
-            return (item?.title ?? "", item?.artist ?? "")
+            currentPresenceSong()
         } onError: { error in
             DispatchQueue.main.async {
                 guard lastPresenceErrorDate?.addingTimeInterval(30) ?? .distantPast < .now else { return }
@@ -101,14 +101,24 @@ struct MainTabView: View {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
         let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
-        let item = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
-
         RealtimeDBService.shared.refreshBroadcast(
             uid: uid,
             nickname: nickname,
             coord: coordinate,
-            song: (item?.title ?? "", item?.artist ?? "")
+            song: currentPresenceSong()
         )
+    }
+
+    /// 러닝 화면은 ApplicationMusicPlayer를 사용하므로, 시스템 플레이어의
+    /// 이전 곡으로 activeRunners를 덮어쓰지 않도록 동일한 재생 소스를 우선합니다.
+    private func currentPresenceSong() -> (title: String, artist: String) {
+        if let entry = ApplicationMusicPlayer.shared.queue.currentEntry,
+           !entry.title.isEmpty {
+            return (entry.title, entry.subtitle ?? "Apple Music")
+        }
+
+        let item = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
+        return (item?.title ?? "", item?.artist ?? "")
     }
 
     private func stopPresenceBroadcast() {
