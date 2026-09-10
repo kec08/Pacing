@@ -941,7 +941,15 @@ struct RunningView: View {
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
                         Group {
-                            if let listenArtwork {
+                            if isActiveListenGuest, let listenSession {
+                                animatedListenArtwork(
+                                    session: listenSession,
+                                    size: artSize,
+                                    localArtwork: listenArtwork ?? matchedListenArtwork ?? displaySnapshot?.artwork,
+                                    localMusicArtwork: musicVM.currentMusicArtwork
+                                )
+                                .id("listen-sheet-\(listenSession.playbackEventID)-\(listenSession.songStoreID)-\(listenSession.artworkURL)")
+                            } else if let listenArtwork {
                                 Image(uiImage: listenArtwork)
                                     .resizable()
                                     .scaledToFill()
