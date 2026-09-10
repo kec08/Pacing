@@ -215,8 +215,6 @@ struct MyProfileDetailView: View {
                         )
                     }
                 }
-                .background(Color.backgroundPrimary)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
         }
     }
