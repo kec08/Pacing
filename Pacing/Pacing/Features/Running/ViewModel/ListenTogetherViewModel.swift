@@ -68,14 +68,15 @@ final class ListenTogetherViewModel: ObservableObject {
             ? latestRunner!.nickname
             : runner.nickname
         let cachedProfileImage = UserDefaults.standard.string(forKey: "profileImageBase64") ?? ""
-        let latestProfileImage = (try? await FirestoreService.shared.fetchUserProfile(uid: myUID))?["profileImageBase64"] as? String
-        let guestProfileImageBase64 = latestProfileImage?.isEmpty == false ? latestProfileImage! : cachedProfileImage
+        let latestProfileImage = await profileImage(for: myUID)
+        let guestProfileImageBase64 = latestProfileImage ?? cachedProfileImage
         if !guestProfileImageBase64.isEmpty {
             UserDefaults.standard.set(guestProfileImageBase64, forKey: "profileImageBase64")
+            profileImageCache[myUID] = guestProfileImageBase64
         }
         let storedHostProfileImage = runner.profileImageBase64 ?? ""
         let latestHostProfileImage = storedHostProfileImage.isEmpty
-            ? ((try? await FirestoreService.shared.fetchUserProfile(uid: runner.id))?["profileImageBase64"] as? String ?? "")
+            ? (await profileImage(for: runner.id) ?? "")
             : storedHostProfileImage
         let playbackEventID = UUID().uuidString
         let sessionID = RealtimeDBService.shared.createListenSession(
