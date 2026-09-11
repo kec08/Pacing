@@ -72,12 +72,24 @@ final class FirestoreService {
             "distance": record.distance,
             "avgPace": record.avgPace
         ]
+        if let movingDuration = record.movingDuration {
+            data["movingDuration"] = movingDuration
+        }
         let geoPoints = record.routeCoordinates.map {
             GeoPoint(latitude: $0.latitude, longitude: $0.longitude)
         }
         data["routeCoordinates"] = geoPoints
         data["lapPaces"] = record.lapPaces.map {
             ["kilometer": $0.kilometer, "pace": $0.pace]
+        }
+        if let elevationGainMeters = record.elevationGainMeters {
+            data["elevationGainMeters"] = elevationGainMeters
+        }
+        if let averageHeartRate = record.averageHeartRate {
+            data["averageHeartRate"] = averageHeartRate
+        }
+        if let averageCadence = record.averageCadence {
+            data["averageCadence"] = averageCadence
         }
 
         try await db.collection("users").document(uid)
@@ -99,8 +111,12 @@ final class FirestoreService {
 
             // Firestore는 정수값을 Int64로 저장하므로 NSNumber로 통일해서 읽기
             let duration = (d["duration"] as? NSNumber)?.intValue ?? 0
+            let movingDuration = (d["movingDuration"] as? NSNumber)?.intValue
             let distance = (d["distance"] as? NSNumber)?.doubleValue ?? 0
             let avgPace  = (d["avgPace"]  as? NSNumber)?.doubleValue ?? 0
+            let elevationGainMeters = (d["elevationGainMeters"] as? NSNumber)?.doubleValue
+            let averageHeartRate = (d["averageHeartRate"] as? NSNumber)?.doubleValue
+            let averageCadence = (d["averageCadence"] as? NSNumber)?.doubleValue
 
             let geoPoints = (d["routeCoordinates"] as? [GeoPoint]) ?? []
             let coords = geoPoints.map {
@@ -120,10 +136,14 @@ final class FirestoreService {
                 id: doc.documentID,
                 startedAt: ts.dateValue(),
                 duration: duration,
+                movingDuration: movingDuration,
                 distance: distance,
                 avgPace: avgPace,
                 routeCoordinates: coords,
-                lapPaces: lapPaces
+                lapPaces: lapPaces,
+                elevationGainMeters: elevationGainMeters,
+                averageHeartRate: averageHeartRate,
+                averageCadence: averageCadence
             )
         }
     }
@@ -133,19 +153,12 @@ final class FirestoreService {
         let records = try await fetchRunHistory(uid: uid, limit: 100)
         guard !records.isEmpty else { return .empty }
 
-        let validPaceRecords = records.filter(\.isPaceValid)
-        let totalDistance = records.reduce(0) { $0 + $1.distance }
-        let totalDuration = records.reduce(0) { $0 + $1.duration }
-        let validDistance = validPaceRecords.reduce(0) { $0 + $1.distance }
-        let validDuration = validPaceRecords.reduce(0) { $0 + $1.duration }
-        let averagePace = validDistance > 0
-            ? Double(validDuration) / 60.0 / validDistance
-            : 0
+        let summary = RunStatisticsCalculator.summary(from: records)
 
         return FriendProfileStats(
-            averagePace: averagePace,
-            totalDuration: totalDuration,
-            totalDistance: totalDistance,
+            averagePace: summary.averagePace,
+            totalDuration: summary.totalDuration,
+            totalDistance: summary.totalDistance,
             lastRunDate: records.first?.startedAt
         )
     }
@@ -231,6 +244,7 @@ final class FirestoreService {
             .getDocuments()
 
         var activities: [FriendRecentSongActivity] = []
+        activities.reserveCapacity(snapshot.documents.count * max(1, songsPerFriend))
         for friendDocument in snapshot.documents {
             let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
             let songs: [FriendRecentSong]
@@ -271,6 +285,7 @@ final class FirestoreService {
             .getDocuments()
 
         var activities: [FriendRecentRunActivity] = []
+        activities.reserveCapacity(snapshot.documents.count)
         for friendDocument in snapshot.documents {
             let runs: [RunRecord]
 
@@ -285,11 +300,18 @@ final class FirestoreService {
                 continue
             }
 
-            let nickname = friendDocument.data()["nickname"] as? String ?? "러너"
+            let friendData = friendDocument.data()
+            let nickname = friendData["nickname"] as? String ?? "러너"
+            var profileImageBase64 = friendData["profileImageBase64"] as? String
+            if profileImageBase64 == nil || profileImageBase64?.isEmpty == true {
+                profileImageBase64 = (try? await fetchUserProfile(uid: friendDocument.documentID))?["profileImageBase64"] as? String
+            }
             activities.append(
                 FriendRecentRunActivity(
                     friendUID: friendDocument.documentID,
                     friendNickname: nickname,
+                    profileImageBase64: profileImageBase64,
+                    statusText: FriendActivityText.runningStatus(lastRunDate: run.startedAt),
                     run: run
                 )
             )
@@ -306,18 +328,57 @@ final class FirestoreService {
             .getDocuments()
 
         var friends: [FriendUser] = []
+        var friendIDsNeedingProfileImage: [String] = []
+        friends.reserveCapacity(snapshot.documents.count)
         for doc in snapshot.documents {
             let data = doc.data()
             let lastRunDate = try? await fetchLastRunDate(uid: doc.documentID)
+            let profileImageBase64 = data["profileImageBase64"] as? String
+            if profileImageBase64 == nil || profileImageBase64?.isEmpty == true {
+                friendIDsNeedingProfileImage.append(doc.documentID)
+            }
             friends.append(FriendUser(
                 id: doc.documentID,
                 nickname: data["nickname"] as? String ?? "러너",
-                profileImageBase64: data["profileImageBase64"] as? String,
+                profileImageBase64: profileImageBase64,
                 statusText: FriendActivityText.runningStatus(lastRunDate: lastRunDate),
                 source: .friend
             ))
         }
-        return friends
+
+        guard !friendIDsNeedingProfileImage.isEmpty else { return friends }
+        let refreshedImages = await fetchProfileImages(for: friendIDsNeedingProfileImage)
+        return friends.map { friend in
+            guard friend.profileImageBase64 == nil || friend.profileImageBase64?.isEmpty == true else {
+                return friend
+            }
+            return FriendUser(
+                id: friend.id,
+                nickname: friend.nickname,
+                profileImageBase64: refreshedImages[friend.id],
+                statusText: friend.statusText,
+                source: friend.source
+            )
+        }
+    }
+
+    private func fetchProfileImages(for uids: [String]) async -> [String: String] {
+        var images: [String: String] = [:]
+        for startIndex in stride(from: 0, to: uids.count, by: 4) {
+            let batch = uids[startIndex..<min(startIndex + 4, uids.count)]
+            await withTaskGroup(of: (String, String?).self) { group in
+                for uid in batch {
+                    group.addTask { [db] in
+                        let profile = try? await db.collection("users").document(uid).getDocument()
+                        return (uid, profile?.data()?["profileImageBase64"] as? String)
+                    }
+                }
+                for await (uid, image) in group {
+                    if let image, !image.isEmpty { images[uid] = image }
+                }
+            }
+        }
+        return images
     }
 
     // MARK: - 친구 프로필 조회
@@ -385,6 +446,7 @@ final class FirestoreService {
             .getDocuments()
 
         var requests: [FriendRequest] = []
+        requests.reserveCapacity(snapshot.documents.count)
         for doc in snapshot.documents {
             let data = doc.data()
             guard let fromUID = data["fromUID"] as? String else { continue }
@@ -537,6 +599,7 @@ final class FirestoreService {
 
         let friendIDs = friends.prefix(8).map(\.id)
         var summaries: [SharedPlaylistSummary] = []
+        summaries.reserveCapacity(min(limit, friends.count * 3))
 
         // 한 번에 너무 많은 Firestore 요청을 보내지 않되, 친구별 조회를 순차
         // 실행하지 않아 첫 화면 대기 시간을 줄인다.
@@ -559,6 +622,7 @@ final class FirestoreService {
                 }
 
                 var results: [SharedPlaylistSummary] = []
+                results.reserveCapacity(batch.count * 3)
                 for try await playlists in group {
                     results.append(contentsOf: playlists)
                 }

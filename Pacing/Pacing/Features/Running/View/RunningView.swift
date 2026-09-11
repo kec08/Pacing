@@ -11,6 +11,15 @@ private enum MusicSheetPanel {
     case trackList
 }
 
+private enum RunningMetric: CaseIterable, Hashable {
+    case distance
+    case elevation
+    case pace
+    case heartRate
+    case cadence
+    case calories
+}
+
 struct RunningView: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -39,15 +48,22 @@ struct RunningView: View {
     @State private var isSeeking = false             // 스크러버 드래그 중
     @State private var seekValue: Double = 0         // 드래그 중 임시 시간값
     @State private var isFinishingSeek = false       // 손을 뗀 직후 Slider 재호출 방지
+    @State private var seekInteractionID = UUID()     // 이전 드래그의 지연 콜백 무효화
     @State private var localPlaybackBaseTime: Double? = nil
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
     @State private var hasCenteredOnInitialLocation = false
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
+    @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
+    @State private var listenSheetDetent: PresentationDetent = .medium
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
+    }
+
+    private var musicControlIconColor: Color {
+        colorScheme == .dark ? .white : .black
     }
 
     private var shouldDisplayRoute: Bool {
@@ -161,12 +177,14 @@ struct RunningView: View {
                     }
                     .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
                     .padding(.trailing, 16)
-                    .padding(.top, 220)
+                    .padding(.top, 280)
                     .animation(.spring(duration: 0.3), value: viewModel.state)
                     .animation(.spring(duration: 0.3), value: isFollowingUser)
                 }
                 Spacer()
             }
+            // 통계 카드나 일시정지 화면보다 항상 앞에 표시해 러닝 상태에서도 위치 버튼이 가려지지 않게 한다.
+            .zIndex(9)
 
             VStack(spacing: 0) {
                 // 뮤직 카드: idle 상태에서만 표시
@@ -175,17 +193,26 @@ struct RunningView: View {
                         .padding(.top, 44)
                 }
 
-                // 스탯 오버레이: idle이 아닐 때 상단으로 올라옴
-                if viewModel.state != .idle {
+                // 러닝 중에는 기존 상단 카드, 일시정지 시에는 지도 위쪽과 하단 지표 패널로 전환
+                if viewModel.state == .running {
                     runningStatsOverlay
                         .padding(.top, 60)
                         .padding(.horizontal, 0)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
 
                 Spacer()
 
-                controlSection
-                    .padding(.bottom, 40)
+                if viewModel.state != .paused {
+                    controlSection
+                        .padding(.bottom, 40)
+                }
+            }
+
+            if viewModel.state == .paused {
+                pausedRunDashboard
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(8)
             }
 
             // 수신 요청 배너 (항상 최상단)
@@ -211,7 +238,10 @@ struct RunningView: View {
                 VStack {
                     HStack {
                         Spacer()
-                        Button { showListenSheet = true } label: {
+                        Button {
+                            listenSheetDetent = .medium
+                            showListenSheet = true
+                        } label: {
                             ZStack(alignment: .topTrailing) {
                                 ZStack {
                                     Circle()
@@ -260,8 +290,10 @@ struct RunningView: View {
             if !hasCenteredOnInitialLocation {
                 hasCenteredOnInitialLocation = true
                 recenterCamera(distance: mapZoomDistance)
-            } else if (viewModel.state == .running || viewModel.state == .paused) && isFollowingUser {
+            } else if viewModel.state == .running && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
+            } else if viewModel.state == .paused && isFollowingUser {
+                recenterCamera(distance: mapZoomDistance, verticalOffsetMeters: pausedMapVerticalOffsetMeters)
             }
             nearbyVM.updateMyLocation(loc.coordinate)
         }
@@ -298,9 +330,13 @@ struct RunningView: View {
                 if newState == .running {
                     isFollowingUser = true
                     recenterCamera(distance: mapZoomDistance)
+                } else if newState == .paused {
+                    isFollowingUser = true
+                    recenterCamera(distance: mapZoomDistance, verticalOffsetMeters: pausedMapVerticalOffsetMeters)
                 }
             }
         }
+        .animation(.spring(response: 0.48, dampingFraction: 0.86), value: viewModel.state)
         .onChange(of: musicVM.currentSong) { _, _ in
             if let uid = Auth.auth().currentUser?.uid {
                 let nickname = UserDefaults.standard.string(forKey: "nickname") ?? "러너"
@@ -309,7 +345,7 @@ struct RunningView: View {
                     nickname: nickname,
                     coord: viewModel.locationManager.currentLocation?.coordinate,
                     song: (musicVM.currentSong?.title ?? "", musicVM.currentSong?.artistName ?? ""),
-                    profileImageBase64: UserDefaults.standard.string(forKey: "profileImageBase64")
+                    isRunning: viewModel.state == .running || viewModel.state == .paused
                 )
             }
             // 호스트면 세션에도 브로드캐스트
@@ -317,7 +353,7 @@ struct RunningView: View {
         }
         // 시스템 플레이어의 현재 곡 변경은 `currentSong` 갱신보다 먼저 도착할 수 있습니다.
         // 호스트는 이 시점에 전환 이벤트를 즉시 전송해 게스트의 다음 1초 타이머 대기를 없앱니다.
-        .onChange(of: musicVM.nowPlayingSnapshot?.songStoreID) { _, _ in
+        .onChange(of: musicVM.nowPlayingSnapshot) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
@@ -340,19 +376,28 @@ struct RunningView: View {
                 calories: viewModel.estimatedCalories,
                 lapPaces: viewModel.completedLapPaces,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
+                elevationGainMeters: viewModel.elevationGainMeters,
+                averageHeartRate: viewModel.averageHeartRate,
+                averageCadence: viewModel.averageCadence,
                 onSave: {
                     let savedDistance = viewModel.distance
                     let savedElapsedSeconds = viewModel.elapsedSeconds
                     let savedAveragePace = viewModel.avgPace
                     let savedRouteCoordinates = viewModel.locationManager.routeCoordinates
                     let savedLapPaces = viewModel.completedLapPaces
+                    let savedElevationGainMeters = viewModel.elevationGainMeters
+                    let savedAverageHeartRate = viewModel.averageHeartRate
+                    let savedAverageCadence = viewModel.averageCadence
                     Task {
                         await viewModel.saveRecord(
                             distance: savedDistance,
                             elapsedSeconds: savedElapsedSeconds,
                             avgPace: savedAveragePace,
                             routeCoordinates: savedRouteCoordinates,
-                            lapPaces: savedLapPaces
+                            lapPaces: savedLapPaces,
+                            elevationGainMeters: savedElevationGainMeters,
+                            averageHeartRate: savedAverageHeartRate,
+                            averageCadence: savedAverageCadence
                         )
                     }
                     showSummary = false
@@ -510,49 +555,157 @@ struct RunningView: View {
 
             Divider().opacity(0.3).padding(.horizontal, 24)
 
-            // km / 페이스 / 칼로리
-            HStack(spacing: 0) {
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedDistance)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.textPrimary)
-                    Text("km")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 40).opacity(0.3)
-
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedPace)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.textPrimary)
-                    Text("페이스")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
-
-                Divider().frame(height: 40).opacity(0.3)
-
-                VStack(spacing: 2) {
-                    Text(viewModel.formattedCalories)
-                        .font(.system(size: 28, weight: .semibold, design: .rounded))
-                        .foregroundStyle(Color.textPrimary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                    Text("칼로리")
-                        .font(.system(size: 12))
-                        .foregroundStyle(Color.textSecondary)
-                }
-                .frame(maxWidth: .infinity)
+                independentMetricGrid
+                    .padding(.vertical, 16)
             }
-            .padding(.vertical, 16)
-        }
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 20))
         .padding(.horizontal, 16)
+    }
+
+    private var independentMetricGrid: some View {
+        HStack(spacing: 0) {
+            independentMetricButton(slot: 0)
+            metricDivider
+            independentMetricButton(slot: 1)
+            metricDivider
+            independentMetricButton(slot: 2)
+        }
+    }
+
+    private func independentMetricButton(slot: Int) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.easeInOut(duration: 0.24)) {
+                let currentMetric = metricSlots[slot]
+                let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
+                    index == slot ? nil : metric
+                })
+                metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
+            }
+        } label: {
+            VStack(spacing: 2) {
+                Text(metricValue(for: metricSlots[slot]))
+                    .font(.system(size: 28, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Color.textPrimary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .id("value-\(metricSlots[slot])")
+                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                Text(metricLabel(for: metricSlots[slot]))
+                    .font(.system(size: 12))
+                    .foregroundStyle(Color.textSecondary)
+                    .id("label-\(metricSlots[slot])")
+                    .transition(.opacity)
+            }
+            .frame(maxWidth: .infinity)
+            .contentShape(Rectangle())
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("탭하면 다음 러닝 지표를 표시합니다.")
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func nextMetric(
+        after currentMetric: RunningMetric,
+        excluding occupiedMetrics: Set<RunningMetric>
+    ) -> RunningMetric {
+        let metrics = RunningMetric.allCases
+        guard let currentIndex = metrics.firstIndex(of: currentMetric) else { return currentMetric }
+
+        for offset in 1...metrics.count {
+            let candidate = metrics[(currentIndex + offset) % metrics.count]
+            if !occupiedMetrics.contains(candidate) { return candidate }
+        }
+        return currentMetric
+    }
+
+    private func metricValue(for metric: RunningMetric) -> String {
+        switch metric {
+        case .distance: return viewModel.formattedDistance
+        case .elevation: return viewModel.formattedElevationGain
+        case .pace: return viewModel.formattedPace
+        case .heartRate: return "--"
+        case .cadence: return viewModel.formattedCadence
+        case .calories: return viewModel.formattedCalories
+        }
+    }
+
+    private func metricLabel(for metric: RunningMetric) -> String {
+        switch metric {
+        case .distance: return "km"
+        case .elevation: return "고도 상승"
+        case .pace: return "페이스"
+        case .heartRate: return "BPM"
+        case .cadence: return "케이던스"
+        case .calories: return "칼로리"
+        }
+    }
+
+    private var metricDivider: some View {
+        Divider().frame(height: 40).opacity(0.3)
+    }
+
+    private var pausedRunDashboard: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+
+            VStack(spacing: 0) {
+                pausedMetricGrid
+                    .padding(.top, 64)
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                    .offset(y: -10)
+
+                Capsule()
+                    .fill(Color.secondary.opacity(0.28))
+                    .frame(width: 300, height: 2.5)
+
+                pausedControls
+                    .padding(.top, 44)
+                    .padding(.bottom, 34)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: UIScreen.main.bounds.height * 0.55, alignment: .top)
+            .background(Color.backgroundPrimary)
+        }
+        .frame(maxWidth: .infinity)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private var pausedMetricGrid: some View {
+        VStack(spacing: 24) {
+            HStack(spacing: 0) {
+                pausedMetric(value: viewModel.formattedDistance, label: "킬로미터")
+                metricDivider
+                pausedMetric(value: viewModel.formattedAvgPace, label: "평균 페이스")
+                metricDivider
+                pausedMetric(value: viewModel.formattedTime, label: "시간")
+            }
+            HStack(spacing: 0) {
+                pausedMetric(value: viewModel.formattedCalories, label: "칼로리")
+                metricDivider
+                pausedMetric(value: viewModel.formattedElevationGain, label: "고도 상승")
+                metricDivider
+                pausedMetric(value: "--", label: "BPM")
+            }
+        }
+    }
+
+    private func pausedMetric(value: String, label: String) -> some View {
+        VStack(spacing: 4) {
+            Text(value)
+                .font(.system(size: 26, weight: .bold, design: .rounded))
+                .foregroundStyle(Color.textPrimary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+            Text(label)
+                .font(.system(size: 12))
+                .foregroundStyle(Color.textSecondary)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - 하단 컨트롤
@@ -742,10 +895,12 @@ struct RunningView: View {
                     stopHoldTimer?.invalidate()
                     stopHoldTimer = nil
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                    viewModel.stop()
-                    showSummary = true
-                    showStopConfirm = false
-                    stopHoldProgress = 0
+                    Task {
+                        await viewModel.stop()
+                        showSummary = true
+                        showStopConfirm = false
+                        stopHoldProgress = 0
+                    }
                 }
             }
         }
@@ -768,6 +923,17 @@ struct RunningView: View {
                         let listenSession = listenVM.activeSession
                         let sessionArtwork = decodedArtworkData(listenSession?.artworkData ?? "")
                         let listenArtwork = isActiveListenGuest ? sessionArtwork : nil
+                        let matchedListenArtwork = isActiveListenGuest
+                            ? matchingArtwork(for: listenSession, snapshot: displaySnapshot)
+                            : nil
+                        let matchedDisplaySong = matchingQueueSong(for: displaySnapshot)
+                        let matchedListenQueueSong = isActiveListenGuest
+                            ? matchingQueueSong(
+                                title: listenSession?.songTitle ?? "",
+                                artist: listenSession?.artistName ?? "",
+                                storeID: listenSession?.songStoreID ?? ""
+                            ) ?? matchedDisplaySong
+                            : matchedDisplaySong
                         let visibleSongTitle = isActiveListenGuest
                             ? (listenSession?.songTitle.isEmpty == false ? listenSession?.songTitle : displaySnapshotTitle(displaySnapshot))
                             : displaySnapshotTitle(displaySnapshot)
@@ -777,16 +943,15 @@ struct RunningView: View {
                         // MARK: 앨범 커버
                         let artSize: CGFloat = 260
                         Group {
-                            if let listenArtwork {
-                                Image(uiImage: listenArtwork)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                                    .frame(width: artSize, height: artSize)
-                            // 선택한 플레이리스트의 곡 목록은 ApplicationMusicPlayer 재생 중에도
-                            // 기존처럼 스크롤해 다음/이전 곡으로 전환할 수 있어야 한다.
-                            } else if !isActiveListenGuest,
-                                      !musicVM.queueSongs.isEmpty {
+                            if isActiveListenGuest, let listenSession {
+                                animatedListenArtwork(
+                                    session: listenSession,
+                                    size: artSize,
+                                    localArtwork: listenArtwork ?? matchedListenArtwork ?? displaySnapshot?.artwork,
+                                    localMusicArtwork: musicVM.currentMusicArtwork
+                                )
+                                .id("listen-sheet-\(listenSession.playbackEventID)-\(listenSession.songStoreID)-\(listenSession.artworkURL)")
+                            } else if !isActiveListenGuest, !musicVM.queueSongs.isEmpty {
                                 TabView(selection: Binding(
                                     get: { musicVM.currentSongIndex },
                                     set: { newIndex in
@@ -816,6 +981,20 @@ struct RunningView: View {
                                 }
                                 .tabViewStyle(.page(indexDisplayMode: .never))
                                 .frame(width: artSize, height: artSize)
+                            } else if let song = matchedListenQueueSong,
+                                      let artwork = song.artwork {
+                                ArtworkImage(artwork, width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .frame(width: artSize, height: artSize)
+                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? "")
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
+                            } else if let song = matchedListenQueueSong,
+                                      let artworkURL = musicVM.artworkURL(for: song) {
+                                RemoteArtworkView(urlString: artworkURL, contentMode: .fill)
+                                    .frame(width: artSize, height: artSize)
+                                    .clipShape(RoundedRectangle(cornerRadius: 24))
+                                    .id(listenSession?.songStoreID ?? displaySnapshot?.songStoreID ?? artworkURL)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.94)))
                             } else if let artwork = displaySnapshot?.artwork {
                                 Image(uiImage: artwork)
                                     .resizable()
@@ -838,6 +1017,7 @@ struct RunningView: View {
                         .scaleEffect(musicVM.isPlaying ? 1.0 : 0.88)
                         .shadow(color: .black.opacity(musicVM.isPlaying ? 0.3 : 0.15), radius: musicVM.isPlaying ? 20 : 10, y: 8)
                         .animation(.spring(response: 0.4, dampingFraction: 0.7), value: musicVM.isPlaying)
+                        .animation(.easeInOut(duration: 0.28), value: listenSession?.playbackEventID)
                         .padding(.top, 28)
                         .padding(.bottom, 28)
 
@@ -871,7 +1051,11 @@ struct RunningView: View {
                         // MARK: 스크러버
                         TimelineView(.periodic(from: .now, by: 0.25)) { timeline in
                             let duration = musicVM.playbackDuration
-                            let localCurrent = localPlaybackCurrentTime(at: timeline.date, duration: duration)
+                            // 게스트는 호스트가 보낸 위치를 ApplicationMusicPlayer에 반영하므로
+                            // 로컬 기준시각을 우선하면 seek 이후에도 이전 위치에서 계속 증가한다.
+                            let localCurrent = isActiveListenGuest
+                                ? nil
+                                : localPlaybackCurrentTime(at: timeline.date, duration: duration)
                             let current: Double = isSeeking
                                 ? seekValue
                                 : (localCurrent ?? (duration > 0 ? min(musicVM.currentPlaybackTime, duration) : 0))
@@ -890,22 +1074,41 @@ struct RunningView: View {
                                     in: 0...1,
                                     onEditingChanged: { editing in
                                         if editing {
+                                            seekInteractionID = UUID()
                                             isFinishingSeek = false
+                                            if !isActiveListenGuest {
+                                                listenVM.setHostSeeking(true)
+                                            }
                                             return
                                         }
 
                                         if !editing {
-                                            let targetTime = seekValue
+                                            let interactionID = seekInteractionID
                                             isFinishingSeek = true
-                                            musicVM.seek(to: targetTime)
-                                            startLocalPlaybackClock(from: targetTime)
 
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                isSeeking = false
-                                                seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
-                                            }
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                                                isFinishingSeek = false
+                                            // Slider의 마지막 setter가 State에 반영되기 전에
+                                            // editing 종료 콜백이 실행될 수 있다. 다음 메인 런루프에서
+                                            // 최종 seekValue를 읽어 이전 위치를 전송하지 않도록 한다.
+                                            DispatchQueue.main.async {
+                                                guard interactionID == seekInteractionID else { return }
+                                                let targetTime = seekValue
+                                                musicVM.seek(to: targetTime)
+                                                if isActiveListenGuest {
+                                                    clearLocalPlaybackClock()
+                                                } else {
+                                                    startLocalPlaybackClock(from: targetTime)
+                                                    listenVM.broadcastSeekIfHost(musicVM: musicVM)
+                                                }
+
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                    guard interactionID == seekInteractionID else { return }
+                                                    isSeeking = false
+                                                    seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
+                                                }
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                                    guard interactionID == seekInteractionID else { return }
+                                                    isFinishingSeek = false
+                                                }
                                             }
                                         }
                                     }
@@ -929,26 +1132,33 @@ struct RunningView: View {
                         // MARK: 재생 컨트롤
                         HStack(spacing: 52) {
                             Button {
-                                Task { await musicVM.skipToPrevious() }
+                                Task {
+                                    await musicVM.skipToPrevious()
+                                    listenVM.broadcastIfHost(musicVM: musicVM)
+                                }
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
                                     .foregroundStyle(
                                         isActiveListenGuest || !musicVM.canSkipToPrevious
                                             ? Color.textSecondary.opacity(0.35)
-                                            : .primary
+                                            : musicControlIconColor
                                     )
                             }
                             .disabled(isActiveListenGuest || !musicVM.canSkipToPrevious)
                             .accessibilityLabel("이전 곡")
 
                             Button {
-                                if shouldRunLocalPlaybackClock {
-                                    stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                if isActiveListenGuest {
+                                    Task { await listenVM.toggleGuestPlayback(musicVM: musicVM) }
                                 } else {
-                                    startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                    if shouldRunLocalPlaybackClock {
+                                        stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
+                                    } else {
+                                        startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+                                    }
+                                    Task { await musicVM.togglePlayPause() }
                                 }
-                                Task { await musicVM.togglePlayPause() }
                             } label: {
                                 Image(systemName: musicVM.isPlaying ? "pause.circle.fill" : "play.circle.fill")
                                     .font(.system(size: 68))
@@ -956,14 +1166,17 @@ struct RunningView: View {
                             }
 
                             Button {
-                                Task { await musicVM.skipToNext() }
+                                Task {
+                                    await musicVM.skipToNext()
+                                    listenVM.broadcastIfHost(musicVM: musicVM)
+                                }
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
                                     .foregroundStyle(
                                         isActiveListenGuest || !musicVM.canSkipToNext
                                             ? Color.textSecondary.opacity(0.35)
-                                            : .primary
+                                            : musicControlIconColor
                                     )
                             }
                             .disabled(isActiveListenGuest || !musicVM.canSkipToNext)
@@ -1048,8 +1261,17 @@ struct RunningView: View {
                     .padding(.horizontal, 20)
                     .padding(.bottom, 12)
                     .shadow(color: .black.opacity(0.08), radius: 8, y: -2)
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: musicSheetPanel)
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: musicSheetPanel)
+            }
+            .task(id: "\(listenVM.activeSession?.playbackEventID ?? "")|\(listenVM.activeSession?.songStoreID ?? "")|\(listenVM.activeSession?.artworkURL ?? "")") {
+                guard isActiveListenGuest, let session = listenVM.activeSession else { return }
+                await musicVM.refreshListenSessionArtwork(
+                    songStoreID: session.songStoreID,
+                    title: session.songTitle,
+                    artist: session.artistName,
+                    artworkURL: session.artworkURL
+                )
             }
             .navigationTitle("음악")
             .navigationBarTitleDisplayMode(.inline)
@@ -1086,13 +1308,22 @@ struct RunningView: View {
                 }
             }
             // 곡이 바뀌면 스크러버 초기화 (드래그 잔상 방지)
-            .onChange(of: musicVM.currentSong?.id) { _, _ in
-                isSeeking = false
-                seekValue = 0
-                clearLocalPlaybackClock()
+        .onChange(of: musicVM.currentSong?.id) { _, _ in
+            seekInteractionID = UUID()
+            isSeeking = false
+            isFinishingSeek = false
+            seekValue = 0
+            clearLocalPlaybackClock()
+        }
+        .onChange(of: musicVM.isPlaying) { _, isPlaying in
+            if isPlaying {
+                startLocalPlaybackClock(from: musicVM.currentPlaybackTime)
+            } else {
+                stopLocalPlaybackClock(at: musicVM.currentPlaybackTime)
             }
         }
         .presentationBackground(.ultraThinMaterial)
+    }
     }
 
     private var playlistPickerPanel: some View {
@@ -1342,6 +1573,26 @@ struct RunningView: View {
         return title
     }
 
+    private func matchingQueueSong(for snapshot: PlayerSongSnapshot?) -> Song? {
+        guard let snapshot else { return nil }
+        return musicVM.queueSongs.first { song in
+            song.title.caseInsensitiveCompare(snapshot.title) == .orderedSame
+                && song.artistName.caseInsensitiveCompare(snapshot.artistName) == .orderedSame
+        }
+    }
+
+    private func matchingQueueSong(title: String, artist: String, storeID: String) -> Song? {
+        guard !title.isEmpty || !storeID.isEmpty else { return nil }
+
+        return musicVM.queueSongs.first { song in
+            let storeIDMatches = !storeID.isEmpty && "\(song.id)" == storeID
+            let metadataMatches = !title.isEmpty
+                && song.title.caseInsensitiveCompare(title) == .orderedSame
+                && song.artistName.caseInsensitiveCompare(artist) == .orderedSame
+            return storeIDMatches || metadataMatches
+        }
+    }
+
     private func displaySnapshotArtist(_ snapshot: PlayerSongSnapshot?) -> String? {
         guard let artist = snapshot?.artistName, !artist.isEmpty else { return nil }
         return artist
@@ -1405,11 +1656,12 @@ struct RunningView: View {
                                             .font(.system(size: 11))
                                             .foregroundStyle(Color(.secondaryLabel))
                                             .lineLimit(1)
-                                    }
-                                }
-                            }
-                        }
                     }
+                }
+            }
+        }
+    }
+
                     .padding(.horizontal, 10)
                     .padding(.vertical, 7)
                     .background(
@@ -1461,29 +1713,52 @@ struct RunningView: View {
     private func incomingRequestBanner(session: ListenSession) -> some View {
         VStack(spacing: 12) {
             HStack(spacing: 10) {
-                ZStack {
-                    Circle().fill(Color.main500).frame(width: 36, height: 36)
-                    Text(String(session.hostNickname.prefix(1)))
-                        .font(.system(size: 14, weight: .bold)).foregroundStyle(.white)
-                }
+                listenParticipantAvatar(
+                    name: session.guestNickname,
+                    imageBase64: session.guestProfileImageBase64,
+                    isMe: false
+                )
                 VStack(alignment: .leading, spacing: 2) {
                     Text("같이 듣기 요청")
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.main500)
-                    Text("\(session.hostNickname)님이 함께 듣고 싶어해요")
+                    Text("\(session.guestNickname)님이 함께 듣고 싶어해요")
                         .font(.system(size: 14, weight: .bold))
                         .foregroundStyle(Color.textPrimary)
-                    if !session.songTitle.isEmpty {
-                        HStack(spacing: 4) {
-                            Image(systemName: "music.note")
-                                .font(.system(size: 11)).foregroundStyle(Color.main500)
-                            Text("\(session.songTitle) - \(session.artistName)")
-                                .font(.system(size: 12)).foregroundStyle(Color.textSecondary)
-                                .lineLimit(1)
-                        }
-                    }
                 }
                 Spacer()
+            }
+            if !session.songTitle.isEmpty {
+                VStack(spacing: 10) {
+                    GeometryReader { proxy in
+                        listenArtwork(
+                            session: session,
+                            size: min(proxy.size.width, 156),
+                            localArtwork: matchingArtwork(
+                                for: session,
+                                snapshot: musicVM.currentSongSnapshot()
+                            ),
+                            localMusicArtwork: matchingMusicArtwork(
+                                for: session,
+                                snapshot: musicVM.currentSongSnapshot()
+                            )
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .aspectRatio(1, contentMode: .fit)
+                    .frame(maxWidth: 156)
+
+                    VStack(spacing: 3) {
+                        Text(session.songTitle)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(Color.textPrimary)
+                            .lineLimit(1)
+                        Text(session.artistName)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineLimit(1)
+                    }
+                }
             }
             HStack(spacing: 10) {
                 Button {
@@ -1507,10 +1782,6 @@ struct RunningView: View {
         .padding(14)
         .background(.regularMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 16))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(Color.white.opacity(0.55), lineWidth: 1)
-        )
         .shadow(color: .black.opacity(0.14), radius: 16, y: 8)
         .padding(.horizontal, 16)
         .padding(.top, 56)
@@ -1528,36 +1799,64 @@ struct RunningView: View {
                     let listenDuration = listenVM.sessionStartDate.map { Int(timeline.date.timeIntervalSince($0)) } ?? 0
 
                     VStack(spacing: 18) {
-                        listenAlbumHeader(session: session)
-                            .padding(.top, 8)
+                        if listenSheetDetent == .large {
+                            ScrollView(showsIndicators: false) {
+                                VStack(spacing: 20) {
+                                    animatedListenArtwork(
+                                        session: session,
+                                        size: 240,
+                                        localArtwork: matchingArtwork(
+                                            for: session,
+                                            snapshot: musicVM.currentSongSnapshot()
+                                        ),
+                                        localMusicArtwork: matchingMusicArtwork(
+                                            for: session,
+                                            snapshot: musicVM.currentSongSnapshot()
+                                        )
+                                    )
 
-                        // 참여자 카드 목록
-                        ScrollView {
-                            VStack(spacing: 6) {
-                                listenParticipantCard(
-                                    name: myName,
-                                    isMe: true,
-                                    role: listenVM.isHost ? "호스트" : "게스트",
-                                    song: session.songTitle,
-                                    artist: session.artistName,
-                                    duration: listenDuration
-                                )
-                                listenParticipantCard(
-                                    name: partnerName,
-                                    isMe: false,
-                                    role: listenVM.isHost ? "게스트" : "호스트",
-                                    song: session.songTitle,
-                                    artist: session.artistName,
-                                    duration: listenDuration
-                                )
+                                    VStack(spacing: 4) {
+                                        Text(session.songTitle.isEmpty ? "재생 중인 곡" : session.songTitle)
+                                            .font(.system(size: 23, weight: .bold))
+                                            .foregroundStyle(Color.textPrimary)
+                                            .lineLimit(1)
+                                        Text(session.artistName.isEmpty ? "Apple Music" : session.artistName)
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(Color.textSecondary)
+                                            .lineLimit(1)
+                                    }
+
+                                    listenParticipantRows(
+                                        session: session,
+                                        myUID: myUID,
+                                        myName: myName,
+                                        partnerName: partnerName,
+                                        duration: listenDuration
+                                    )
+                                    .padding(.horizontal, 24)
+                                }
+                                .padding(.top, 20)
+                                .padding(.bottom, 18)
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.top, 4)
+                        } else {
+                            listenAlbumHeader(session: session)
+                                .padding(.top, 8)
+
+                            ScrollView(showsIndicators: false) {
+                                listenParticipantRows(
+                                    session: session,
+                                    myUID: myUID,
+                                    myName: myName,
+                                    partnerName: partnerName,
+                                    duration: listenDuration
+                                )
+                                .padding(.horizontal, 24)
+                                .padding(.top, 4)
+                            }
+
+                            Spacer()
                         }
 
-                        Spacer()
-
-                        // 종료 버튼
                         Button {
                             listenVM.endSession()
                             showListenSheet = false
@@ -1570,9 +1869,10 @@ struct RunningView: View {
                                 .background(Color.main500)
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 32)
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 32)
                     }
+                    .animation(.easeInOut(duration: 0.16), value: listenSheetDetent)
                 } else {
                     Spacer()
                     VStack(spacing: 12) {
@@ -1596,21 +1896,44 @@ struct RunningView: View {
             }
             } // TimelineView
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $listenSheetDetent)
         .presentationDragIndicator(.visible)
         .presentationBackground(Color(.systemBackground))
     }
 
-    private func listenParticipantCard(name: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
-        HStack(spacing: 14) {
-            ZStack {
-                Circle()
-                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
-                    .frame(width: 42, height: 42)
-                Text(String(name.prefix(1)))
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundStyle(isMe ? .white : Color.main500)
-            }
+    @ViewBuilder
+    private func listenParticipantRows(
+        session: ListenSession,
+        myUID: String,
+        myName: String,
+        partnerName: String,
+        duration: Int
+    ) -> some View {
+        VStack(spacing: 6) {
+            listenParticipantCard(
+                name: myName,
+                imageBase64: session.profileImageBase64(for: myUID),
+                isMe: true,
+                role: listenVM.isHost ? "호스트" : "게스트",
+                song: session.songTitle,
+                artist: session.artistName,
+                duration: duration
+            )
+            listenParticipantCard(
+                name: partnerName,
+                imageBase64: session.profileImageBase64(for: session.partnerUID(for: myUID)),
+                isMe: false,
+                role: listenVM.isHost ? "게스트" : "호스트",
+                song: session.songTitle,
+                artist: session.artistName,
+                duration: duration
+            )
+        }
+    }
+
+    private func listenParticipantCard(name: String, imageBase64: String, isMe: Bool, role: String, song: String, artist: String, duration: Int) -> some View {
+        return HStack(spacing: 14) {
+            listenParticipantAvatar(name: name, imageBase64: imageBase64, isMe: isMe)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
@@ -1645,10 +1968,35 @@ struct RunningView: View {
         .padding(.vertical, 10)
     }
 
+    @ViewBuilder
+    private func listenParticipantAvatar(name: String, imageBase64: String, isMe: Bool) -> some View {
+        if let data = Data(base64Encoded: imageBase64), let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: 48, height: 48)
+                .clipShape(Circle())
+        } else {
+            ZStack {
+                Circle()
+                    .fill(isMe ? Color.main500 : Color.main500.opacity(0.12))
+                    .frame(width: 48, height: 48)
+                Text(String(name.prefix(1)))
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(isMe ? .white : Color.main500)
+            }
+        }
+    }
+
     private func listenAlbumHeader(session: ListenSession) -> some View {
         HStack(spacing: 12) {
-            let localArtwork = musicVM.currentSongSnapshot()?.artwork
-            listenArtwork(session: session, size: 66, localArtwork: localArtwork)
+            let snapshot = musicVM.currentSongSnapshot()
+            animatedListenArtwork(
+                session: session,
+                size: 66,
+                localArtwork: matchingArtwork(for: session, snapshot: snapshot),
+                localMusicArtwork: matchingMusicArtwork(for: session, snapshot: snapshot)
+            )
                 .frame(width: 66, height: 66)
                 .accessibilityHidden(true)
             
@@ -1670,7 +2018,36 @@ struct RunningView: View {
     }
 
     @ViewBuilder
-    private func listenArtwork(session: ListenSession, size: CGFloat = 220, localArtwork: UIImage? = nil) -> some View {
+    private func animatedListenArtwork(
+        session: ListenSession,
+        size: CGFloat = 220,
+        localArtwork: UIImage? = nil,
+        localMusicArtwork: Artwork? = nil
+    ) -> some View {
+        let artworkFingerprint = session.artworkData.isEmpty
+            ? session.artworkURL
+            : "\(session.artworkURL)|\(session.artworkData.hashValue)"
+        let artworkID = "\(session.playbackEventID)|\(session.songStoreID)|\(artworkFingerprint)"
+        ZStack {
+            listenArtwork(
+                session: session,
+                size: size,
+                localArtwork: localArtwork,
+                localMusicArtwork: localMusicArtwork
+            )
+            .id(artworkID)
+            .transition(.opacity.combined(with: .scale(scale: 0.94)))
+        }
+        .animation(.easeInOut(duration: 0.28), value: artworkID)
+    }
+
+    @ViewBuilder
+    private func listenArtwork(
+        session: ListenSession,
+        size: CGFloat = 220,
+        localArtwork: UIImage? = nil,
+        localMusicArtwork: Artwork? = nil
+    ) -> some View {
         if let sessionArtwork = decodedArtworkData(session.artworkData) {
             Image(uiImage: sessionArtwork)
                 .resizable()
@@ -1686,7 +2063,15 @@ struct RunningView: View {
                         .resizable()
                         .scaledToFill()
                 default:
-                    listenArtworkPlaceholder
+                    if let localArtwork {
+                        Image(uiImage: localArtwork)
+                            .resizable()
+                            .scaledToFill()
+                    } else if let localMusicArtwork {
+                        ArtworkImage(localMusicArtwork, width: size, height: size)
+                    } else {
+                        listenArtworkPlaceholder
+                    }
                 }
             }
             .frame(width: size, height: size)
@@ -1697,6 +2082,10 @@ struct RunningView: View {
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
+                .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
+        } else if let localMusicArtwork {
+            ArtworkImage(localMusicArtwork, width: size, height: size)
                 .clipShape(RoundedRectangle(cornerRadius: size >= 160 ? 18 : 10))
                 .shadow(color: .black.opacity(size >= 160 ? 0.12 : 0.06), radius: size >= 160 ? 14 : 6, y: size >= 160 ? 8 : 3)
         } else {
@@ -1710,6 +2099,37 @@ struct RunningView: View {
     private func decodedArtworkData(_ value: String) -> UIImage? {
         guard !value.isEmpty, let data = Data(base64Encoded: value) else { return nil }
         return UIImage(data: data)
+    }
+
+    private func matchingArtwork(
+        for session: ListenSession?,
+        snapshot: PlayerSongSnapshot?
+    ) -> UIImage? {
+        guard let session,
+              !session.songTitle.isEmpty
+        else { return nil }
+        if snapshot?.title == session.songTitle,
+           snapshot?.artistName == session.artistName,
+           let artwork = snapshot?.artwork {
+            return artwork
+        }
+        guard let playerItem = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem,
+              playerItem.title == session.songTitle,
+              playerItem.artist == session.artistName
+        else { return nil }
+        return playerItem.artwork?.image(at: CGSize(width: 320, height: 320))
+    }
+
+    private func matchingMusicArtwork(
+        for session: ListenSession?,
+        snapshot: PlayerSongSnapshot?
+    ) -> Artwork? {
+        guard let session,
+              let snapshot,
+              snapshot.title == session.songTitle,
+              snapshot.artistName == session.artistName
+        else { return nil }
+        return musicVM.currentMusicArtwork
     }
 
     private var listenArtworkPlaceholder: some View {
@@ -1823,7 +2243,12 @@ struct RunningView: View {
     }
 
     private func nearbyRunnerCard(runner: NearbyRunner) -> some View {
-        HStack(spacing: 14) {
+        let sessionStatus = listenVM.activeSession?.status
+        let isWaitingForListenRequest = sessionStatus == "pending"
+        let isListeningTogether = sessionStatus == "active"
+        let isListenButtonDisabled = isWaitingForListenRequest || isListeningTogether
+
+        return HStack(spacing: 14) {
             runnerAvatar(runner: runner, size: 44, fontSize: 18, fallbackColor: .main500)
 
             VStack(alignment: .leading, spacing: 3) {
@@ -1865,17 +2290,19 @@ struct RunningView: View {
                     await listenVM.sendRequest(to: runner, musicVM: musicVM)
                 }
             } label: {
-                Text(listenVM.activeSession != nil ? "듣는 중" : "같이 듣기")
+                Text(
+                    isWaitingForListenRequest
+                        ? "대기중"
+                        : isListeningTogether ? "듣는 중" : "같이 듣기"
+                )
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(listenVM.activeSession != nil ? Color.textSecondary : Color.main500)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(listenVM.activeSession != nil ? Color.gray300 : Color.main500, lineWidth: 1)
-                    )
+                    .background(isListenButtonDisabled ? Color.gray300 : Color.main500)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
-            .disabled(listenVM.activeSession != nil)
+            .disabled(isListenButtonDisabled)
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 14)
@@ -1905,6 +2332,10 @@ struct RunningView: View {
 
     // MARK: - 카메라
 
+    private var pausedMapVerticalOffsetMeters: CLLocationDistance {
+        max(120, mapZoomDistance * 0.16)
+    }
+
     private func focusOnMyLocation() {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
@@ -1925,11 +2356,18 @@ struct RunningView: View {
         }
     }
 
-    private func recenterCamera(distance: Double) {
+    private func recenterCamera(
+        distance: Double,
+        verticalOffsetMeters: CLLocationDistance = 0
+    ) {
         guard let coord = viewModel.locationManager.currentLocation?.coordinate else { return }
+        let cameraCenter = CLLocationCoordinate2D(
+            latitude: coord.latitude - (verticalOffsetMeters / 111_000),
+            longitude: coord.longitude
+        )
         isProgrammaticMove = true
         withAnimation(.easeInOut(duration: 0.65)) {
-            cameraPosition = .camera(MapCamera(centerCoordinate: coord, distance: distance))
+            cameraPosition = .camera(MapCamera(centerCoordinate: cameraCenter, distance: distance))
         }
         // 카메라 애니메이션 중 발생하는 MapKit 콜백은 수동 조작으로 처리하지 않는다.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
@@ -1960,6 +2398,7 @@ struct RunningView: View {
             }
             await MainActor.run {
                 withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
+                metricSlots = [.distance, .pace, .calories]
                 if viewModel.start() {
                     startNearbyObservationIfNeeded()
                 } else {

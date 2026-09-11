@@ -31,6 +31,7 @@ final class NearbyRunnerViewModel: ObservableObject {
     private var allRunners: [ActiveRunner] = []
     private var friendIDs: Set<String> = []
     private var friendProfileImages: [String: String] = [:]
+    private var loadedProfileImageIDs: Set<String> = []
     private var myLocation: CLLocationCoordinate2D?
 
     func startObserving(uid: String) {
@@ -42,6 +43,7 @@ final class NearbyRunnerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 self?.allRunners = runners
                 self?.filterRunners()
+                await self?.loadProfileImages(for: self?.profileImageCandidateIDs() ?? [])
             }
         } onError: { [weak self] _ in
             Task { @MainActor [weak self] in
@@ -55,12 +57,15 @@ final class NearbyRunnerViewModel: ObservableObject {
         isObserving = false
         nearbyRunners = []
         activeFriendRunners = []
+        loadedProfileImageIDs = []
+        friendProfileImages = [:]
         loadError = nil
     }
 
     func updateMyLocation(_ coord: CLLocationCoordinate2D) {
         myLocation = coord
         filterRunners()
+        Task { await loadProfileImages(for: profileImageCandidateIDs()) }
     }
 
     func changeFilter(_ filter: RunnerFilter) {
@@ -87,7 +92,7 @@ final class NearbyRunnerViewModel: ObservableObject {
                     coordinate: runner.coordinate,
                     songTitle: runner.songTitle,
                     artist: runner.artist,
-                    profileImageBase64: friendProfileImages[runner.id] ?? runner.profileImageBase64,
+                    profileImageBase64: friendProfileImages[runner.id],
                     distance: dist,
                     isMe: false
                 )
@@ -122,11 +127,53 @@ final class NearbyRunnerViewModel: ObservableObject {
                 }
             )
             filterRunners()
+            await loadProfileImages(for: profileImageCandidateIDs())
         } catch {
             friendIDs = []
             friendProfileImages = [:]
             loadError = "친구 위치를 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
             filterRunners()
+        }
+    }
+
+    private func loadProfileImages(for runnerIDs: [String]) async {
+        let idsToLoad = Set(runnerIDs).subtracting(loadedProfileImageIDs)
+        guard !idsToLoad.isEmpty else { return }
+
+        await withTaskGroup(of: (String, String?, Bool).self) { group in
+            for id in idsToLoad {
+                group.addTask {
+                    do {
+                        let profile = try await FirestoreService.shared.fetchUserProfile(uid: id)
+                        return (id, profile["profileImageBase64"] as? String, true)
+                    } catch {
+                        return (id, nil, false)
+                    }
+                }
+            }
+
+            for await (id, image, succeeded) in group {
+                guard succeeded else { continue }
+                loadedProfileImageIDs.insert(id)
+                if let image, !image.isEmpty {
+                    friendProfileImages[id] = image
+                }
+            }
+        }
+        filterRunners()
+    }
+
+    private func profileImageCandidateIDs() -> [String] {
+        guard let myLocation else { return [] }
+        let myPoint = CLLocation(latitude: myLocation.latitude, longitude: myLocation.longitude)
+
+        return allRunners.compactMap { runner in
+            let point = CLLocation(
+                latitude: runner.coordinate.latitude,
+                longitude: runner.coordinate.longitude
+            )
+            let isNearby = myPoint.distance(from: point) <= radiusMeters
+            return isNearby || friendIDs.contains(runner.id) ? runner.id : nil
         }
     }
 

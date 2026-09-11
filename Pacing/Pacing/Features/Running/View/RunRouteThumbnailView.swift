@@ -36,23 +36,11 @@ struct RunRouteThumbnailView: View {
     }
 
     private var routeRegion: MKCoordinateRegion {
-        let latitudes = coordinates.map(\.latitude)
-        let longitudes = coordinates.map(\.longitude)
-        guard let minLatitude = latitudes.min(), let maxLatitude = latitudes.max(),
-              let minLongitude = longitudes.min(), let maxLongitude = longitudes.max() else {
-            return MKCoordinateRegion()
-        }
-
-        return MKCoordinateRegion(
-            center: CLLocationCoordinate2D(
-                latitude: (minLatitude + maxLatitude) / 2,
-                longitude: (minLongitude + maxLongitude) / 2
-            ),
-            span: MKCoordinateSpan(
-                latitudeDelta: max((maxLatitude - minLatitude) * 2.4, 0.004),
-                longitudeDelta: max((maxLongitude - minLongitude) * 2.4, 0.004)
-            )
-        )
+        RunRouteBounds.region(
+            for: coordinates,
+            paddingMultiplier: 2.4,
+            minimumDelta: 0.004
+        ) ?? MKCoordinateRegion()
     }
 
     private var routeGradientSegments: [RunRouteGradientSegment] {

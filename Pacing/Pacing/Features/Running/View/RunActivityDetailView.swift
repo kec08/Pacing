@@ -2,8 +2,21 @@ import SwiftUI
 import MapKit
 import CoreLocation
 
+struct RunActivityOwner {
+    let uid: String
+    let nickname: String
+    let profileImageBase64: String?
+    let statusText: String
+}
+
 struct RunActivityDetailView: View {
     let record: RunRecord
+    let owner: RunActivityOwner?
+
+    init(record: RunRecord, owner: RunActivityOwner? = nil) {
+        self.record = record
+        self.owner = owner
+    }
 
     @State private var cameraPosition: MapCameraPosition = .automatic
 
@@ -26,6 +39,34 @@ struct RunActivityDetailView: View {
 
     private var activityHeader: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let owner {
+                NavigationLink {
+                    FriendProfileView(
+                        friend: FriendUser(
+                            id: owner.uid,
+                            nickname: owner.nickname,
+                            profileImageBase64: owner.profileImageBase64,
+                            statusText: owner.statusText,
+                            source: .friend
+                        )
+                    )
+                } label: {
+                    HStack(spacing: 10) {
+                        RunActivityOwnerAvatar(owner: owner)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(owner.nickname)
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Color.textPrimary)
+                            Text(owner.statusText)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Color.textSecondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 14)
+            }
             Text(startedAtText)
                 .font(.system(size: 14))
                 .foregroundStyle(Color.textSecondary)
@@ -61,10 +102,17 @@ struct RunActivityDetailView: View {
     }
 
     private var metricsSection: some View {
-        HStack(alignment: .top, spacing: 12) {
-            compactMetric(value: formattedPace(record.displayPace), label: "평균 페이스")
-            compactMetric(value: formattedDuration(record.duration), label: "시간")
-            compactMetric(value: "\(estimatedCalories)", label: "칼로리")
+        VStack(spacing: 18) {
+            HStack(alignment: .top, spacing: 12) {
+                compactMetric(value: formattedPace(record.displayPace), label: "평균 페이스")
+                compactMetric(value: formattedDuration(record.duration), label: "시간")
+                compactMetric(value: "\(estimatedCalories)", label: "칼로리")
+            }
+            HStack(alignment: .top, spacing: 12) {
+                compactMetric(value: formattedElevation, label: "고도 상승")
+                compactMetric(value: formattedHeartRate, label: "BPM")
+                compactMetric(value: formattedCadence, label: "케이던스")
+            }
         }
     }
 
@@ -163,7 +211,7 @@ struct RunActivityDetailView: View {
         guard completedKilometers > 0, record.isPaceValid else { return [] }
 
         return (1...completedKilometers).map {
-            RunLapPace(kilometer: $0, pace: record.avgPace)
+            RunLapPace(kilometer: $0, pace: record.displayPace)
         }
     }
 
@@ -208,6 +256,21 @@ struct RunActivityDetailView: View {
         return Int((weight * record.distance * 1.036).rounded())
     }
 
+    private var formattedElevation: String {
+        guard let value = record.elevationGainMeters, value.isFinite else { return "--" }
+        return "\(Int(value.rounded())) m"
+    }
+
+    private var formattedHeartRate: String {
+        guard let value = record.averageHeartRate, value.isFinite else { return "--" }
+        return "\(Int(value.rounded()))"
+    }
+
+    private var formattedCadence: String {
+        guard let value = record.averageCadence, value.isFinite, value > 0 else { return "--" }
+        return "\(Int(value.rounded()))"
+    }
+
     private func formattedDuration(_ seconds: Int) -> String {
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
@@ -225,24 +288,42 @@ struct RunActivityDetailView: View {
     }
 
     private func fitRoute() {
-        guard record.routeCoordinates.count >= 2 else { return }
+        guard let region = RunRouteBounds.region(
+            for: record.routeCoordinates,
+            paddingMultiplier: 1.4,
+            minimumDelta: 0.003
+        ) else { return }
+        cameraPosition = .region(region)
+    }
+}
 
-        let latitudes = record.routeCoordinates.map(\.latitude)
-        let longitudes = record.routeCoordinates.map(\.longitude)
-        guard let minLatitude = latitudes.min(), let maxLatitude = latitudes.max(),
-              let minLongitude = longitudes.min(), let maxLongitude = longitudes.max() else {
-            return
+private struct RunActivityOwnerAvatar: View {
+    let owner: RunActivityOwner
+
+    var body: some View {
+        Group {
+            if let image = decodedImage {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFill()
+            } else {
+                ZStack {
+                    Circle().fill(Color.main200.opacity(0.8))
+                    Text(owner.nickname.prefix(1).isEmpty ? "러" : String(owner.nickname.prefix(1)))
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.main500)
+                }
+            }
         }
+        .frame(width: 32, height: 32)
+        .clipShape(Circle())
+        .overlay { Circle().stroke(Color.surfaceBorder, lineWidth: 1) }
+    }
 
-        let center = CLLocationCoordinate2D(
-            latitude: (minLatitude + maxLatitude) / 2,
-            longitude: (minLongitude + maxLongitude) / 2
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((maxLatitude - minLatitude) * 1.4, 0.003),
-            longitudeDelta: max((maxLongitude - minLongitude) * 1.4, 0.003)
-        )
-        cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+    private var decodedImage: UIImage? {
+        guard let encoded = owner.profileImageBase64,
+              let data = Data(base64Encoded: encoded) else { return nil }
+        return UIImage(data: data)
     }
 }
 

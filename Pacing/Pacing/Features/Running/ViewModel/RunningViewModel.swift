@@ -14,7 +14,7 @@ enum RunningState {
 
 enum RunningPacePolicy {
     /// 정지 상태의 GPS 흔들림으로 페이스가 표시되는 것을 막기 위한 최소 유효 이동 거리입니다.
-    static let minimumDistanceForPaceKilometers = 0.02
+    static let minimumDistanceForPaceKilometers = 0.10
     private static let minimumRunningSpeedMetersPerSecond = 0.8
     private static let maximumRunningSpeedMetersPerSecond = 10.0
 
@@ -48,6 +48,10 @@ final class RunningViewModel: ObservableObject {
     @Published var distance: Double = 0       // km
     @Published var currentPace: Double = 0    // 분/km, 1km 랩 기준 표시
     @Published private(set) var completedLapPaces: [RunLapPace] = []
+    @Published private(set) var elevationGainMeters: Double?
+    @Published private(set) var averageHeartRate: Double?
+    @Published private(set) var currentCadenceStepsPerMinute: Double?
+    @Published private(set) var averageCadence: Double?
 
     let locationManager: LocationManager
 
@@ -56,16 +60,30 @@ final class RunningViewModel: ObservableObject {
 
     private var timer: AnyCancellable?
     private var lastLocation: CLLocation?
+    private var activeElapsedSeconds: TimeInterval = 0
+    private var activeElevationLocations: [CLLocation] = []
     private var cancellables = Set<AnyCancellable>()
     private var nextLapDistanceMark: Double = 1.0
     private var lapStartDistance: Double = 0
     private var lapStartElapsedSeconds: Int = 0
     private var lastCompletedLapPace: Double = 0
     private var runningStartedAt: Date?
+    private var healthRunStartedAt: Date?
     private var accumulatedElapsedSecondsBeforeResume: Int = 0
+    private let heartRateRepository: HeartRateRepository
+    private let cadenceRepository: CadenceRepository
+    private var cadenceAccumulator = CadenceAccumulator()
+    private var cadenceSegmentStartDate: Date?
+    private var healthAuthorizationTask: Task<Bool, Never>?
 
-    init(locationManager: LocationManager = .shared) {
+    init(
+        locationManager: LocationManager = .shared,
+        heartRateRepository: HeartRateRepository = HealthKitHeartRateRepository(),
+        cadenceRepository: CadenceRepository = CoreMotionCadenceRepository()
+    ) {
         self.locationManager = locationManager
+        self.heartRateRepository = heartRateRepository
+        self.cadenceRepository = cadenceRepository
         locationManager.startMonitoringCurrentLocation()
 
         locationManager.$recentRecordedLocations
@@ -88,12 +106,25 @@ final class RunningViewModel: ObservableObject {
         distance = 0
         currentPace = 0
         lastLocation = nil
+        activeElapsedSeconds = 0
+        activeElevationLocations = []
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
-        runningStartedAt = Date()
+        let startedAt = Date()
+        runningStartedAt = startedAt
+        healthRunStartedAt = startedAt
+        elevationGainMeters = nil
+        averageHeartRate = nil
+        currentCadenceStepsPerMinute = nil
+        averageCadence = nil
+        cadenceAccumulator.reset()
+        cadenceAccumulator.resetBaseline(at: startedAt)
+        cadenceSegmentStartDate = startedAt
+        healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
         startTimer()
+        startCadenceUpdates(from: startedAt)
         return true
     }
 
@@ -105,28 +136,61 @@ final class RunningViewModel: ObservableObject {
         timer?.cancel()
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
         locationManager.stopTracking()
+        cadenceRepository.stopUpdates()
+        cadenceAccumulator.resetBaseline()
+        cadenceSegmentStartDate = nil
+        currentCadenceStepsPerMinute = nil
     }
 
     func resume() {
-        runningStartedAt = Date()
+        let resumedAt = Date()
+        runningStartedAt = resumedAt
         state = .running
         lastLocation = nil
+        activeElapsedSeconds = 0
+        activeElevationLocations = []
         locationManager.startTracking()
         startTimer()
+        cadenceAccumulator.resetBaseline(at: resumedAt)
+        cadenceSegmentStartDate = resumedAt
+        currentCadenceStepsPerMinute = nil
+        startCadenceUpdates(from: resumedAt)
     }
 
-    func stop() {
+    func stop() async {
         syncElapsedSeconds()
         completePendingLapsIfNeeded()
+        let endedAt = Date()
+        let healthStartedAt = healthRunStartedAt
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
         runningStartedAt = nil
         timer?.cancel()
         locationManager.stopTracking()
+        cadenceRepository.stopUpdates()
         state = .finished
+        let lastLiveCadence = currentCadenceStepsPerMinute
+
+        await finalizeCadence(at: endedAt)
+
+        elevationGainMeters = RunMetricsCalculator.elevationGain(
+            from: activeElevationLocations
+        )
+        if let healthStartedAt {
+            _ = await healthAuthorizationTask?.value
+            averageHeartRate = await heartRateRepository.averageHeartRate(
+                from: healthStartedAt,
+                to: endedAt
+            )
+        }
+        averageCadence = cadenceAccumulator.averageStepsPerMinute
+            ?? currentCadenceStepsPerMinute
+            ?? lastLiveCadence
+        currentCadenceStepsPerMinute = nil
     }
 
     func reset() {
         timer?.cancel()
+        cadenceRepository.stopUpdates()
         locationManager.resetRoute()
         elapsedSeconds = 0
         distance = 0
@@ -135,6 +199,14 @@ final class RunningViewModel: ObservableObject {
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
         runningStartedAt = nil
+        healthRunStartedAt = nil
+        healthAuthorizationTask = nil
+        elevationGainMeters = nil
+        averageHeartRate = nil
+        currentCadenceStepsPerMinute = nil
+        averageCadence = nil
+        cadenceAccumulator.reset()
+        cadenceSegmentStartDate = nil
         state = .idle
     }
 
@@ -160,8 +232,11 @@ final class RunningViewModel: ObservableObject {
     }
 
     var avgPace: Double {
-        guard distance > 0 else { return 0 }
-        return Double(elapsedSeconds) / 60.0 / distance
+        guard RunningPacePolicy.canDisplayPace(
+            distanceKilometers: distance,
+            elapsedSeconds: Int(activeElapsedSeconds)
+        ) else { return 0 }
+        return activeElapsedSeconds / 60.0 / distance
     }
 
     var formattedAvgPace: String {
@@ -181,6 +256,21 @@ final class RunningViewModel: ObservableObject {
         "\(estimatedCalories)"
     }
 
+    var formattedCadence: String {
+        guard let cadence = currentCadenceStepsPerMinute ?? averageCadence,
+              cadence.isFinite,
+              cadence > 0
+        else { return "--" }
+        return "\(Int(cadence.rounded()))"
+    }
+
+    var formattedElevationGain: String {
+        guard let elevationGainMeters, elevationGainMeters.isFinite else {
+            return state == .running || state == .paused ? "0m" : "--"
+        }
+        return "\(Int(elevationGainMeters.rounded()))m"
+    }
+
     // MARK: - Private
 
     private func startTimer() {
@@ -190,6 +280,33 @@ final class RunningViewModel: ObservableObject {
                 self?.syncElapsedSeconds()
                 self?.updateDisplayedPace()
             }
+    }
+
+    private func startCadenceUpdates(from startDate: Date) {
+        guard cadenceRepository.isCadenceAvailable else { return }
+
+        cadenceRepository.startUpdates(from: startDate) { [weak self] sample in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                guard self.state == .running else { return }
+                self.currentCadenceStepsPerMinute = self.cadenceAccumulator.ingest(sample)
+            }
+        }
+    }
+
+    private func finalizeCadence(at endDate: Date) async {
+        guard let startDate = cadenceSegmentStartDate else { return }
+
+        let sample = await withCheckedContinuation { continuation in
+            cadenceRepository.queryData(from: startDate, to: endDate) { sample in
+                continuation.resume(returning: sample)
+            }
+        }
+
+        guard let sample else { return }
+        if let cadence = cadenceAccumulator.ingest(sample) {
+            currentCadenceStepsPerMinute = cadence
+        }
     }
 
     private func updateDistance(with locations: [CLLocation]) {
@@ -221,12 +338,21 @@ final class RunningViewModel: ObservableObject {
 
             let deltaKm = deltaMeters / 1000.0
             distance += deltaKm
+            activeElapsedSeconds += timeDelta
+            if activeElevationLocations.isEmpty {
+                activeElevationLocations.append(last)
+            }
+            activeElevationLocations.append(location)
             hasDistanceChanged = true
         }
 
         if hasDistanceChanged {
             updateDisplayedPace()
         }
+
+        elevationGainMeters = RunMetricsCalculator.elevationGain(
+            from: activeElevationLocations
+        ) ?? 0
     }
 
     func saveRecord(
@@ -234,7 +360,10 @@ final class RunningViewModel: ObservableObject {
         elapsedSeconds: Int? = nil,
         avgPace: Double? = nil,
         routeCoordinates: [CLLocationCoordinate2D]? = nil,
-        lapPaces: [RunLapPace]? = nil
+        lapPaces: [RunLapPace]? = nil,
+        elevationGainMeters: Double? = nil,
+        averageHeartRate: Double? = nil,
+        averageCadence: Double? = nil
     ) async {
         let savedDistance = distance ?? self.distance
         let savedElapsedSeconds = elapsedSeconds ?? self.elapsedSeconds
@@ -243,6 +372,7 @@ final class RunningViewModel: ObservableObject {
             id: "validation",
             startedAt: Date(),
             duration: savedElapsedSeconds,
+            movingDuration: Int(activeElapsedSeconds.rounded()),
             distance: savedDistance,
             avgPace: rawAveragePace,
             routeCoordinates: [],
@@ -260,7 +390,10 @@ final class RunningViewModel: ObservableObject {
             distance: savedDistance,
             avgPace: savedAveragePace,
             routeCoordinates: savedRouteCoordinates,
-            lapPaces: savedLapPaces
+            lapPaces: savedLapPaces,
+            elevationGainMeters: elevationGainMeters ?? self.elevationGainMeters,
+            averageHeartRate: averageHeartRate ?? self.averageHeartRate,
+            averageCadence: averageCadence ?? self.averageCadence
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
 
@@ -325,7 +458,7 @@ final class RunningViewModel: ObservableObject {
     private func completePendingLapsIfNeeded() {
         while distance >= nextLapDistanceMark {
             let lapDistance = nextLapDistanceMark - lapStartDistance
-            let lapElapsedSeconds = elapsedSeconds - lapStartElapsedSeconds
+            let lapElapsedSeconds = Int(activeElapsedSeconds) - lapStartElapsedSeconds
 
             if lapDistance > 0, lapElapsedSeconds > 0 {
                 let lapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
@@ -339,7 +472,7 @@ final class RunningViewModel: ObservableObject {
             }
 
             lapStartDistance = nextLapDistanceMark
-            lapStartElapsedSeconds = elapsedSeconds
+            lapStartElapsedSeconds = Int(activeElapsedSeconds)
             nextLapDistanceMark += 1.0
         }
     }

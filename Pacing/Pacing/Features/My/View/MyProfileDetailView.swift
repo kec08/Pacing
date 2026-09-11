@@ -206,7 +206,13 @@ struct MyProfileDetailView: View {
             } else {
                 VStack(spacing: 0) {
                     ForEach(vm.recentSongs.prefix(5)) { song in
-                        MyRecentSongRow(song: song, artworkURL: vm.recentSongArtworkURLs[song.id])
+                        MyRecentSongRow(
+                            song: song,
+                            artworkURL: vm.recentSongArtworkURLs[song.id],
+                            isPlaying: vm.playingSongID == song.id,
+                            playbackError: vm.playingSongID == song.id ? vm.playbackError : nil,
+                            onPlay: { Task { await vm.playRecentSong(song) } }
+                        )
                     }
                 }
             }
@@ -270,35 +276,56 @@ private struct ProfileStatItem: View {
 private struct MyRecentSongRow: View {
     let song: FriendRecentSong
     let artworkURL: String?
+    let isPlaying: Bool
+    let playbackError: String?
+    let onPlay: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            artwork
+        Button(action: onPlay) {
+            HStack(spacing: 12) {
+                ZStack {
+                    artwork
+                    if isPlaying {
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(.black.opacity(0.42))
+                        Image(systemName: "waveform")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(song.title)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(Color.textPrimary)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(song.title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
 
-                Text(song.artistName.isEmpty ? "Apple Music" : song.artistName)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(Color.textSecondary)
-                    .lineLimit(1)
+                    Text(playbackError ?? (song.artistName.isEmpty ? "Apple Music" : song.artistName))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(playbackError == nil ? Color.textSecondary : Color.accent500)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
+                if let playedAtText {
+                    Text(playedAtText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(Color.gray500)
+                }
             }
-
-            Spacer(minLength: 8)
-
-            if let playedAtText {
-                Text(playedAtText)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(Color.gray500)
-            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .buttonStyle(.plain)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(Color.gray300.opacity(0.35))
+                .frame(height: 1)
+                .padding(.leading, 70)
+        }
     }
 
     private var artwork: some View {

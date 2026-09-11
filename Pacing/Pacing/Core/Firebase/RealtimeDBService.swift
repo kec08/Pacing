@@ -1,6 +1,7 @@
 import Foundation
 import FirebaseDatabase
 import CoreLocation
+import UIKit
 
 struct ActiveRunner: Identifiable {
     static let maximumAge: TimeInterval = 120
@@ -10,7 +11,6 @@ struct ActiveRunner: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let songTitle: String
     let artist: String
-    let profileImageBase64: String?
     let updatedAt: TimeInterval
 
     func isFresh(referenceDate: Date = .now) -> Bool {
@@ -18,11 +18,38 @@ struct ActiveRunner: Identifiable {
     }
 }
 
+enum ActiveRunnerBroadcastMode {
+    case foreground
+    case background
+    case running
+
+    var minimumInterval: TimeInterval {
+        switch self {
+        case .foreground: return 15
+        case .background: return 60
+        case .running: return 5
+        }
+    }
+
+    var minimumDistance: CLLocationDistance {
+        switch self {
+        case .foreground: return 30
+        case .background: return 50
+        case .running: return 10
+        }
+    }
+}
+
 final class RealtimeDBService {
     static let shared = RealtimeDBService()
     private let db = Database.database(url: "https://pacing-a8639-default-rtdb.firebaseio.com").reference()
     private var broadcastTimer: Timer?
-    private var observeHandle: DatabaseHandle?
+    private var activeRunnerObserverHandles: [DatabaseHandle] = []
+    private var activeRunnerCleanupTimer: Timer?
+    private var activeRunnerCache: [String: ActiveRunner] = [:]
+    private var lastBroadcastCoordinate: CLLocationCoordinate2D?
+    private var lastBroadcastDate: Date?
+    private var lastBroadcastSong: (title: String, artist: String)?
     private var broadcastErrorHandler: ((Error) -> Void)?
 
     private init() {}
@@ -33,7 +60,7 @@ final class RealtimeDBService {
         nickname: String,
         locationProvider: @escaping () -> CLLocationCoordinate2D?,
         songProvider: @escaping () -> (title: String, artist: String),
-        profileImageProvider: @escaping () -> String?,
+        isRunningProvider: @escaping () -> Bool = { false },
         onError: @escaping (Error) -> Void = { _ in }
     ) {
         guard !uid.isEmpty else { return }
@@ -46,8 +73,8 @@ final class RealtimeDBService {
         broadcastTimer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             let coord = locationProvider()
             let song = songProvider()
-            let profileImageBase64 = profileImageProvider()
-            self?.upload(uid: uid, nickname: nickname, coord: coord, song: song, profileImageBase64: profileImageBase64)
+            let mode = Self.broadcastMode(isRunning: isRunningProvider())
+            self?.upload(uid: uid, nickname: nickname, coord: coord, song: song, mode: mode)
         }
         broadcastTimer?.fire()
     }
@@ -57,9 +84,15 @@ final class RealtimeDBService {
         nickname: String,
         coord: CLLocationCoordinate2D?,
         song: (title: String, artist: String),
-        profileImageBase64: String? = nil
+        isRunning: Bool = false
     ) {
-        upload(uid: uid, nickname: nickname, coord: coord, song: song, profileImageBase64: profileImageBase64)
+        upload(
+            uid: uid,
+            nickname: nickname,
+            coord: coord,
+            song: song,
+            mode: Self.broadcastMode(isRunning: isRunning)
+        )
     }
 
     private func upload(
@@ -67,25 +100,41 @@ final class RealtimeDBService {
         nickname: String,
         coord: CLLocationCoordinate2D?,
         song: (title: String, artist: String),
-        profileImageBase64: String?
+        mode: ActiveRunnerBroadcastMode
     ) {
         guard !uid.isEmpty,
               let coord,
               CLLocationCoordinate2DIsValid(coord)
         else { return }
+
+        let now = Date()
+        let distance = lastBroadcastCoordinate.map {
+            CLLocation(latitude: $0.latitude, longitude: $0.longitude)
+                .distance(from: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
+        } ?? .greatestFiniteMagnitude
+        let elapsed = lastBroadcastDate.map { now.timeIntervalSince($0) } ?? .greatestFiniteMagnitude
+        let songChanged = lastBroadcastSong?.title != song.title || lastBroadcastSong?.artist != song.artist
+
+        guard lastBroadcastDate == nil || elapsed >= mode.minimumInterval ||
+                distance >= mode.minimumDistance || songChanged else { return }
+
         var data: [String: Any] = [
             "nickname": nickname,
             "currentSongTitle": song.title,
             "currentArtist": song.artist,
             "updatedAt": ServerValue.timestamp()
         ]
-        if let profileImageBase64, !profileImageBase64.isEmpty {
-            data["profileImageBase64"] = profileImageBase64
-        }
         data["latitude"] = coord.latitude
         data["longitude"] = coord.longitude
         db.child("activeRunners").child(uid).updateChildValues(data) { [weak self] error, _ in
-            if let error { self?.broadcastErrorHandler?(error) }
+            guard let self else { return }
+            if let error {
+                self.broadcastErrorHandler?(error)
+            } else {
+                self.lastBroadcastCoordinate = coord
+                self.lastBroadcastDate = now
+                self.lastBroadcastSong = song
+            }
         }
     }
 
@@ -93,6 +142,9 @@ final class RealtimeDBService {
     func stopBroadcast(uid: String) {
         broadcastTimer?.invalidate()
         broadcastTimer = nil
+        lastBroadcastCoordinate = nil
+        lastBroadcastDate = nil
+        lastBroadcastSong = nil
         guard !uid.isEmpty else { return }
         db.child("activeRunners").child(uid).removeValue()
     }
@@ -102,36 +154,64 @@ final class RealtimeDBService {
         onChange: @escaping ([ActiveRunner]) -> Void,
         onError: @escaping (Error) -> Void = { _ in }
     ) {
-        observeHandle = db.child("activeRunners").observe(.value, with: { snapshot in
-            var runners: [ActiveRunner] = []
-            for child in snapshot.children {
-                guard
-                    let snap = child as? DataSnapshot,
-                    let d = snap.value as? [String: Any]
-                else { continue }
+        stopObserving()
+        activeRunnerCache.removeAll(keepingCapacity: true)
 
-                guard
-                    let lat = Self.doubleValue(d["latitude"]),
-                    let lng = Self.doubleValue(d["longitude"]),
-                    let updatedAt = Self.doubleValue(d["updatedAt"]),
-                    CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lng))
-                else { continue }
-
-                let runner = ActiveRunner(
-                    id: snap.key,
-                    nickname: d["nickname"] as? String ?? "러너",
-                    coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
-                    songTitle: d["currentSongTitle"] as? String ?? "",
-                    artist: d["currentArtist"] as? String ?? "",
-                    profileImageBase64: d["profileImageBase64"] as? String,
-                    updatedAt: updatedAt
-                )
-                if runner.isFresh() {
-                    runners.append(runner)
-                }
-            }
-            onChange(runners)
+        let reference = db.child("activeRunners")
+        let addedHandle = reference.observe(.childAdded, with: { [weak self] snapshot in
+            self?.updateActiveRunner(snapshot, onChange: onChange)
         }, withCancel: onError)
+        let changedHandle = reference.observe(.childChanged, with: { [weak self] snapshot in
+            self?.updateActiveRunner(snapshot, onChange: onChange)
+        }, withCancel: onError)
+        let removedHandle = reference.observe(.childRemoved, with: { [weak self] snapshot in
+            self?.activeRunnerCache.removeValue(forKey: snapshot.key)
+            self?.publishActiveRunners(onChange)
+        }, withCancel: onError)
+        activeRunnerObserverHandles = [addedHandle, changedHandle, removedHandle]
+
+        activeRunnerCleanupTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+            self?.removeStaleActiveRunners(onChange: onChange)
+        }
+    }
+
+    private func updateActiveRunner(_ snapshot: DataSnapshot, onChange: @escaping ([ActiveRunner]) -> Void) {
+        guard let runner = Self.activeRunner(from: snapshot) else {
+            activeRunnerCache.removeValue(forKey: snapshot.key)
+            publishActiveRunners(onChange)
+            return
+        }
+        activeRunnerCache[runner.id] = runner
+        publishActiveRunners(onChange)
+    }
+
+    private static func activeRunner(from snapshot: DataSnapshot) -> ActiveRunner? {
+        guard let d = snapshot.value as? [String: Any],
+              let lat = Self.doubleValue(d["latitude"]),
+              let lng = Self.doubleValue(d["longitude"]),
+              let updatedAt = Self.doubleValue(d["updatedAt"]),
+              CLLocationCoordinate2DIsValid(CLLocationCoordinate2D(latitude: lat, longitude: lng))
+        else { return nil }
+
+        return ActiveRunner(
+            id: snapshot.key,
+            nickname: d["nickname"] as? String ?? "러너",
+            coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
+            songTitle: d["currentSongTitle"] as? String ?? "",
+            artist: d["currentArtist"] as? String ?? "",
+            updatedAt: updatedAt
+        )
+    }
+
+    private func publishActiveRunners(_ onChange: @escaping ([ActiveRunner]) -> Void) {
+        onChange(activeRunnerCache.values.filter { $0.isFresh() }.sorted { $0.id < $1.id })
+    }
+
+    private func removeStaleActiveRunners(onChange: @escaping ([ActiveRunner]) -> Void) {
+        let staleIDs = activeRunnerCache.values.filter { !$0.isFresh() }.map(\.id)
+        guard !staleIDs.isEmpty else { return }
+        staleIDs.forEach { activeRunnerCache.removeValue(forKey: $0) }
+        publishActiveRunners(onChange)
     }
 
     private static func doubleValue(_ value: Any?) -> Double? {
@@ -141,9 +221,32 @@ final class RealtimeDBService {
 
     // MARK: - 구독 해제
     func stopObserving() {
-        if let handle = observeHandle {
-            db.child("activeRunners").removeObserver(withHandle: handle)
-            observeHandle = nil
+        let reference = db.child("activeRunners")
+        activeRunnerObserverHandles.forEach { reference.removeObserver(withHandle: $0) }
+        activeRunnerObserverHandles.removeAll()
+        activeRunnerCleanupTimer?.invalidate()
+        activeRunnerCleanupTimer = nil
+        activeRunnerCache.removeAll()
+    }
+
+    private static func broadcastMode(isRunning: Bool) -> ActiveRunnerBroadcastMode {
+        if isRunning { return .running }
+        return UIApplication.shared.applicationState == .active ? .foreground : .background
+    }
+
+    /// 요청 버튼을 누른 순간의 상대방 재생 곡을 한 번 읽습니다.
+    /// 화면에 캐시된 NearbyRunner 값은 실시간 갱신 사이에 이전 곡일 수 있으므로
+    /// 요청 생성 시에는 activeRunners의 최신 값을 기준으로 사용합니다.
+    func fetchActiveRunner(uid: String) async throws -> ActiveRunner? {
+        guard !uid.isEmpty else { return nil }
+
+        return try await withCheckedThrowingContinuation { continuation in
+            db.child("activeRunners").child(uid).observeSingleEvent(of: .value) { snapshot in
+                let runner = Self.activeRunner(from: snapshot)
+                continuation.resume(returning: runner?.isFresh() == true ? runner : nil)
+            } withCancel: { error in
+                continuation.resume(throwing: error)
+            }
         }
     }
 
@@ -158,7 +261,8 @@ final class RealtimeDBService {
         artworkURL: String = "",
         artworkData: String = "",
         playbackEventID: String = UUID().uuidString,
-        position: Double
+        position: Double,
+        isPlaying: Bool
     ) -> String {
         guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
         let sessionRef = db.child("listenSessions").childByAutoId()
@@ -179,19 +283,20 @@ final class RealtimeDBService {
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "status": "pending",
-            "isPlaying": true
+            "isPlaying": isPlaying
         ]
         sessionRef.setValue(data)
-        // 게스트에게 수신 알림 경로에도 기록
-        db.child("incomingRequests").child(guestUID).child(sessionID).setValue(data)
+        // 요청을 받은 호스트에게 수신 알림 경로에도 기록합니다.
+        // 세션의 guestUID는 요청자이므로 알림 수신자와 분리해야 합니다.
+        db.child("incomingRequests").child(hostUID).child(sessionID).setValue(data)
         return sessionID
     }
 
     // MARK: - 세션 수락 (게스트)
-    func acceptSession(sessionID: String, guestUID: String) {
-        guard !sessionID.isEmpty, !guestUID.isEmpty else { return }
+    func acceptSession(sessionID: String, hostUID: String) {
+        guard !sessionID.isEmpty, !hostUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "active"])
-        db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
+        db.child("incomingRequests").child(hostUID).child(sessionID).removeValue()
     }
 
     // MARK: - 세션 거절 (게스트)
@@ -350,6 +455,7 @@ final class RealtimeDBService {
                 .queryLimited(toLast: UInt(limit))
             query.observeSingleEvent(of: .value) { snapshot in
                     var sessions: [ListenSession] = []
+                    sessions.reserveCapacity(Int(snapshot.childrenCount))
 
                     for childSnapshot in snapshot.children {
                         guard

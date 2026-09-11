@@ -9,6 +9,9 @@ struct RunSummaryView: View {
     let calories: Int
     let lapPaces: [RunLapPace]
     let routeCoordinates: [CLLocationCoordinate2D]
+    let elevationGainMeters: Double?
+    let averageHeartRate: Double?
+    let averageCadence: Double?
     let onSave: () -> Void
     let onDiscard: () -> Void
 
@@ -98,6 +101,14 @@ struct RunSummaryView: View {
                 subStatItem(value: formattedCalories, label: "칼로리", minimumScaleFactor: 0.55)
             }
 
+            Divider().opacity(0.3).padding(.vertical, 14)
+
+            HStack(spacing: 0) {
+                subStatItem(value: formattedElevation, label: "고도 상승")
+                subStatItem(value: formattedHeartRate, label: "BPM")
+                subStatItem(value: formattedCadence, label: "케이던스")
+            }
+
             if !lapPaces.isEmpty {
                 Divider().opacity(0.3).padding(.vertical, 14)
 
@@ -170,6 +181,21 @@ struct RunSummaryView: View {
         "\(calories) kcal"
     }
 
+    private var formattedElevation: String {
+        guard let elevationGainMeters, elevationGainMeters.isFinite else { return "--" }
+        return "\(Int(elevationGainMeters.rounded())) m"
+    }
+
+    private var formattedHeartRate: String {
+        guard let averageHeartRate, averageHeartRate.isFinite else { return "--" }
+        return "\(Int(averageHeartRate.rounded()))"
+    }
+
+    private var formattedCadence: String {
+        guard let averageCadence, averageCadence.isFinite, averageCadence > 0 else { return "--" }
+        return "\(Int(averageCadence.rounded()))"
+    }
+
     private func formattedPace(_ pace: Double) -> String {
         guard pace > 0 else { return "--'--\"" }
         let min = Int(pace)
@@ -180,18 +206,12 @@ struct RunSummaryView: View {
     // MARK: - 경로에 맞게 카메라 맞추기
 
     private func fitRoute() {
-        guard routeCoordinates.count >= 2 else { return }
-        let lats = routeCoordinates.map(\.latitude)
-        let lons = routeCoordinates.map(\.longitude)
-        let center = CLLocationCoordinate2D(
-            latitude: ((lats.min()! + lats.max()!) / 2),
-            longitude: ((lons.min()! + lons.max()!) / 2)
-        )
-        let span = MKCoordinateSpan(
-            latitudeDelta: max((lats.max()! - lats.min()!) * 1.5, 0.003),
-            longitudeDelta: max((lons.max()! - lons.min()!) * 1.5, 0.003)
-        )
-        cameraPosition = .region(MKCoordinateRegion(center: center, span: span))
+        guard let region = RunRouteBounds.region(
+            for: routeCoordinates,
+            paddingMultiplier: 1.5,
+            minimumDelta: 0.003
+        ) else { return }
+        cameraPosition = .region(region)
     }
 
     private func smoothedRouteCoordinates(from coordinates: [CLLocationCoordinate2D]) -> [CLLocationCoordinate2D] {

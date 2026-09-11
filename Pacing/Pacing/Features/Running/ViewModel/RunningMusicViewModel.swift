@@ -55,6 +55,8 @@ final class RunningMusicViewModel: ObservableObject {
     private var attemptedApplicationArtworkEntryKeys: Set<String> = []
     private var resolvingApplicationEntryIDs: Set<String> = []
     private var applicationSongResolutionTasks: [String: Task<Void, Never>] = [:]
+    private var listenSessionArtworkResolutionTask: Task<Void, Never>?
+    private var resolvingListenSessionArtworkSongID: String?
     // 재생 중인 플레이리스트의 MPMediaItem 캐시
     private var cachedMediaItems: [MPMediaItem] = []
     private var notificationObservers: [NSObjectProtocol] = []
@@ -71,6 +73,7 @@ final class RunningMusicViewModel: ObservableObject {
         playbackClock?.cancel()
         seekSyncTask?.cancel()
         applicationSongResolutionTasks.values.forEach { $0.cancel() }
+        listenSessionArtworkResolutionTask?.cancel()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
     }
@@ -249,6 +252,7 @@ final class RunningMusicViewModel: ObservableObject {
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? artworkURL(for: song)
                     ?? resolvedApplicationArtworkURLsByEntryKey[applicationEntryKey(for: entry)],
                 artwork: nil
             )
@@ -279,6 +283,199 @@ final class RunningMusicViewModel: ObservableObject {
             )
         }
         return nowPlayingSnapshot
+    }
+
+    /// 같이 듣기 게스트가 호스트의 곡 전환을 현재 러닝 큐에 반영합니다.
+    /// 러닝 화면과 같은 ApplicationMusicPlayer를 사용해야 노래바·앨범·재생 곡이
+    /// 하나의 큐를 기준으로 함께 갱신됩니다.
+    func syncToListenSession(
+        songStoreID: String,
+        title: String,
+        artist: String,
+        artworkURL: String,
+        position: TimeInterval,
+        isPlaying: Bool
+    ) async -> Bool {
+        let targetIndex = queueSongs.firstIndex { song in
+            (!songStoreID.isEmpty && "\(song.id)" == songStoreID)
+                || (song.title.caseInsensitiveCompare(title) == .orderedSame
+                    && song.artistName.caseInsensitiveCompare(artist) == .orderedSame)
+        }
+        let targetSong: Song
+        if let targetIndex {
+            targetSong = queueSongs[targetIndex]
+            let currentEntryMatchesTarget = applicationPlayer.queue.currentEntry.map {
+                $0.id == "\(targetSong.id)"
+                    || ($0.title.caseInsensitiveCompare(targetSong.title) == .orderedSame
+                        && ($0.subtitle ?? "").caseInsensitiveCompare(targetSong.artistName) == .orderedSame)
+            } ?? false
+            if targetIndex != currentSongIndex || !isUsingApplicationPlayer || !currentEntryMatchesTarget {
+                await play(at: targetIndex, from: currentSongIndex)
+            }
+
+            // play(at:) may fail while the MusicKit queue is stale or externally changed.
+            // Rebuild the queue before applying the session position so a failed transition
+            // cannot leave the guest on an unrelated track.
+            let queueMatchesTarget = applicationPlayer.queue.currentEntry.map {
+                $0.id == "\(targetSong.id)"
+                    || ($0.title.caseInsensitiveCompare(targetSong.title) == .orderedSame
+                        && ($0.subtitle ?? "").caseInsensitiveCompare(targetSong.artistName) == .orderedSame)
+            } ?? false
+            if !queueMatchesTarget {
+                musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
+                applicationPlayer.queue = .init(for: queueSongs, startingAt: targetSong)
+                NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+                do {
+                    try await applicationPlayer.prepareToPlay()
+                } catch {
+                    print("[RunningMusic] listen session queue preparation failed: \(error.localizedDescription)")
+                    return false
+                }
+            }
+        } else {
+            let resolvedSong: Song?
+            if !songStoreID.isEmpty {
+                if let songByID = await musicService.resolveCatalogSong(id: MusicItemID(songStoreID)) {
+                    resolvedSong = songByID
+                } else {
+                    resolvedSong = await musicService.resolveCatalogSong(title: title, artist: artist)
+                }
+            } else {
+                resolvedSong = await musicService.resolveCatalogSong(title: title, artist: artist)
+            }
+            guard let resolvedSong else { return false }
+            targetSong = resolvedSong
+            queueSongs = [targetSong]
+            currentSongIndex = 0
+            currentSong = targetSong
+            musicService.playbackContext.configure(songs: [targetSong], startingAt: targetSong)
+            applicationPlayer.queue = .init(for: [targetSong])
+            NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+            do {
+                try await applicationPlayer.prepareToPlay()
+            } catch {
+                print("[RunningMusic] listen session catalog preparation failed: \(error.localizedDescription)")
+                return false
+            }
+        }
+
+        let boundedPosition = max(0, min(position, playbackDuration > 0 ? playbackDuration : position))
+        cacheListenSessionArtwork(artworkURL, for: targetSong)
+        resolveListenSessionArtworkIfNeeded(for: targetSong, title: title, artist: artist)
+        // Realtime Database는 위치를 주기적으로 갱신한다. 매 갱신마다
+        // playbackTime을 덮어쓰면 MusicKit 재생이 끊기거나 속도가 흔들릴 수
+        // 있으므로, 실제 오차가 있을 때만 위치를 보정한다.
+        if abs(applicationPlayer.playbackTime - boundedPosition) > 1.5 {
+            applicationPlayer.playbackTime = boundedPosition
+            displayPlaybackTime = boundedPosition
+        }
+        if isPlaying {
+            if applicationPlayer.state.playbackStatus != .playing {
+                do {
+                    try await applicationPlayer.play()
+                } catch {
+                    print("[RunningMusic] listen session playback failed: \(error.localizedDescription)")
+                    return false
+                }
+            }
+        } else if applicationPlayer.state.playbackStatus == .playing {
+            applicationPlayer.pause()
+        }
+        syncCurrentState()
+        return true
+    }
+
+    private func cacheListenSessionArtwork(_ artworkURL: String, for song: Song) {
+        guard let url = URL(string: artworkURL),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? "")
+        else { return }
+
+        queueArtworkURLsBySongID["\(song.id)"] = artworkURL
+    }
+
+    /// 게스트 음악 시트가 열린 뒤에도 현재 세션 곡의 커버를 보강합니다.
+    /// 곡 전환 이벤트가 먼저 처리되고 커버 메타데이터가 늦게 도착하는 경우를 위한 재시도 경로입니다.
+    func refreshListenSessionArtwork(
+        songStoreID: String,
+        title: String,
+        artist: String,
+        artworkURL: String
+    ) async {
+        let targetSong: Song?
+        if let queueSong = queueSongs.first(where: {
+            (!songStoreID.isEmpty && "\($0.id)" == songStoreID)
+                || ($0.title.caseInsensitiveCompare(title) == .orderedSame
+                    && $0.artistName.caseInsensitiveCompare(artist) == .orderedSame)
+        }) {
+            targetSong = queueSong
+        } else if !songStoreID.isEmpty {
+            targetSong = await musicService.resolveCatalogSong(id: MusicItemID(songStoreID))
+        } else {
+            targetSong = await musicService.resolveCatalogSong(title: title, artist: artist)
+        }
+
+        guard let targetSong else { return }
+        let targetID = "\(targetSong.id)"
+        var resolvedArtworkURL: String?
+        if let url = URL(string: artworkURL),
+           ["https", "http"].contains(url.scheme?.lowercased() ?? "") {
+            resolvedArtworkURL = artworkURL
+        } else {
+            let resolvedURLs = await musicService.resolvedArtworkURLs(for: [targetSong])
+            if let url = resolvedURLs[targetID] {
+                resolvedArtworkURL = url
+            } else {
+                resolvedArtworkURL = await musicService.resolvedRecentSongArtworkURL(
+                    title: title.isEmpty ? targetSong.title : title,
+                    artistName: artist.isEmpty ? targetSong.artistName : artist
+                )
+            }
+        }
+
+        guard let resolvedArtworkURL,
+              !resolvedArtworkURL.isEmpty,
+              !Task.isCancelled
+        else { return }
+
+        queueArtworkURLsBySongID[targetID] = resolvedArtworkURL
+        syncCurrentState()
+    }
+
+    private func resolveListenSessionArtworkIfNeeded(
+        for song: Song,
+        title: String,
+        artist: String
+    ) {
+        let songID = "\(song.id)"
+        guard artworkURL(for: song) == nil,
+              resolvingListenSessionArtworkSongID != songID
+        else { return }
+
+        listenSessionArtworkResolutionTask?.cancel()
+        resolvingListenSessionArtworkSongID = songID
+        listenSessionArtworkResolutionTask = Task { [weak self] in
+            guard let self else { return }
+
+            let resolvedURLs = await self.musicService.resolvedArtworkURLs(for: [song])
+            let artworkURL: String?
+            if let resolvedURL = resolvedURLs[songID] {
+                artworkURL = resolvedURL
+            } else {
+                artworkURL = await self.musicService.resolvedRecentSongArtworkURL(
+                    title: title.isEmpty ? song.title : title,
+                    artistName: artist.isEmpty ? song.artistName : artist
+                )
+            }
+
+            guard !Task.isCancelled else { return }
+            self.resolvingListenSessionArtworkSongID = nil
+            guard let artworkURL,
+                  self.queueSongs.contains(where: { "\($0.id)" == songID })
+            else { return }
+
+            self.queueArtworkURLsBySongID[songID] = artworkURL
+            self.syncCurrentState()
+        }
     }
 
     func artworkURL(for song: Song?) -> String? {
@@ -475,6 +672,7 @@ final class RunningMusicViewModel: ObservableObject {
                 songStoreID: entry.id,
                 artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
                     ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
+                    ?? artworkURL(for: currentSong)
                     ?? resolvedApplicationArtworkURLsByEntryKey[entryKey],
                 artwork: nil
             )

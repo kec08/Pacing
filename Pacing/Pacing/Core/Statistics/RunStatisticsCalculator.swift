@@ -1,0 +1,36 @@
+import Foundation
+
+struct RunStatisticsSummary {
+    let totalDistance: Double
+    let totalDuration: Int
+    let averagePace: Double
+}
+
+enum RunStatisticsCalculator {
+    static func summary(
+        from records: [RunRecord],
+        where isIncluded: (RunRecord) -> Bool = { _ in true }
+    ) -> RunStatisticsSummary {
+        var totalDistance = 0.0
+        var totalDuration = 0
+        var validDistance = 0.0
+        var validDuration = 0
+
+        for record in records.lazy where isIncluded(record) && record.isPaceValid {
+            totalDistance += record.distance
+            totalDuration += record.duration
+            validDistance += record.distance
+            validDuration += Int((record.displayPace * record.distance * 60.0).rounded())
+        }
+
+        let averagePace = validDistance > 0
+            ? Double(validDuration) / 60.0 / validDistance
+            : 0
+
+        return RunStatisticsSummary(
+            totalDistance: totalDistance,
+            totalDuration: totalDuration,
+            averagePace: averagePace
+        )
+    }
+}
