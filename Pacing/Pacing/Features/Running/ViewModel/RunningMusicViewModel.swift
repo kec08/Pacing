@@ -362,16 +362,23 @@ final class RunningMusicViewModel: ObservableObject {
         let boundedPosition = max(0, min(position, playbackDuration > 0 ? playbackDuration : position))
         cacheListenSessionArtwork(artworkURL, for: targetSong)
         resolveListenSessionArtworkIfNeeded(for: targetSong, title: title, artist: artist)
-        applicationPlayer.playbackTime = boundedPosition
-        displayPlaybackTime = boundedPosition
+        // Realtime Database는 위치를 주기적으로 갱신한다. 매 갱신마다
+        // playbackTime을 덮어쓰면 MusicKit 재생이 끊기거나 속도가 흔들릴 수
+        // 있으므로, 실제 오차가 있을 때만 위치를 보정한다.
+        if abs(applicationPlayer.playbackTime - boundedPosition) > 1.5 {
+            applicationPlayer.playbackTime = boundedPosition
+            displayPlaybackTime = boundedPosition
+        }
         if isPlaying {
-            do {
-                try await applicationPlayer.play()
-            } catch {
-                print("[RunningMusic] listen session playback failed: \(error.localizedDescription)")
-                return false
+            if applicationPlayer.state.playbackStatus != .playing {
+                do {
+                    try await applicationPlayer.play()
+                } catch {
+                    print("[RunningMusic] listen session playback failed: \(error.localizedDescription)")
+                    return false
+                }
             }
-        } else {
+        } else if applicationPlayer.state.playbackStatus == .playing {
             applicationPlayer.pause()
         }
         syncCurrentState()
