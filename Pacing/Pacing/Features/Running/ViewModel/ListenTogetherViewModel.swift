@@ -20,6 +20,7 @@ final class ListenTogetherViewModel: ObservableObject {
     private var hostPlaybackEventID = UUID().uuidString
     private var lastHostedTrackKey = ""
     private var lastHostedArtworkURL = ""
+    private var isHostSeeking = false
     private var lastAppliedPlaybackEventID = ""
     private var lastFailedPlaybackEventID: String?
     private var lastPlaybackRetryDate: Date?
@@ -186,10 +187,16 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - 음악 소스: 재생 상태 브로드캐스트
     func broadcastSeekIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, activeSession?.status == "active" else { return }
+        isHostSeeking = false
         // 위치 이동은 같은 곡이어도 게스트가 반드시 재동기화해야 하므로
         // 일반 주기 브로드캐스트와 구분되는 이벤트 ID를 발급합니다.
         hostPlaybackEventID = UUID().uuidString
         broadcastIfHost(musicVM: musicVM)
+    }
+
+    func setHostSeeking(_ isSeeking: Bool) {
+        guard isHost else { return }
+        isHostSeeking = isSeeking
     }
 
     /// 게스트는 자신의 기기에서만 재생을 멈추고, 다시 재생할 때 호스트 위치로 보정합니다.
@@ -211,7 +218,11 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
-        guard isHost, let session = activeSession, session.status == "active" else { return }
+        guard isHost,
+              !isHostSeeking,
+              let session = activeSession,
+              session.status == "active"
+        else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
         // 같이 듣기 호스트의 기준 플레이어는 러닝 화면과 동일한
         // RunningMusicViewModel입니다. 시스템 플레이어 상태를 섞으면
@@ -580,6 +591,7 @@ final class ListenTogetherViewModel: ObservableObject {
         lastFailedPlaybackEventID = nil
         lastPlaybackRetryDate = nil
         guestLocallyPaused = false
+        isHostSeeking = false
         lastHostedTrackKey = ""
         lastHostedArtworkURL = ""
     }
