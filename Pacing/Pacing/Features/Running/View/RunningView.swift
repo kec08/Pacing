@@ -1083,25 +1083,32 @@ struct RunningView: View {
                                         }
 
                                         if !editing {
-                                            let targetTime = seekValue
                                             let interactionID = seekInteractionID
                                             isFinishingSeek = true
-                                            musicVM.seek(to: targetTime)
-                                            if isActiveListenGuest {
-                                                clearLocalPlaybackClock()
-                                            } else {
-                                                startLocalPlaybackClock(from: targetTime)
-                                                listenVM.broadcastSeekIfHost(musicVM: musicVM)
-                                            }
 
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                            // Slider의 마지막 setter가 State에 반영되기 전에
+                                            // editing 종료 콜백이 실행될 수 있다. 다음 메인 런루프에서
+                                            // 최종 seekValue를 읽어 이전 위치를 전송하지 않도록 한다.
+                                            DispatchQueue.main.async {
                                                 guard interactionID == seekInteractionID else { return }
-                                                isSeeking = false
-                                                seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
-                                            }
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                                                guard interactionID == seekInteractionID else { return }
-                                                isFinishingSeek = false
+                                                let targetTime = seekValue
+                                                musicVM.seek(to: targetTime)
+                                                if isActiveListenGuest {
+                                                    clearLocalPlaybackClock()
+                                                } else {
+                                                    startLocalPlaybackClock(from: targetTime)
+                                                    listenVM.broadcastSeekIfHost(musicVM: musicVM)
+                                                }
+
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                    guard interactionID == seekInteractionID else { return }
+                                                    isSeeking = false
+                                                    seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
+                                                }
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                                    guard interactionID == seekInteractionID else { return }
+                                                    isFinishingSeek = false
+                                                }
                                             }
                                         }
                                     }
