@@ -1125,7 +1125,10 @@ struct RunningView: View {
                         // MARK: 재생 컨트롤
                         HStack(spacing: 52) {
                             Button {
-                                Task { await musicVM.skipToPrevious() }
+                                Task {
+                                    await musicVM.skipToPrevious()
+                                    listenVM.broadcastIfHost(musicVM: musicVM)
+                                }
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
@@ -1156,7 +1159,10 @@ struct RunningView: View {
                             }
 
                             Button {
-                                Task { await musicVM.skipToNext() }
+                                Task {
+                                    await musicVM.skipToNext()
+                                    listenVM.broadcastIfHost(musicVM: musicVM)
+                                }
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
