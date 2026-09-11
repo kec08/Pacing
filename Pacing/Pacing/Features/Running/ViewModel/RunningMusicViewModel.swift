@@ -43,6 +43,7 @@ final class RunningMusicViewModel: ObservableObject {
     private let playlistRetryDelays: [UInt64] = [500_000_000, 1_200_000_000, 2_500_000_000]
     private var isManualSeeking: Bool = false
     private var seekSyncTask: Task<Void, Never>?
+    private var applicationSeekTask: Task<Void, Never>?
     private var playbackClock: AnyCancellable?
     private var optimisticPlaybackBaseTime: TimeInterval?
     private var optimisticPlaybackStartedAt: Date?
@@ -72,6 +73,7 @@ final class RunningMusicViewModel: ObservableObject {
     deinit {
         playbackClock?.cancel()
         seekSyncTask?.cancel()
+        applicationSeekTask?.cancel()
         applicationSongResolutionTasks.values.forEach { $0.cancel() }
         listenSessionArtworkResolutionTask?.cancel()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
@@ -532,8 +534,30 @@ final class RunningMusicViewModel: ObservableObject {
     func seek(to time: TimeInterval) {
         if isUsingApplicationPlayer {
             let boundedTime = max(0, min(time, playbackDuration))
+            let shouldResumePlayback = isPlaying
+                || applicationPlayer.state.playbackStatus == .playing
             applicationPlayer.playbackTime = boundedTime
             displayPlaybackTime = boundedTime
+
+            // 빠른 연속 seek 중 MusicKit이 일시적으로 paused 상태가 될 수 있다.
+            // 이전 복구 작업은 취소하고 마지막 위치에서만 재생을 복구해
+            // 호스트의 재생 상태가 게스트에 정지로 전파되지 않도록 한다.
+            applicationSeekTask?.cancel()
+            if shouldResumePlayback {
+                applicationSeekTask = Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    await Task.yield()
+                    guard !Task.isCancelled else { return }
+                    do {
+                        try await self.applicationPlayer.play()
+                    } catch {
+                        print("[RunningMusic] application seek playback recovery failed: \(error.localizedDescription)")
+                        return
+                    }
+                    guard !Task.isCancelled else { return }
+                    self.syncCurrentState()
+                }
+            }
             return
         }
         let boundedTime = max(0, min(time, playbackDuration))
