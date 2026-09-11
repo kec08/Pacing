@@ -48,6 +48,7 @@ struct RunningView: View {
     @State private var isSeeking = false             // 스크러버 드래그 중
     @State private var seekValue: Double = 0         // 드래그 중 임시 시간값
     @State private var isFinishingSeek = false       // 손을 뗀 직후 Slider 재호출 방지
+    @State private var seekInteractionID = UUID()     // 이전 드래그의 지연 콜백 무효화
     @State private var localPlaybackBaseTime: Double? = nil
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
@@ -1073,27 +1074,41 @@ struct RunningView: View {
                                     in: 0...1,
                                     onEditingChanged: { editing in
                                         if editing {
+                                            seekInteractionID = UUID()
                                             isFinishingSeek = false
+                                            if !isActiveListenGuest {
+                                                listenVM.setHostSeeking(true)
+                                            }
                                             return
                                         }
 
                                         if !editing {
-                                            let targetTime = seekValue
+                                            let interactionID = seekInteractionID
                                             isFinishingSeek = true
-                                            musicVM.seek(to: targetTime)
-                                            if isActiveListenGuest {
-                                                clearLocalPlaybackClock()
-                                            } else {
-                                                startLocalPlaybackClock(from: targetTime)
-                                                listenVM.broadcastSeekIfHost(musicVM: musicVM)
-                                            }
 
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                                isSeeking = false
-                                                seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
-                                            }
-                                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
-                                                isFinishingSeek = false
+                                            // Slider의 마지막 setter가 State에 반영되기 전에
+                                            // editing 종료 콜백이 실행될 수 있다. 다음 메인 런루프에서
+                                            // 최종 seekValue를 읽어 이전 위치를 전송하지 않도록 한다.
+                                            DispatchQueue.main.async {
+                                                guard interactionID == seekInteractionID else { return }
+                                                let targetTime = seekValue
+                                                musicVM.seek(to: targetTime)
+                                                if isActiveListenGuest {
+                                                    clearLocalPlaybackClock()
+                                                } else {
+                                                    startLocalPlaybackClock(from: targetTime)
+                                                    listenVM.broadcastSeekIfHost(musicVM: musicVM)
+                                                }
+
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                                    guard interactionID == seekInteractionID else { return }
+                                                    isSeeking = false
+                                                    seekValue = localPlaybackBaseTime ?? musicVM.currentPlaybackTime
+                                                }
+                                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+                                                    guard interactionID == seekInteractionID else { return }
+                                                    isFinishingSeek = false
+                                                }
                                             }
                                         }
                                     }
@@ -1117,7 +1132,10 @@ struct RunningView: View {
                         // MARK: 재생 컨트롤
                         HStack(spacing: 52) {
                             Button {
-                                Task { await musicVM.skipToPrevious() }
+                                Task {
+                                    await musicVM.skipToPrevious()
+                                    listenVM.broadcastIfHost(musicVM: musicVM)
+                                }
                             } label: {
                                 Image(systemName: "backward.fill")
                                     .font(.system(size: 30))
@@ -1148,7 +1166,10 @@ struct RunningView: View {
                             }
 
                             Button {
-                                Task { await musicVM.skipToNext() }
+                                Task {
+                                    await musicVM.skipToNext()
+                                    listenVM.broadcastIfHost(musicVM: musicVM)
+                                }
                             } label: {
                                 Image(systemName: "forward.fill")
                                     .font(.system(size: 30))
@@ -1288,7 +1309,9 @@ struct RunningView: View {
             }
             // 곡이 바뀌면 스크러버 초기화 (드래그 잔상 방지)
         .onChange(of: musicVM.currentSong?.id) { _, _ in
+            seekInteractionID = UUID()
             isSeeking = false
+            isFinishingSeek = false
             seekValue = 0
             clearLocalPlaybackClock()
         }

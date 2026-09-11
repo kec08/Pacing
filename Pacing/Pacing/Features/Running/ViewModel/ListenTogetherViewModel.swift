@@ -20,11 +20,19 @@ final class ListenTogetherViewModel: ObservableObject {
     private var hostPlaybackEventID = UUID().uuidString
     private var lastHostedTrackKey = ""
     private var lastHostedArtworkURL = ""
+    private var isHostSeeking = false
     private var lastAppliedPlaybackEventID = ""
+    private var lastFailedPlaybackEventID: String?
+    private var lastPlaybackRetryDate: Date?
+    private let playbackRetryInterval: TimeInterval = 3
     private var inFlightPlaybackEventID: String?
     private var activePlaybackSyncToken: UUID?
     private var guestLocallyPaused = false
     private var requestHapticTask: Task<Void, Never>?
+    private var profileImageCache: [String: String] = [:]
+    private var profileImageLookupTasks: [String: Task<String?, Never>] = [:]
+    private var missingProfileImageExpiry: [String: Date] = [:]
+    private let missingProfileImageTTL: TimeInterval = 10 * 60
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -61,14 +69,15 @@ final class ListenTogetherViewModel: ObservableObject {
             ? latestRunner!.nickname
             : runner.nickname
         let cachedProfileImage = UserDefaults.standard.string(forKey: "profileImageBase64") ?? ""
-        let latestProfileImage = (try? await FirestoreService.shared.fetchUserProfile(uid: myUID))?["profileImageBase64"] as? String
-        let guestProfileImageBase64 = latestProfileImage?.isEmpty == false ? latestProfileImage! : cachedProfileImage
+        let latestProfileImage = await profileImage(for: myUID)
+        let guestProfileImageBase64 = latestProfileImage ?? cachedProfileImage
         if !guestProfileImageBase64.isEmpty {
             UserDefaults.standard.set(guestProfileImageBase64, forKey: "profileImageBase64")
+            profileImageCache[myUID] = guestProfileImageBase64
         }
         let storedHostProfileImage = runner.profileImageBase64 ?? ""
         let latestHostProfileImage = storedHostProfileImage.isEmpty
-            ? ((try? await FirestoreService.shared.fetchUserProfile(uid: runner.id))?["profileImageBase64"] as? String ?? "")
+            ? (await profileImage(for: runner.id) ?? "")
             : storedHostProfileImage
         let playbackEventID = UUID().uuidString
         let sessionID = RealtimeDBService.shared.createListenSession(
@@ -178,10 +187,16 @@ final class ListenTogetherViewModel: ObservableObject {
     // MARK: - 음악 소스: 재생 상태 브로드캐스트
     func broadcastSeekIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, activeSession?.status == "active" else { return }
+        isHostSeeking = false
         // 위치 이동은 같은 곡이어도 게스트가 반드시 재동기화해야 하므로
         // 일반 주기 브로드캐스트와 구분되는 이벤트 ID를 발급합니다.
         hostPlaybackEventID = UUID().uuidString
         broadcastIfHost(musicVM: musicVM)
+    }
+
+    func setHostSeeking(_ isSeeking: Bool) {
+        guard isHost else { return }
+        isHostSeeking = isSeeking
     }
 
     /// 게스트는 자신의 기기에서만 재생을 멈추고, 다시 재생할 때 호스트 위치로 보정합니다.
@@ -203,7 +218,11 @@ final class ListenTogetherViewModel: ObservableObject {
     }
 
     func broadcastIfHost(musicVM: RunningMusicViewModel) {
-        guard isHost, let session = activeSession, session.status == "active" else { return }
+        guard isHost,
+              !isHostSeeking,
+              let session = activeSession,
+              session.status == "active"
+        else { return }
         let player = MPMusicPlayerController.systemMusicPlayer
         // 같이 듣기 호스트의 기준 플레이어는 러닝 화면과 동일한
         // RunningMusicViewModel입니다. 시스템 플레이어 상태를 섞으면
@@ -297,6 +316,11 @@ final class ListenTogetherViewModel: ObservableObject {
 
         // Firebase의 위치 보정 값은 매초 바뀐다. 동일한 곡 전환을 준비 중이면 새 작업을 시작하지 않는다.
         guard inFlightPlaybackEventID != eventID else { return }
+        if lastFailedPlaybackEventID == eventID,
+           let lastPlaybackRetryDate,
+           Date().timeIntervalSince(lastPlaybackRetryDate) < playbackRetryInterval {
+            return
+        }
 
         let syncToken = UUID()
         inFlightPlaybackEventID = eventID
@@ -321,13 +345,16 @@ final class ListenTogetherViewModel: ObservableObject {
             isPlaying: session.isPlaying && !guestLocallyPaused
         ) {
             lastAppliedPlaybackEventID = eventID
+            lastFailedPlaybackEventID = nil
+            lastPlaybackRetryDate = nil
             return
         }
 
         // 러닝 앱의 주 재생기는 ApplicationMusicPlayer다. 카탈로그에서 곡을 찾지
         // 못한 경우 systemMusicPlayer 큐를 반복 재구성하지 않아 다른 곡이 계속
         // 로딩되는 현상을 막는다. 다음 실제 곡 전환 이벤트에서 다시 시도한다.
-        lastAppliedPlaybackEventID = eventID
+        lastFailedPlaybackEventID = eventID
+        lastPlaybackRetryDate = Date()
         print("[ListenTogether] application player sync failed: \(session.songTitle) - \(session.artistName)")
     }
 
@@ -561,7 +588,10 @@ final class ListenTogetherViewModel: ObservableObject {
         activePlaybackSyncToken = nil
         inFlightPlaybackEventID = nil
         lastAppliedPlaybackEventID = ""
+        lastFailedPlaybackEventID = nil
+        lastPlaybackRetryDate = nil
         guestLocallyPaused = false
+        isHostSeeking = false
         lastHostedTrackKey = ""
         lastHostedArtworkURL = ""
     }
@@ -571,15 +601,7 @@ final class ListenTogetherViewModel: ObservableObject {
         let participantIDs = [session.hostUID, session.guestUID]
 
         for uid in participantIDs where !uid.isEmpty && resolved.profileImageBase64(for: uid).isEmpty {
-            let cachedImage = uid == myUID
-                ? UserDefaults.standard.string(forKey: "profileImageBase64")
-                : nil
-            let image: String?
-            if let cachedImage, !cachedImage.isEmpty {
-                image = cachedImage
-            } else {
-                image = (try? await FirestoreService.shared.fetchUserProfile(uid: uid))?["profileImageBase64"] as? String
-            }
+            let image = await profileImage(for: uid)
 
             guard let image, !image.isEmpty else { continue }
             if uid == resolved.hostUID {
@@ -590,6 +612,43 @@ final class ListenTogetherViewModel: ObservableObject {
         }
 
         return resolved
+    }
+
+    private func profileImage(for uid: String) async -> String? {
+        if let cachedImage = profileImageCache[uid], !cachedImage.isEmpty {
+            return cachedImage
+        }
+
+        if uid == myUID,
+           let localImage = UserDefaults.standard.string(forKey: "profileImageBase64"),
+           !localImage.isEmpty {
+            profileImageCache[uid] = localImage
+            return localImage
+        }
+
+        if let expiry = missingProfileImageExpiry[uid] {
+            if expiry > Date() { return nil }
+            missingProfileImageExpiry.removeValue(forKey: uid)
+        }
+
+        if let lookupTask = profileImageLookupTasks[uid] {
+            return await lookupTask.value
+        }
+
+        let lookupTask = Task<String?, Never> {
+            (try? await FirestoreService.shared.fetchUserProfile(uid: uid))?["profileImageBase64"] as? String
+        }
+        profileImageLookupTasks[uid] = lookupTask
+        let image = await lookupTask.value
+        profileImageLookupTasks.removeValue(forKey: uid)
+
+        if let image, !image.isEmpty {
+            profileImageCache[uid] = image
+            return image
+        }
+
+        missingProfileImageExpiry[uid] = Date().addingTimeInterval(missingProfileImageTTL)
+        return nil
     }
 
     private func playRequestHapticPattern() {

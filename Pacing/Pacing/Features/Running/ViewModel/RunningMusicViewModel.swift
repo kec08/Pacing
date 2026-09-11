@@ -304,8 +304,33 @@ final class RunningMusicViewModel: ObservableObject {
         let targetSong: Song
         if let targetIndex {
             targetSong = queueSongs[targetIndex]
-            if targetIndex != currentSongIndex || !isUsingApplicationPlayer {
+            let currentEntryMatchesTarget = applicationPlayer.queue.currentEntry.map {
+                $0.id == "\(targetSong.id)"
+                    || ($0.title.caseInsensitiveCompare(targetSong.title) == .orderedSame
+                        && ($0.subtitle ?? "").caseInsensitiveCompare(targetSong.artistName) == .orderedSame)
+            } ?? false
+            if targetIndex != currentSongIndex || !isUsingApplicationPlayer || !currentEntryMatchesTarget {
                 await play(at: targetIndex, from: currentSongIndex)
+            }
+
+            // play(at:) may fail while the MusicKit queue is stale or externally changed.
+            // Rebuild the queue before applying the session position so a failed transition
+            // cannot leave the guest on an unrelated track.
+            let queueMatchesTarget = applicationPlayer.queue.currentEntry.map {
+                $0.id == "\(targetSong.id)"
+                    || ($0.title.caseInsensitiveCompare(targetSong.title) == .orderedSame
+                        && ($0.subtitle ?? "").caseInsensitiveCompare(targetSong.artistName) == .orderedSame)
+            } ?? false
+            if !queueMatchesTarget {
+                musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
+                applicationPlayer.queue = .init(for: queueSongs, startingAt: targetSong)
+                NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
+                do {
+                    try await applicationPlayer.prepareToPlay()
+                } catch {
+                    print("[RunningMusic] listen session queue preparation failed: \(error.localizedDescription)")
+                    return false
+                }
             }
         } else {
             let resolvedSong: Song?
@@ -326,17 +351,34 @@ final class RunningMusicViewModel: ObservableObject {
             musicService.playbackContext.configure(songs: [targetSong], startingAt: targetSong)
             applicationPlayer.queue = .init(for: [targetSong])
             NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
-            try? await applicationPlayer.prepareToPlay()
+            do {
+                try await applicationPlayer.prepareToPlay()
+            } catch {
+                print("[RunningMusic] listen session catalog preparation failed: \(error.localizedDescription)")
+                return false
+            }
         }
 
         let boundedPosition = max(0, min(position, playbackDuration > 0 ? playbackDuration : position))
         cacheListenSessionArtwork(artworkURL, for: targetSong)
         resolveListenSessionArtworkIfNeeded(for: targetSong, title: title, artist: artist)
-        applicationPlayer.playbackTime = boundedPosition
-        displayPlaybackTime = boundedPosition
+        // Realtime Database는 위치를 주기적으로 갱신한다. 매 갱신마다
+        // playbackTime을 덮어쓰면 MusicKit 재생이 끊기거나 속도가 흔들릴 수
+        // 있으므로, 실제 오차가 있을 때만 위치를 보정한다.
+        if abs(applicationPlayer.playbackTime - boundedPosition) > 1.5 {
+            applicationPlayer.playbackTime = boundedPosition
+            displayPlaybackTime = boundedPosition
+        }
         if isPlaying {
-            try? await applicationPlayer.play()
-        } else {
+            if applicationPlayer.state.playbackStatus != .playing {
+                do {
+                    try await applicationPlayer.play()
+                } catch {
+                    print("[RunningMusic] listen session playback failed: \(error.localizedDescription)")
+                    return false
+                }
+            }
+        } else if applicationPlayer.state.playbackStatus == .playing {
             applicationPlayer.pause()
         }
         syncCurrentState()
