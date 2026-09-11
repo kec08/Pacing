@@ -11,7 +11,6 @@ struct ActiveRunner: Identifiable {
     let coordinate: CLLocationCoordinate2D
     let songTitle: String
     let artist: String
-    let profileImageBase64: String?
     let updatedAt: TimeInterval
 
     func isFresh(referenceDate: Date = .now) -> Bool {
@@ -200,7 +199,6 @@ final class RealtimeDBService {
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lng),
             songTitle: d["currentSongTitle"] as? String ?? "",
             artist: d["currentArtist"] as? String ?? "",
-            profileImageBase64: d["profileImageBase64"] as? String,
             updatedAt: updatedAt
         )
     }
@@ -269,7 +267,7 @@ final class RealtimeDBService {
         guard !hostUID.isEmpty, !guestUID.isEmpty else { return "" }
         let sessionRef = db.child("listenSessions").childByAutoId()
         let sessionID = sessionRef.key ?? UUID().uuidString
-        let metadata: [String: Any] = [
+        let data: [String: Any] = [
             "hostUID": hostUID,
             "hostNickname": hostNickname,
             "hostProfileImageBase64": hostProfileImageBase64,
@@ -280,36 +278,17 @@ final class RealtimeDBService {
             "songTitle": songTitle,
             "artistName": artistName,
             "artworkURL": artworkURL,
-            "artworkData": artworkData
-        ]
-        let playback: [String: Any] = [
-            "songStoreID": songStoreID,
-            "songTitle": songTitle,
-            "artistName": artistName,
+            "artworkData": artworkData,
             "playbackEventID": playbackEventID,
             "playbackPosition": position,
             "serverTimestamp": ServerValue.timestamp(),
             "status": "pending",
             "isPlaying": isPlaying
         ]
-        // 루트에는 기존 보안 규칙·구버전 클라이언트 호환에 필요한 작은 메타데이터만
-        // 유지한다. 프로필·앨범 Base64는 metadata 하위 경로에만 저장한다.
-        sessionRef.setValue([
-            "metadata": metadata,
-            "playback": playback,
-            "hostUID": hostUID,
-            "hostNickname": hostNickname,
-            "guestUID": guestUID,
-            "guestNickname": guestNickname,
-            "songStoreID": songStoreID,
-            "songTitle": songTitle,
-            "artistName": artistName,
-            "artworkURL": artworkURL,
-            "status": "pending"
-        ])
+        sessionRef.setValue(data)
         // 요청을 받은 호스트에게 수신 알림 경로에도 기록합니다.
         // 세션의 guestUID는 요청자이므로 알림 수신자와 분리해야 합니다.
-        db.child("incomingRequests").child(hostUID).child(sessionID).setValue(metadata.merging(playback) { _, new in new })
+        db.child("incomingRequests").child(hostUID).child(sessionID).setValue(data)
         return sessionID
     }
 
@@ -317,7 +296,6 @@ final class RealtimeDBService {
     func acceptSession(sessionID: String, hostUID: String) {
         guard !sessionID.isEmpty, !hostUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "active"])
-        db.child("listenSessions").child(sessionID).child("playback").updateChildValues(["status": "active"])
         db.child("incomingRequests").child(hostUID).child(sessionID).removeValue()
     }
 
@@ -325,7 +303,6 @@ final class RealtimeDBService {
     func rejectSession(sessionID: String, guestUID: String) {
         guard !sessionID.isEmpty, !guestUID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "rejected"])
-        db.child("listenSessions").child(sessionID).child("playback").updateChildValues(["status": "rejected"])
         db.child("incomingRequests").child(guestUID).child(sessionID).removeValue()
     }
 
@@ -339,7 +316,7 @@ final class RealtimeDBService {
         position: Double, isPlaying: Bool
     ) {
         guard !sessionID.isEmpty else { return }
-        let playbackUpdate: [String: Any] = [
+        var update: [String: Any] = [
             "songStoreID": songStoreID,
             "songTitle": songTitle,
             "artistName": artistName,
@@ -348,73 +325,47 @@ final class RealtimeDBService {
             "serverTimestamp": ServerValue.timestamp(),
             "isPlaying": isPlaying
         ]
-        // 재생 위치 경로에는 이미지·프로필 Base64를 포함하지 않는다.
-        db.child("listenSessions").child(sessionID).child("playback").updateChildValues(playbackUpdate)
-
-        // 앨범 메타데이터는 곡 전환 시에만 별도 경로로 갱신한다.
-        var metadataUpdate: [String: Any] = [:]
-        if let artworkURL { metadataUpdate["artworkURL"] = artworkURL }
-        if let artworkData { metadataUpdate["artworkData"] = artworkData }
-        if !metadataUpdate.isEmpty {
-            db.child("listenSessions").child(sessionID).child("metadata").updateChildValues(metadataUpdate)
-            // 구버전 클라이언트와 루트 기반 규칙을 위해 작은 문자열 메타데이터만 mirror한다.
-            let rootUpdate = metadataUpdate.filter { $0.key == "artworkURL" }
-            if !rootUpdate.isEmpty {
-                db.child("listenSessions").child(sessionID).updateChildValues(rootUpdate)
-            }
-        }
+        // 앨범 이미지는 곡 전환에만 변경된다. 위치 보정마다 큰 Base64 문자열을 다시 전송하지 않는다.
+        if let artworkURL { update["artworkURL"] = artworkURL }
+        if let artworkData { update["artworkData"] = artworkData }
+        db.child("listenSessions").child(sessionID).updateChildValues(update)
     }
 
     // MARK: - 세션 구독
-    private var sessionMetadataHandle: DatabaseHandle?
-    private var sessionPlaybackHandle: DatabaseHandle?
-    private var legacySessionHandle: DatabaseHandle?
+    private var sessionHandle: DatabaseHandle?
 
     func observeSession(sessionID: String, onChange: @escaping (ListenSession) -> Void) {
         guard !sessionID.isEmpty else { return }
-        let reference = db.child("listenSessions").child(sessionID)
-        reference.child("metadata").observeSingleEvent(of: .value, with: { [weak self] snapshot in
-            guard let self else { return }
-            guard snapshot.exists(), snapshot.childrenCount > 0 else {
-                self.legacySessionHandle = reference.observe(.value) { snapshot in
-                    guard let d = snapshot.value as? [String: Any],
-                          let session = Self.makeListenSession(id: sessionID, data: d)
-                    else { return }
-                    onChange(session)
-                }
-                return
-            }
-
-            var metadata: [String: Any] = [:]
-            var playback: [String: Any] = [:]
-            let publish = {
-                guard !metadata.isEmpty,
-                      let session = Self.makeListenSession(
-                        id: sessionID,
-                        metadata: metadata,
-                        playback: playback
-                      ) else { return }
-                onChange(session)
-            }
-            self.sessionMetadataHandle = reference.child("metadata").observe(.value) { snapshot in
-                metadata = snapshot.value as? [String: Any] ?? [:]
-                publish()
-            }
-            self.sessionPlaybackHandle = reference.child("playback").observe(.value) { snapshot in
-                playback = snapshot.value as? [String: Any] ?? [:]
-                publish()
-            }
-        })
+        sessionHandle = db.child("listenSessions").child(sessionID).observe(.value) { snapshot in
+            guard let d = snapshot.value as? [String: Any] else { return }
+            let session = ListenSession(
+                id: sessionID,
+                hostUID: d["hostUID"] as? String ?? "",
+                hostNickname: d["hostNickname"] as? String ?? "",
+                hostProfileImageBase64: d["hostProfileImageBase64"] as? String ?? "",
+                guestUID: d["guestUID"] as? String ?? "",
+                guestNickname: d["guestNickname"] as? String ?? "",
+                guestProfileImageBase64: d["guestProfileImageBase64"] as? String ?? "",
+                songStoreID: d["songStoreID"] as? String ?? "",
+                songTitle: d["songTitle"] as? String ?? "",
+                artistName: d["artistName"] as? String ?? "",
+                artworkURL: d["artworkURL"] as? String ?? "",
+                artworkData: d["artworkData"] as? String ?? "",
+                playbackEventID: d["playbackEventID"] as? String ?? "",
+                playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
+                serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
+                status: d["status"] as? String ?? "ended",
+                isPlaying: d["isPlaying"] as? Bool ?? false
+            )
+            onChange(session)
+        }
     }
 
     func stopObservingSession() {
-        let reference = db.child("listenSessions")
-        if let handle = sessionMetadataHandle { reference.removeObserver(withHandle: handle) }
-        if let handle = sessionPlaybackHandle { reference.removeObserver(withHandle: handle) }
-        if let handle = legacySessionHandle { reference.removeObserver(withHandle: handle) }
-        sessionMetadataHandle = nil
-        sessionPlaybackHandle = nil
-        legacySessionHandle = nil
+        if let handle = sessionHandle {
+            db.child("listenSessions").removeObserver(withHandle: handle)
+            sessionHandle = nil
+        }
     }
 
     // MARK: - 수신 요청 구독 (게스트)
@@ -427,7 +378,26 @@ final class RealtimeDBService {
             // 가장 최신 요청 하나만 처리
             if let child = snapshot.children.allObjects.last as? DataSnapshot,
                let d = child.value as? [String: Any] {
-                onChange(Self.makeListenSession(id: child.key, data: d))
+                let session = ListenSession(
+                    id: child.key,
+                    hostUID: d["hostUID"] as? String ?? "",
+                    hostNickname: d["hostNickname"] as? String ?? "",
+                    hostProfileImageBase64: d["hostProfileImageBase64"] as? String ?? "",
+                    guestUID: d["guestUID"] as? String ?? "",
+                    guestNickname: d["guestNickname"] as? String ?? "",
+                    guestProfileImageBase64: d["guestProfileImageBase64"] as? String ?? "",
+                    songStoreID: d["songStoreID"] as? String ?? "",
+                    songTitle: d["songTitle"] as? String ?? "",
+                    artistName: d["artistName"] as? String ?? "",
+                    artworkURL: d["artworkURL"] as? String ?? "",
+                    artworkData: d["artworkData"] as? String ?? "",
+                    playbackEventID: d["playbackEventID"] as? String ?? "",
+                    playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
+                    serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
+                    status: d["status"] as? String ?? "pending",
+                    isPlaying: d["isPlaying"] as? Bool ?? true
+                )
+                onChange(session)
             } else {
                 onChange(nil)
             }
@@ -445,7 +415,6 @@ final class RealtimeDBService {
     func endSession(sessionID: String) {
         guard !sessionID.isEmpty else { return }
         db.child("listenSessions").child(sessionID).updateChildValues(["status": "ended"])
-        db.child("listenSessions").child(sessionID).child("playback").updateChildValues(["status": "ended"])
     }
 
     // MARK: - 최근 같이 듣기 세션 조회
@@ -453,15 +422,10 @@ final class RealtimeDBService {
     func fetchRecentListenSessions(uid: String, limit: Int = 10) async throws -> [ListenSession] {
         guard !uid.isEmpty else { return [] }
 
-        async let legacyHostSessions = fetchListenSessions(where: "hostUID", equals: uid, limit: limit)
-        async let legacyGuestSessions = fetchListenSessions(where: "guestUID", equals: uid, limit: limit)
-        async let structuredHostSessions = fetchListenSessions(where: "metadata/hostUID", equals: uid, limit: limit)
-        async let structuredGuestSessions = fetchListenSessions(where: "metadata/guestUID", equals: uid, limit: limit)
+        async let hostSessions = fetchListenSessions(where: "hostUID", equals: uid, limit: limit)
+        async let guestSessions = fetchListenSessions(where: "guestUID", equals: uid, limit: limit)
 
-        let merged = try await legacyHostSessions
-            + legacyGuestSessions
-            + structuredHostSessions
-            + structuredGuestSessions
+        let merged = try await hostSessions + guestSessions
         let unique = Dictionary(grouping: merged, by: \.id).compactMap { $0.value.first }
 
         return unique
@@ -499,9 +463,27 @@ final class RealtimeDBService {
                             let d = snap.value as? [String: Any]
                         else { continue }
 
-                        if let session = Self.makeListenSession(id: snap.key, data: d) {
-                            sessions.append(session)
-                        }
+                        sessions.append(
+                            ListenSession(
+                                id: snap.key,
+                                hostUID: d["hostUID"] as? String ?? "",
+                                hostNickname: d["hostNickname"] as? String ?? "",
+                                hostProfileImageBase64: d["hostProfileImageBase64"] as? String ?? "",
+                                guestUID: d["guestUID"] as? String ?? "",
+                                guestNickname: d["guestNickname"] as? String ?? "",
+                                guestProfileImageBase64: d["guestProfileImageBase64"] as? String ?? "",
+                                songStoreID: d["songStoreID"] as? String ?? "",
+                                songTitle: d["songTitle"] as? String ?? "",
+                                artistName: d["artistName"] as? String ?? "",
+                                artworkURL: d["artworkURL"] as? String ?? "",
+                                artworkData: d["artworkData"] as? String ?? "",
+                                playbackEventID: d["playbackEventID"] as? String ?? "",
+                                playbackPosition: (d["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
+                                serverTimestamp: (d["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
+                                status: d["status"] as? String ?? "ended",
+                                isPlaying: d["isPlaying"] as? Bool ?? false
+                            )
+                        )
                     }
 
                     resumeOnce(with: .success(sessions))
@@ -513,44 +495,6 @@ final class RealtimeDBService {
                 resumeOnce(with: .failure(RealtimeDBRequestError.timedOut))
             }
         }
-    }
-
-    private static func makeListenSession(
-        id: String,
-        metadata: [String: Any],
-        playback: [String: Any]
-    ) -> ListenSession? {
-        var data = metadata
-        data.merge(playback) { _, new in new }
-        return makeListenSession(id: id, data: data)
-    }
-
-    private static func makeListenSession(id: String, data: [String: Any]) -> ListenSession? {
-        let metadata = data["metadata"] as? [String: Any]
-        let playback = data["playback"] as? [String: Any]
-        var merged = data
-        if let metadata { merged.merge(metadata) { _, new in new } }
-        if let playback { merged.merge(playback) { _, new in new } }
-
-        return ListenSession(
-            id: id,
-            hostUID: merged["hostUID"] as? String ?? "",
-            hostNickname: merged["hostNickname"] as? String ?? "",
-            hostProfileImageBase64: merged["hostProfileImageBase64"] as? String ?? "",
-            guestUID: merged["guestUID"] as? String ?? "",
-            guestNickname: merged["guestNickname"] as? String ?? "",
-            guestProfileImageBase64: merged["guestProfileImageBase64"] as? String ?? "",
-            songStoreID: merged["songStoreID"] as? String ?? "",
-            songTitle: merged["songTitle"] as? String ?? "",
-            artistName: merged["artistName"] as? String ?? "",
-            artworkURL: merged["artworkURL"] as? String ?? "",
-            artworkData: merged["artworkData"] as? String ?? "",
-            playbackEventID: merged["playbackEventID"] as? String ?? "",
-            playbackPosition: (merged["playbackPosition"] as? NSNumber)?.doubleValue ?? 0,
-            serverTimestamp: (merged["serverTimestamp"] as? NSNumber)?.doubleValue ?? 0,
-            status: merged["status"] as? String ?? "ended",
-            isPlaying: merged["isPlaying"] as? Bool ?? false
-        )
     }
 }
 
