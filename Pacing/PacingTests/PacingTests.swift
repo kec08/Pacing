@@ -160,6 +160,26 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
     }
 
+    func testElevationGainDoesNotAccumulateRepeatedTwoStepGPSRises() {
+        let start = Date(timeIntervalSince1970: 2_775)
+        let altitudes = [
+            100.0, 105.0, 110.0, 115.0, 100.0,
+            105.0, 110.0, 115.0, 100.0,
+            105.0, 110.0, 115.0, 100.0
+        ]
+        let locations = altitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37 + Double(index) * 0.0001, longitude: 127),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
     func testElevationGainKeepsAConfirmedSustainedClimb() {
         let start = Date(timeIntervalSince1970: 2_800)
         let locations = (0..<6).map { index in
