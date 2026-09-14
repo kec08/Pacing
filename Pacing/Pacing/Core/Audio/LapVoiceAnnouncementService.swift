@@ -66,6 +66,7 @@ final class LapVoiceAnnouncementService: NSObject, LapVoiceAnnouncing {
             try session.setCategory(
                 .playback,
                 mode: .spokenAudio,
+                policy: .longFormAudio,
                 options: [.duckOthers, .allowBluetoothHFP, .allowBluetoothA2DP]
             )
             try session.setActive(true)
