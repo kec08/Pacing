@@ -148,7 +148,6 @@ final class RunningViewModel: ObservableObject {
         state = .running
         lastLocation = nil
         activeElapsedSeconds = 0
-        activeElevationLocations = []
         locationManager.startTracking()
         startTimer()
         cadenceAccumulator.resetBaseline(at: resumedAt)
