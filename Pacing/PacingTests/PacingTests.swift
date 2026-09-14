@@ -11,6 +11,37 @@ import CoreLocation
 import MapKit
 
 final class PacingTests: XCTestCase {
+    func testLapVoiceAnnouncementUsesKilometerTimeAndAveragePaceOrder() {
+        let announcement = LapVoiceAnnouncement(
+            kilometer: 2,
+            elapsedSeconds: 652,
+            averagePaceMinutesPerKilometer: 5.45
+        )
+
+        XCTAssertEqual(
+            announcement?.text,
+            "2킬로미터. 시간 10분 52초. 평균 페이스 5분 27초."
+        )
+    }
+
+    func testLapVoiceAnnouncementRejectsInvalidMetrics() {
+        XCTAssertNil(LapVoiceAnnouncement(
+            kilometer: 0,
+            elapsedSeconds: 100,
+            averagePaceMinutesPerKilometer: 5
+        ))
+        XCTAssertNil(LapVoiceAnnouncement(
+            kilometer: 1,
+            elapsedSeconds: 0,
+            averagePaceMinutesPerKilometer: 5
+        ))
+        XCTAssertNil(LapVoiceAnnouncement(
+            kilometer: 1,
+            elapsedSeconds: 100,
+            averagePaceMinutesPerKilometer: .infinity
+        ))
+    }
+
     func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
