@@ -1,4 +1,5 @@
 import SwiftUI
+import WatchKit
 
 struct WatchRunningTabView: View {
     @ObservedObject var viewModel: WatchRunningViewModel
@@ -61,15 +62,24 @@ struct WatchRunningTabView: View {
                         title: "현재 페이스",
                         value: viewModel.metrics.formattedPace,
                         unit: "/km",
-                        valueSize: 29
+                        valueSize: 52,
+                        isPrimary: true
                     )
-                    WatchDashboardMetric(
-                        title: "시간",
-                        value: viewModel.metrics.formattedElapsed,
-                        unit: "",
-                        valueSize: 19,
-                        alignment: .trailing
-                    )
+                    Button {
+                        WKInterfaceDevice.current().play(.click)
+                        viewModel.selectNextDisplayMetric()
+                    } label: {
+                        WatchDashboardMetric(
+                            title: viewModel.displayMetric.title,
+                            value: cornerValue,
+                            unit: cornerUnit,
+                            valueSize: 18,
+                            alignment: .trailing
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(viewModel.displayMetric.title), \(cornerValue)")
+                    .accessibilityHint("탭하면 시간, 거리, 현재 페이스 표시를 변경합니다")
                 }
 
                 HStack(spacing: 4) {
@@ -77,13 +87,13 @@ struct WatchRunningTabView: View {
                         title: "심박수",
                         value: heartRate,
                         unit: "bpm",
-                        valueSize: 25
+                        valueSize: 29
                     )
                     WatchDashboardMetric(
                         title: "거리",
                         value: viewModel.metrics.formattedDistance,
                         unit: "km",
-                        valueSize: 25,
+                        valueSize: 29,
                         alignment: .trailing
                     )
                 }
@@ -117,6 +127,22 @@ struct WatchRunningTabView: View {
         return String(Int(heartRate.rounded()))
     }
 
+    private var cornerValue: String {
+        switch viewModel.displayMetric {
+        case .elapsed: viewModel.metrics.formattedElapsed
+        case .distance: viewModel.metrics.formattedDistance
+        case .currentPace: viewModel.metrics.formattedPace
+        }
+    }
+
+    private var cornerUnit: String {
+        switch viewModel.displayMetric {
+        case .elapsed: ""
+        case .distance: "km"
+        case .currentPace: "/km"
+        }
+    }
+
     private var endedView: some View {
         VStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
@@ -140,6 +166,7 @@ private struct WatchDashboardMetric: View {
     let unit: String
     let valueSize: CGFloat
     var alignment: HorizontalAlignment = .leading
+    var isPrimary = false
 
     var body: some View {
         VStack(alignment: alignment, spacing: 2) {
@@ -151,6 +178,7 @@ private struct WatchDashboardMetric: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
                 .lineLimit(1)
+                .foregroundStyle(PacingWatchTheme.main500)
             if !unit.isEmpty {
                 Text(unit)
                     .font(.caption2.weight(.semibold))
@@ -160,7 +188,7 @@ private struct WatchDashboardMetric: View {
                     .frame(height: 12)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 63, alignment: alignment == .leading ? .leading : .trailing)
+        .frame(maxWidth: .infinity, minHeight: isPrimary ? 92 : 63, alignment: alignment == .leading ? .leading : .trailing)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title), \(accessibilityValue)")
     }
