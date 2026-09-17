@@ -63,12 +63,14 @@ enum WatchRunDisplayMetric: CaseIterable {
     case elapsed
     case distance
     case currentPace
+    case heartRate
 
     var title: String {
         switch self {
         case .elapsed: "시간"
         case .distance: "거리"
         case .currentPace: "현재 페이스"
+        case .heartRate: "심박수"
         }
     }
 

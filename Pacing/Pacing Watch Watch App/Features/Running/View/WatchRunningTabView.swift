@@ -58,18 +58,23 @@ struct WatchRunningTabView: View {
         VStack(spacing: 4) {
             VStack(spacing: 4) {
                 ZStack(alignment: .topTrailing) {
-                    WatchDashboardMetric(
-                        title: "",
-                        value: viewModel.metrics.formattedPace,
-                        unit: "현재 페이스",
-                        valueSize: 48,
-                        alignment: .center,
-                        isPrimary: true
-                    )
-                    .offset(y: 8)
+                    Button { selectNextMetric() } label: {
+                        WatchDashboardMetric(
+                            title: "",
+                            value: primaryValue,
+                            unit: primaryLabel,
+                            valueSize: 48,
+                            alignment: .center,
+                            isPrimary: true
+                        )
+                        .offset(y: 8)
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("\(primaryLabel), \(primaryValue)")
+                    .accessibilityHint("탭하면 다음 러닝 지표를 표시합니다")
                     Button {
-                        WKInterfaceDevice.current().play(.click)
-                        viewModel.selectNextDisplayMetric()
+                        selectNextMetric()
                     } label: {
                         WatchDashboardMetric(
                             title: "",
@@ -88,21 +93,31 @@ struct WatchRunningTabView: View {
                 }
 
                 HStack(spacing: 26) {
-                    WatchDashboardMetric(
-                        title: "",
-                        value: heartRate,
-                        unit: "심박수",
-                        valueSize: 23,
-                        alignment: .center
-                    )
+                    Button { selectMetric(.heartRate) } label: {
+                        WatchDashboardMetric(
+                            title: "",
+                            value: heartRate,
+                            unit: "심박수",
+                            valueSize: 23,
+                            alignment: .center
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("심박수, \(heartRate)")
                     .frame(width: 58)
-                    WatchDashboardMetric(
-                        title: "",
-                        value: viewModel.metrics.formattedDistance,
-                        unit: "총 거리",
-                        valueSize: 23,
-                        alignment: .center
-                    )
+                    Button { selectMetric(.distance) } label: {
+                        WatchDashboardMetric(
+                            title: "",
+                            value: viewModel.metrics.formattedDistance,
+                            unit: "총 거리",
+                            valueSize: 23,
+                            alignment: .center
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                    .accessibilityLabel("총 거리, \(viewModel.metrics.formattedDistance) 킬로미터")
                     .frame(width: 58)
                 }
                 .frame(maxWidth: .infinity)
@@ -143,6 +158,7 @@ struct WatchRunningTabView: View {
         case .elapsed: viewModel.metrics.formattedElapsedIncludingHours
         case .distance: viewModel.metrics.formattedDistance
         case .currentPace: viewModel.metrics.formattedPace
+        case .heartRate: heartRate
         }
     }
 
@@ -151,7 +167,36 @@ struct WatchRunningTabView: View {
         case .elapsed: ""
         case .distance: "km"
         case .currentPace: "/km"
+        case .heartRate: "bpm"
         }
+    }
+
+    private var primaryValue: String {
+        switch viewModel.displayMetric {
+        case .elapsed: viewModel.metrics.formattedElapsedIncludingHours
+        case .distance: viewModel.metrics.formattedDistance
+        case .currentPace: viewModel.metrics.formattedPace
+        case .heartRate: heartRate
+        }
+    }
+
+    private var primaryLabel: String {
+        switch viewModel.displayMetric {
+        case .elapsed: "총 시간"
+        case .distance: "총 거리"
+        case .currentPace: "현재 페이스"
+        case .heartRate: "심박수"
+        }
+    }
+
+    private func selectNextMetric() {
+        WKInterfaceDevice.current().play(.click)
+        viewModel.selectNextDisplayMetric()
+    }
+
+    private func selectMetric(_ metric: WatchRunDisplayMetric) {
+        WKInterfaceDevice.current().play(.click)
+        viewModel.selectDisplayMetric(metric)
     }
 
     private var endedView: some View {

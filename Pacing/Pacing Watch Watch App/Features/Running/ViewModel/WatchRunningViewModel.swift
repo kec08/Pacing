@@ -5,7 +5,7 @@ import Foundation
 final class WatchRunningViewModel: ObservableObject {
     @Published private(set) var state: WatchRunState = .idle
     @Published private(set) var metrics = WatchRunMetrics.empty
-    @Published var displayMetric: WatchRunDisplayMetric = .elapsed
+    @Published var displayMetric: WatchRunDisplayMetric = .currentPace
     @Published var isEndConfirmationPresented = false
 
     private var timer: AnyCancellable?
@@ -141,11 +141,15 @@ final class WatchRunningViewModel: ObservableObject {
         elapsedBeforeCurrentSegment = 0
         resetMetrics()
         state = .idle
-        displayMetric = .elapsed
+        displayMetric = .currentPace
     }
 
     func selectNextDisplayMetric() {
         displayMetric = displayMetric.next()
+    }
+
+    func selectDisplayMetric(_ metric: WatchRunDisplayMetric) {
+        displayMetric = metric
     }
 
     private var isFailure: Bool {

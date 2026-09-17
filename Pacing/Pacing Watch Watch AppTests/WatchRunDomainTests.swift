@@ -13,7 +13,8 @@ final class WatchRunDomainTests: XCTestCase {
     func testDisplayMetricCyclesInDashboardOrder() {
         XCTAssertEqual(WatchRunDisplayMetric.elapsed.next(), .distance)
         XCTAssertEqual(WatchRunDisplayMetric.distance.next(), .currentPace)
-        XCTAssertEqual(WatchRunDisplayMetric.currentPace.next(), .elapsed)
+        XCTAssertEqual(WatchRunDisplayMetric.currentPace.next(), .heartRate)
+        XCTAssertEqual(WatchRunDisplayMetric.heartRate.next(), .elapsed)
     }
 
     func testMetricsFormatsElapsedDistanceAndPace() {
