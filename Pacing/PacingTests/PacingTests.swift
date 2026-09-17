@@ -159,6 +159,35 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 20, accuracy: 0.001)
     }
 
+    func testBarometerElevationAccumulatesConfirmedSeparateClimbs() {
+        let start = Date(timeIntervalSince1970: 4_000)
+        let altitudes = [
+            0.0, 5.0, 10.0, 15.0, 0.0,
+            5.0, 10.0, 15.0, 0.0,
+            5.0, 10.0, 15.0, 0.0
+        ]
+        let samples = altitudes.enumerated().map { index, altitude in
+            ElevationSample(
+                timestamp: start.addingTimeInterval(Double(index) * 5),
+                altitudeMeters: altitude
+            )
+        }
+
+        XCTAssertEqual(ElevationGainCalculator.gain(from: samples) ?? -1, 45, accuracy: 0.001)
+    }
+
+    func testBarometerElevationIgnoresSmallPressureNoise() {
+        let start = Date(timeIntervalSince1970: 4_100)
+        let samples = [0.0, 0.7, -0.5, 0.8, 0.2, -0.4].enumerated().map { index, altitude in
+            ElevationSample(
+                timestamp: start.addingTimeInterval(Double(index) * 5),
+                altitudeMeters: altitude
+            )
+        }
+
+        XCTAssertEqual(ElevationGainCalculator.gain(from: samples) ?? -1, 0, accuracy: 0.001)
+    }
+
     func testElevationGainIgnoresRepeatedAltitudeNoise() {
         let start = Date(timeIntervalSince1970: 2_500)
         let altitudes = [100.0, 106.0, 101.0, 107.0, 102.0, 106.0, 100.0]
