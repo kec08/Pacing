@@ -22,7 +22,7 @@ struct ContentView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 WatchTabIndicator(selectedTab: $viewModel.selectedTab)
-                    .padding(.bottom, 3)
+                    .offset(y: 4)
             }
         }
         .alert("러닝 준비 중", isPresented: $viewModel.isRunStartNoticePresented) {
@@ -77,8 +77,8 @@ private struct WatchTabIndicator: View {
                     selectedTab = tab
                 } label: {
                     Circle()
-                        .fill(tab == selectedTab ? PacingWatchTheme.textPrimary : PacingWatchTheme.textSecondary.opacity(0.42))
-                        .frame(width: 5, height: 5)
+                        .fill(tab == selectedTab ? PacingWatchTheme.main500 : PacingWatchTheme.textSecondary.opacity(0.42))
+                        .frame(width: 4, height: 4)
                         .animation(.easeInOut(duration: 0.18), value: selectedTab)
                 }
                 .buttonStyle(.plain)
@@ -112,7 +112,7 @@ private struct WatchRunningTabView: View {
                 Image("PacingWatchMark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 138, height: 138)
+                    .frame(width: 112, height: 112)
                     .accessibilityHidden(true)
             }
             .buttonStyle(.plain)
@@ -142,8 +142,10 @@ private struct WatchActivityTabView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달 킬로미터")
-                WatchActivityMetric(value: "0", unit: "회", label: "이번 달 러닝 횟수")
+                HStack(spacing: 14) {
+                    WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달")
+                    WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
+                }
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("최근 러닝")
@@ -172,9 +174,9 @@ private struct WatchActivityMetric: View {
         VStack(spacing: 1) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
                 Text(unit)
-                    .font(.headline.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                     .foregroundStyle(PacingWatchTheme.textSecondary)
             }
             Text(label)
