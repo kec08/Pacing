@@ -37,7 +37,7 @@
 
 - `Pacing/Pacing/Features/Running/View/RunningView.swift`
 - `Pacing/Pacing/Features/Running/ViewModel/NearbyRunnerViewModel.swift`
-- `doc/fe/plans/feat #67 러닝 지도 자유 조작·친구 위치·러너 추적 계획서.md`
+- `doc/ios/plans/feat #67 러닝 지도 자유 조작·친구 위치·러너 추적 계획서.md`
 
 ## QA 결과
 
