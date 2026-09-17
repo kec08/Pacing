@@ -3,6 +3,7 @@
 //  Pacing Watch Watch App
 //
 
+import Combine
 import SwiftUI
 
 struct ContentView: View {
