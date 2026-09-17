@@ -22,7 +22,7 @@ struct ContentView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 WatchTabIndicator(selectedTab: $viewModel.selectedTab)
-                    .offset(y: 4)
+                    .offset(y: 8)
             }
         }
         .alert("러닝 준비 중", isPresented: $viewModel.isRunStartNoticePresented) {
@@ -142,10 +142,8 @@ private struct WatchActivityTabView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                HStack(spacing: 14) {
-                    WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달")
-                    WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
-                }
+                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달")
+                WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("최근 러닝")
