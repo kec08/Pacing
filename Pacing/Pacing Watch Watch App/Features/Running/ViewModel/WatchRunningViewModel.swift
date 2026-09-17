@@ -13,10 +13,17 @@ final class WatchRunningViewModel: ObservableObject {
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private var cancellables = Set<AnyCancellable>()
+    /// Xcode Preview에는 HealthKit 운동 세션을 지원하는 Watch 런타임이 없으므로
+    /// 화면 상태만 검증할 수 있는 안전한 타이머 경로를 사용한다.
+    private let usesPreviewMetrics: Bool
 
-    init(workoutRepository: HealthKitWatchWorkoutRepository? = nil) {
+    init(
+        workoutRepository: HealthKitWatchWorkoutRepository? = nil,
+        usesPreviewMetrics: Bool = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    ) {
         let workoutRepository = workoutRepository ?? HealthKitWatchWorkoutRepository()
         self.workoutRepository = workoutRepository
+        self.usesPreviewMetrics = usesPreviewMetrics
 
         workoutRepository.$liveMetrics
             .receive(on: DispatchQueue.main)
@@ -33,6 +40,13 @@ final class WatchRunningViewModel: ObservableObject {
 
         state = .starting
         resetMetrics()
+
+        if usesPreviewMetrics {
+            startedAt = .now
+            state = .running
+            startTimer()
+            return
+        }
 
         Task { [weak self] in
             guard let self else { return }
@@ -56,12 +70,16 @@ final class WatchRunningViewModel: ObservableObject {
             elapsedBeforeCurrentSegment = metrics.elapsed
             startedAt = nil
             timer?.cancel()
-            workoutRepository.pause()
+            if !usesPreviewMetrics {
+                workoutRepository.pause()
+            }
             state = .paused
         case .paused:
             startedAt = .now
             state = .running
-            workoutRepository.resume()
+            if !usesPreviewMetrics {
+                workoutRepository.resume()
+            }
             startTimer()
         default:
             break
@@ -79,6 +97,11 @@ final class WatchRunningViewModel: ObservableObject {
         syncElapsed()
         timer?.cancel()
         startedAt = nil
+
+        if usesPreviewMetrics {
+            state = .ended
+            return
+        }
 
         Task { [weak self] in
             guard let self else { return }
