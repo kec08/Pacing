@@ -22,7 +22,7 @@ struct ContentView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 WatchTabIndicator(selectedTab: $viewModel.selectedTab)
-                    .offset(y: 8)
+                    .offset(y: 12)
             }
         }
         .alert("러닝 준비 중", isPresented: $viewModel.isRunStartNoticePresented) {
