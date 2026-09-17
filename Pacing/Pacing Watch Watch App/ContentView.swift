@@ -112,22 +112,12 @@ private struct WatchRunningTabView: View {
                 Image("PacingWatchMark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 78, height: 78)
+                    .frame(width: 138, height: 138)
                     .accessibilityHidden(true)
-                    .frame(width: 132, height: 132)
-                    .background(PacingWatchTheme.brandGradient, in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("러닝 시작")
             .accessibilityHint("운동 세션 연결 전 안내를 표시합니다")
-
-            Text("실외 러닝")
-                .font(.headline)
-                .foregroundStyle(PacingWatchTheme.textPrimary)
-
-            Text("탭하여 시작")
-                .font(.caption2)
-                .foregroundStyle(PacingWatchTheme.textSecondary)
 
             Spacer(minLength: 2)
         }
@@ -151,15 +141,9 @@ private struct WatchListenTogetherTabView: View {
 private struct WatchActivityTabView: View {
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
-                Label("이번 달", systemImage: "calendar")
-                    .font(.headline)
-                    .foregroundStyle(PacingWatchTheme.textPrimary)
-
-                HStack(spacing: 8) {
-                    WatchMetricCard(value: "0.0", unit: "km", label: "누적 거리")
-                    WatchMetricCard(value: "0", unit: "회", label: "러닝 횟수")
-                }
+            VStack(spacing: 14) {
+                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달 킬로미터")
+                WatchActivityMetric(value: "0", unit: "회", label: "이번 달 러닝 횟수")
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text("최근 러닝")
@@ -179,26 +163,25 @@ private struct WatchActivityTabView: View {
     }
 }
 
-private struct WatchMetricCard: View {
+private struct WatchActivityMetric: View {
     let value: String
     let unit: String
     let label: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(spacing: 1) {
             HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value).font(.title3.weight(.bold))
+                Text(value)
+                    .font(.system(size: 42, weight: .bold, design: .rounded))
                 Text(unit)
-                    .font(.caption2.weight(.semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(PacingWatchTheme.textSecondary)
             }
             Text(label)
-                .font(.caption2)
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(PacingWatchTheme.textSecondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(10)
-        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
     }
 }
@@ -252,9 +235,4 @@ enum PacingWatchTheme {
     static let textPrimary = Color(red: 0.961, green: 0.961, blue: 0.969) // #F5F5F7
     static let textSecondary = Color(red: 0.682, green: 0.682, blue: 0.698) // #AEAEB2
 
-    static let brandGradient = LinearGradient(
-        colors: [main500, magenta, purple],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-    )
 }
