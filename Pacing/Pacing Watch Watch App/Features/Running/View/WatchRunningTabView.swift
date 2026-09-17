@@ -62,7 +62,7 @@ struct WatchRunningTabView: View {
                         title: "",
                         value: viewModel.metrics.formattedPace,
                         unit: "현재 페이스",
-                        valueSize: 62,
+                        valueSize: 48,
                         alignment: .center,
                         isPrimary: true
                     )
@@ -74,8 +74,9 @@ struct WatchRunningTabView: View {
                             title: "",
                             value: cornerValue,
                             unit: cornerUnit,
-                            valueSize: 18,
-                            alignment: .trailing
+                            valueSize: 14,
+                            alignment: .trailing,
+                            valueColor: PacingWatchTheme.textSecondary
                         )
                     }
                     .buttonStyle(.plain)
@@ -88,15 +89,16 @@ struct WatchRunningTabView: View {
                         title: "",
                         value: heartRate,
                         unit: "심박수",
-                        valueSize: 29
+                        valueSize: 23,
+                        alignment: .center
                     )
                     .frame(width: 58)
                     WatchDashboardMetric(
                         title: "",
                         value: viewModel.metrics.formattedDistance,
                         unit: "총 거리",
-                        valueSize: 29,
-                        alignment: .trailing
+                        valueSize: 23,
+                        alignment: .center
                     )
                     .frame(width: 58)
                 }
@@ -171,6 +173,7 @@ private struct WatchDashboardMetric: View {
     let valueSize: CGFloat
     var alignment: HorizontalAlignment = .leading
     var isPrimary = false
+    var valueColor: Color = PacingWatchTheme.main500
 
     var body: some View {
         VStack(alignment: alignment, spacing: 2) {
@@ -184,10 +187,10 @@ private struct WatchDashboardMetric: View {
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
                 .lineLimit(1)
-                .foregroundStyle(PacingWatchTheme.main500)
+                .foregroundStyle(valueColor)
             if !unit.isEmpty {
                 Text(unit)
-                    .font(.caption2.weight(.semibold))
+                    .font(.system(size: isPrimary ? 11 : 10, weight: .semibold))
                     .foregroundStyle(PacingWatchTheme.textSecondary)
             } else {
                 Spacer()
@@ -196,8 +199,8 @@ private struct WatchDashboardMetric: View {
         }
         .frame(
             maxWidth: .infinity,
-            minHeight: isPrimary ? 106 : 63,
-            alignment: isPrimary ? .center : (alignment == .leading ? .leading : .trailing)
+            minHeight: isPrimary ? 96 : 56,
+            alignment: isPrimary ? .center : resolvedAlignment
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(title.isEmpty ? accessibilityValue : "\(title), \(accessibilityValue)")
@@ -205,5 +208,11 @@ private struct WatchDashboardMetric: View {
 
     private var accessibilityValue: String {
         unit.isEmpty ? value : "\(value) \(unit)"
+    }
+
+    private var resolvedAlignment: Alignment {
+        if alignment == .leading { return .leading }
+        if alignment == .center { return .center }
+        return .trailing
     }
 }
