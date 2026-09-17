@@ -72,6 +72,7 @@ final class RunningViewModel: ObservableObject {
     private var accumulatedElapsedSecondsBeforeResume: Int = 0
     private let heartRateRepository: HeartRateRepository
     private let cadenceRepository: CadenceRepository
+    private let lapVoiceAnnouncer: LapVoiceAnnouncing
     private var cadenceAccumulator = CadenceAccumulator()
     private var cadenceSegmentStartDate: Date?
     private var healthAuthorizationTask: Task<Bool, Never>?
@@ -79,11 +80,13 @@ final class RunningViewModel: ObservableObject {
     init(
         locationManager: LocationManager = .shared,
         heartRateRepository: HeartRateRepository = HealthKitHeartRateRepository(),
-        cadenceRepository: CadenceRepository = CoreMotionCadenceRepository()
+        cadenceRepository: CadenceRepository = CoreMotionCadenceRepository(),
+        lapVoiceAnnouncer: LapVoiceAnnouncing = LapVoiceAnnouncementService()
     ) {
         self.locationManager = locationManager
         self.heartRateRepository = heartRateRepository
         self.cadenceRepository = cadenceRepository
+        self.lapVoiceAnnouncer = lapVoiceAnnouncer
         locationManager.startMonitoringCurrentLocation()
 
         locationManager.$recentRecordedLocations
@@ -134,6 +137,7 @@ final class RunningViewModel: ObservableObject {
         runningStartedAt = nil
         state = .paused
         timer?.cancel()
+        lapVoiceAnnouncer.stop()
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
@@ -189,6 +193,7 @@ final class RunningViewModel: ObservableObject {
 
     func reset() {
         timer?.cancel()
+        lapVoiceAnnouncer.stop()
         cadenceRepository.stopUpdates()
         locationManager.resetRoute()
         elapsedSeconds = 0
@@ -461,18 +466,29 @@ final class RunningViewModel: ObservableObject {
 
             if lapDistance > 0, lapElapsedSeconds > 0 {
                 let lapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
+                let kilometer = Int(nextLapDistanceMark.rounded(.down))
                 lastCompletedLapPace = lapPace
                 completedLapPaces.append(
                     RunLapPace(
-                        kilometer: Int(nextLapDistanceMark.rounded(.down)),
+                        kilometer: kilometer,
                         pace: lapPace
                     )
                 )
+                announceCompletedKilometer(kilometer)
             }
 
             lapStartDistance = nextLapDistanceMark
             lapStartElapsedSeconds = Int(activeElapsedSeconds)
             nextLapDistanceMark += 1.0
         }
+    }
+
+    private func announceCompletedKilometer(_ kilometer: Int) {
+        guard let announcement = LapVoiceAnnouncement(
+            kilometer: kilometer,
+            elapsedSeconds: elapsedSeconds,
+            averagePaceMinutesPerKilometer: avgPace
+        ) else { return }
+        lapVoiceAnnouncer.announce(announcement)
     }
 }
