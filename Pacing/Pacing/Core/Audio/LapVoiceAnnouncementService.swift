@@ -29,7 +29,7 @@ struct LapVoiceAnnouncement: Equatable {
         let paceMinutes = paceSeconds / 60
         let paceRemainingSeconds = paceSeconds % 60
 
-        return "\(kilometer)킬로미터. 현재 시간은 \(elapsedMinutes)분 \(elapsedRemainingSeconds)초. 킬로미터당 페이스는 \(paceMinutes)분 \(paceRemainingSeconds)초."
+        return "\(kilometer)킬로미터. \(elapsedMinutes)분 \(elapsedRemainingSeconds)초. 킬로미터당 페이스 \(paceMinutes)분 \(paceRemainingSeconds)초."
     }
 }
 

@@ -20,7 +20,7 @@ final class PacingTests: XCTestCase {
 
         XCTAssertEqual(
             announcement?.text,
-            "2킬로미터. 현재 시간은 10분 52초. 킬로미터당 페이스는 5분 27초."
+            "2킬로미터. 10분 52초. 킬로미터당 페이스 5분 27초."
         )
     }
 
