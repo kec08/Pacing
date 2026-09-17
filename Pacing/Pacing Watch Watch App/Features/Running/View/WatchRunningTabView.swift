@@ -73,23 +73,17 @@ struct WatchRunningTabView: View {
                     .contentShape(Rectangle())
                     .accessibilityLabel("\(primaryLabel), \(primaryValue)")
                     .accessibilityHint("탭하면 다음 러닝 지표를 표시합니다")
-                    Button {
-                        selectNextMetric()
-                    } label: {
-                        WatchDashboardMetric(
-                            title: "",
-                            value: cornerValue,
-                            unit: cornerUnit,
-                            valueSize: 14,
-                            alignment: .trailing,
-                            valueColor: PacingWatchTheme.textSecondary,
-                            valueWeight: .medium
-                        )
-                    }
-                    .buttonStyle(.plain)
+                    WatchDashboardMetric(
+                        title: "",
+                        value: viewModel.metrics.formattedElapsedIncludingHours,
+                        unit: "",
+                        valueSize: 14,
+                        alignment: .trailing,
+                        valueColor: PacingWatchTheme.textSecondary,
+                        valueWeight: .medium
+                    )
                     .offset(y: -10)
-                    .accessibilityLabel("\(viewModel.displayMetric.title), \(cornerValue)")
-                    .accessibilityHint("탭하면 시간, 거리, 현재 페이스 표시를 변경합니다")
+                    .accessibilityLabel("총 시간, \(viewModel.metrics.formattedElapsedIncludingHours)")
                 }
 
                 HStack(spacing: 26) {
@@ -153,27 +147,9 @@ struct WatchRunningTabView: View {
         return String(Int(heartRate.rounded()))
     }
 
-    private var cornerValue: String {
-        switch viewModel.displayMetric {
-        case .elapsed: viewModel.metrics.formattedElapsedIncludingHours
-        case .distance: viewModel.metrics.formattedDistance
-        case .currentPace: viewModel.metrics.formattedPace
-        case .heartRate: heartRate
-        }
-    }
-
-    private var cornerUnit: String {
-        switch viewModel.displayMetric {
-        case .elapsed: ""
-        case .distance: "km"
-        case .currentPace: "/km"
-        case .heartRate: "bpm"
-        }
-    }
-
     private var primaryValue: String {
         switch viewModel.displayMetric {
-        case .elapsed: viewModel.metrics.formattedElapsedIncludingHours
+        case .elapsed: viewModel.metrics.formattedElapsed
         case .distance: viewModel.metrics.formattedDistance
         case .currentPace: viewModel.metrics.formattedPace
         case .heartRate: heartRate
