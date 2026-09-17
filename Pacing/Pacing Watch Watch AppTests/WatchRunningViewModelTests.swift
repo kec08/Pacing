@@ -19,4 +19,12 @@ final class WatchRunningViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.state, .idle)
     }
+
+    func testSelectingMetricUpdatesLargeDashboardMetric() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+
+        viewModel.selectDisplayMetric(.heartRate)
+
+        XCTAssertEqual(viewModel.displayMetric, .heartRate)
+    }
 }

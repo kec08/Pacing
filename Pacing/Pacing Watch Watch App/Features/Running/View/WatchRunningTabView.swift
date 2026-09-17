@@ -67,7 +67,7 @@ struct WatchRunningTabView: View {
                             alignment: .center,
                             isPrimary: true
                         )
-                        .offset(y: 8)
+                        .offset(y: 14)
                     }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
@@ -86,7 +86,7 @@ struct WatchRunningTabView: View {
                     .accessibilityLabel("총 시간, \(viewModel.metrics.formattedElapsedIncludingHours)")
                 }
 
-                HStack(spacing: 26) {
+                HStack(spacing: 18) {
                     Button { selectMetric(.heartRate) } label: {
                         WatchDashboardMetric(
                             title: "",
@@ -97,9 +97,9 @@ struct WatchRunningTabView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .frame(width: 70, height: 64)
                     .contentShape(Rectangle())
                     .accessibilityLabel("심박수, \(heartRate)")
-                    .frame(width: 58)
                     Button { selectMetric(.distance) } label: {
                         WatchDashboardMetric(
                             title: "",
@@ -110,9 +110,9 @@ struct WatchRunningTabView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .frame(width: 70, height: 64)
                     .contentShape(Rectangle())
                     .accessibilityLabel("총 거리, \(viewModel.metrics.formattedDistance) 킬로미터")
-                    .frame(width: 58)
                 }
                 .frame(maxWidth: .infinity)
                 .offset(y: 8)
