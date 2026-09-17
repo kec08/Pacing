@@ -11,15 +11,42 @@ final class WatchRunningViewModel: ObservableObject {
     private var timer: AnyCancellable?
     private var startedAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
+    private let workoutRepository: HealthKitWatchWorkoutRepository
+    private var cancellables = Set<AnyCancellable>()
+
+    init(workoutRepository: HealthKitWatchWorkoutRepository? = nil) {
+        let workoutRepository = workoutRepository ?? HealthKitWatchWorkoutRepository()
+        self.workoutRepository = workoutRepository
+
+        workoutRepository.$liveMetrics
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] liveMetrics in
+                self?.metrics.distanceMeters = liveMetrics.distanceMeters
+                self?.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
+                self?.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
+            }
+            .store(in: &cancellables)
+    }
 
     func start() {
         guard state == .idle || state == .ended || isFailure else { return }
 
         state = .starting
         resetMetrics()
-        startedAt = .now
-        state = .running
-        startTimer()
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await workoutRepository.start()
+                startedAt = .now
+                state = .running
+                startTimer()
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionStartFailed)
+            }
+        }
     }
 
     func pauseOrResume() {
@@ -29,10 +56,12 @@ final class WatchRunningViewModel: ObservableObject {
             elapsedBeforeCurrentSegment = metrics.elapsed
             startedAt = nil
             timer?.cancel()
+            workoutRepository.pause()
             state = .paused
         case .paused:
             startedAt = .now
             state = .running
+            workoutRepository.resume()
             startTimer()
         default:
             break
@@ -50,7 +79,18 @@ final class WatchRunningViewModel: ObservableObject {
         syncElapsed()
         timer?.cancel()
         startedAt = nil
-        state = .ended
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await workoutRepository.end()
+                state = .ended
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionEndFailed)
+            }
+        }
     }
 
     func reset() {

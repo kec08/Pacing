@@ -48,6 +48,12 @@ struct WatchRunningTabView: View {
             if viewModel.state == .starting {
                 ProgressView("러닝 준비 중")
                     .font(.caption2)
+            } else if case let .failed(error) = viewModel.state {
+                Text(error.userMessage)
+                    .font(.caption2)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 Text("러닝 시작")
                     .font(.headline)
