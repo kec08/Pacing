@@ -9,6 +9,8 @@ struct WatchRunningTabView: View {
             switch viewModel.state {
             case .idle, .starting, .failed:
                 startView
+            case let .countdown(value):
+                countdownView(value)
             case .running, .paused, .ending:
                 dashboard
             case .ended:
@@ -63,23 +65,49 @@ struct WatchRunningTabView: View {
     }
 
     private var dashboard: some View {
-        VStack(spacing: 8) {
-            Button { viewModel.selectNextDisplayMetric() } label: {
-                WatchPrimaryMetric(
-                    metric: viewModel.displayMetric,
-                    metrics: viewModel.metrics
-                )
+        VStack(spacing: 4) {
+            VStack(spacing: 4) {
+                HStack(alignment: .top, spacing: 4) {
+                    WatchDashboardMetric(
+                        title: "현재 페이스",
+                        value: viewModel.metrics.formattedPace,
+                        unit: "/km",
+                        valueSize: 29
+                    )
+                    WatchDashboardMetric(
+                        title: "시간",
+                        value: viewModel.metrics.formattedElapsed,
+                        unit: "",
+                        valueSize: 19,
+                        alignment: .trailing
+                    )
+                }
+
+                HStack(spacing: 4) {
+                    WatchDashboardMetric(
+                        title: "심박수",
+                        value: heartRate,
+                        unit: "bpm",
+                        valueSize: 25
+                    )
+                    WatchDashboardMetric(
+                        title: "거리",
+                        value: viewModel.metrics.formattedDistance,
+                        unit: "km",
+                        valueSize: 25,
+                        alignment: .trailing
+                    )
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityHint("탭하면 시간, 거리, 현재 페이스 표시를 바꿉니다")
+            .padding(.top, 4)
 
             if viewModel.state == .paused {
                 Text("일시정지됨")
-                    .font(.caption.weight(.bold))
+                    .font(.caption2.weight(.bold))
                     .foregroundStyle(PacingWatchTheme.main500)
             }
 
-            WatchSecondaryMetrics(metrics: viewModel.metrics)
+            Spacer(minLength: 0)
 
             HStack(spacing: 8) {
                 Button { viewModel.pauseOrResume() } label: {
@@ -100,6 +128,20 @@ struct WatchRunningTabView: View {
         .padding(.bottom, 28)
     }
 
+    private func countdownView(_ value: Int) -> some View {
+        Text("\(value)")
+            .font(.system(size: 72, weight: .bold, design: .rounded))
+            .foregroundStyle(PacingWatchTheme.main500)
+            .monospacedDigit()
+            .accessibilityLabel("러닝 시작까지 \(value)초")
+            .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
+    }
+
+    private var heartRate: String {
+        guard let heartRate = viewModel.metrics.heartRateBeatsPerMinute else { return "--" }
+        return String(Int(heartRate.rounded()))
+    }
+
     private var endedView: some View {
         VStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
@@ -117,82 +159,38 @@ struct WatchRunningTabView: View {
     }
 }
 
-private struct WatchPrimaryMetric: View {
-    let metric: WatchRunDisplayMetric
-    let metrics: WatchRunMetrics
+private struct WatchDashboardMetric: View {
+    let title: String
+    let value: String
+    let unit: String
+    let valueSize: CGFloat
+    var alignment: HorizontalAlignment = .leading
 
     var body: some View {
-        VStack(spacing: 2) {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(title)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(PacingWatchTheme.textSecondary)
             Text(value)
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(.system(size: valueSize, weight: .bold, design: .rounded))
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
                 .lineLimit(1)
-            Text(label)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(PacingWatchTheme.textSecondary)
+            if !unit.isEmpty {
+                Text(unit)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            } else {
+                Spacer()
+                    .frame(height: 12)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, minHeight: 63, alignment: alignment == .leading ? .leading : .trailing)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label), \(accessibilityValue)")
-    }
-
-    private var value: String {
-        switch metric {
-        case .elapsed: metrics.formattedElapsed
-        case .distance: metrics.formattedDistance
-        case .currentPace: metrics.formattedPace
-        }
-    }
-
-    private var label: String {
-        switch metric {
-        case .elapsed: "시간"
-        case .distance: "km"
-        case .currentPace: "/km"
-        }
+        .accessibilityLabel("\(title), \(accessibilityValue)")
     }
 
     private var accessibilityValue: String {
-        switch metric {
-        case .elapsed: metrics.formattedElapsed
-        case .distance: "\(metrics.formattedDistance) 킬로미터"
-        case .currentPace: metrics.currentPaceSecondsPerKilometer == nil ? "측정 중" : metrics.formattedPace
-        }
-    }
-}
-
-private struct WatchSecondaryMetrics: View {
-    let metrics: WatchRunMetrics
-
-    var body: some View {
-        HStack(spacing: 6) {
-            metric("거리", value: metrics.formattedDistance, unit: "km")
-            metric("페이스", value: metrics.formattedPace, unit: "/km")
-            metric("심박수", value: heartRate, unit: "bpm")
-        }
-        .accessibilityElement(children: .combine)
-    }
-
-    private var heartRate: String {
-        guard let heartRate = metrics.heartRateBeatsPerMinute else { return "--" }
-        return String(Int(heartRate.rounded()))
-    }
-
-    private func metric(_ title: String, value: String, unit: String) -> some View {
-        VStack(spacing: 1) {
-            Text(value)
-                .font(.caption.weight(.bold))
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text("\(title) \(unit)")
-                .font(.system(size: 8, weight: .medium))
-                .foregroundStyle(PacingWatchTheme.textSecondary)
-                .lineLimit(1)
-        }
-        .frame(maxWidth: .infinity, minHeight: 40)
-        .padding(.vertical, 4)
-        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        unit.isEmpty ? value : "\(value) \(unit)"
     }
 }

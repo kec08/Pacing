@@ -3,20 +3,20 @@ import XCTest
 
 @MainActor
 final class WatchRunningViewModelTests: XCTestCase {
-    func testPreviewModeStartsWithoutHealthKitSession() {
+    func testPreviewModeStartsCountdownWithoutHealthKitSession() {
         let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
 
         viewModel.start()
 
-        XCTAssertEqual(viewModel.state, .running)
+        XCTAssertEqual(viewModel.state, .countdown(3))
     }
 
-    func testPreviewModeEndsWithoutHealthKitSession() {
+    func testResetCancelsPreviewCountdown() {
         let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
         viewModel.start()
 
-        viewModel.end()
+        viewModel.reset()
 
-        XCTAssertEqual(viewModel.state, .ended)
+        XCTAssertEqual(viewModel.state, .idle)
     }
 }

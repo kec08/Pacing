@@ -2,6 +2,7 @@ import Foundation
 
 enum WatchRunState: Equatable {
     case idle
+    case countdown(Int)
     case starting
     case running
     case paused
@@ -11,7 +12,7 @@ enum WatchRunState: Equatable {
 
     var isActive: Bool {
         switch self {
-        case .running, .paused, .ending:
+        case .countdown, .running, .paused, .ending:
             true
         case .idle, .starting, .ended, .failed:
             false

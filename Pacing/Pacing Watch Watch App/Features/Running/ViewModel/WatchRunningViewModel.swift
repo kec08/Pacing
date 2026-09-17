@@ -9,6 +9,7 @@ final class WatchRunningViewModel: ObservableObject {
     @Published var isEndConfirmationPresented = false
 
     private var timer: AnyCancellable?
+    private var countdownTask: Task<Void, Never>?
     private var startedAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private let workoutRepository: HealthKitWatchWorkoutRepository
@@ -38,8 +39,24 @@ final class WatchRunningViewModel: ObservableObject {
     func start() {
         guard state == .idle || state == .ended || isFailure else { return }
 
-        state = .starting
+        state = .countdown(3)
         resetMetrics()
+
+        countdownTask?.cancel()
+        countdownTask = Task { [weak self] in
+            for count in stride(from: 3, through: 1, by: -1) {
+                guard !Task.isCancelled, let self else { return }
+                self.state = .countdown(count)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            guard !Task.isCancelled, let self else { return }
+            self.startWorkoutAfterCountdown()
+        }
+    }
+
+    private func startWorkoutAfterCountdown() {
+        state = .starting
 
         if usesPreviewMetrics {
             startedAt = .now
@@ -117,6 +134,8 @@ final class WatchRunningViewModel: ObservableObject {
     }
 
     func reset() {
+        countdownTask?.cancel()
+        countdownTask = nil
         timer?.cancel()
         startedAt = nil
         elapsedBeforeCurrentSegment = 0
