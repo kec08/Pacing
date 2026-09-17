@@ -57,12 +57,13 @@ struct WatchRunningTabView: View {
     private var dashboard: some View {
         VStack(spacing: 4) {
             VStack(spacing: 4) {
-                HStack(alignment: .top, spacing: 4) {
+                ZStack(alignment: .topTrailing) {
                     WatchDashboardMetric(
                         title: "현재 페이스",
                         value: viewModel.metrics.formattedPace,
                         unit: "/km",
-                        valueSize: 52,
+                        valueSize: 62,
+                        alignment: .center,
                         isPrimary: true
                     )
                     Button {
@@ -188,7 +189,11 @@ private struct WatchDashboardMetric: View {
                     .frame(height: 12)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: isPrimary ? 92 : 63, alignment: alignment == .leading ? .leading : .trailing)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: isPrimary ? 106 : 63,
+            alignment: isPrimary ? .center : (alignment == .leading ? .leading : .trailing)
+        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title), \(accessibilityValue)")
     }
