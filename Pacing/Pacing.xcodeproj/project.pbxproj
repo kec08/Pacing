@@ -816,6 +816,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pacing Watch";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "러닝 중 심박수와 활동 데이터를 표시하기 위해 건강 데이터를 읽습니다.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "완료한 러닝을 건강 앱에 저장하기 위해 운동 데이터를 추가합니다.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "러닝 거리와 현재 페이스를 측정하기 위해 위치를 사용합니다.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.eunchan.Pacing;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -850,6 +853,9 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "Pacing Watch";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "러닝 중 심박수와 활동 데이터를 표시하기 위해 건강 데이터를 읽습니다.";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "완료한 러닝을 건강 앱에 저장하기 위해 운동 데이터를 추가합니다.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "러닝 거리와 현재 페이스를 측정하기 위해 위치를 사용합니다.";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
 				INFOPLIST_KEY_WKCompanionAppBundleIdentifier = com.eunchan.Pacing;
 				LD_RUNPATH_SEARCH_PATHS = (
