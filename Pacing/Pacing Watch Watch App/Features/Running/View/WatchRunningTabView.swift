@@ -83,13 +83,14 @@ struct WatchRunningTabView: View {
                     .accessibilityHint("탭하면 시간, 거리, 현재 페이스 표시를 변경합니다")
                 }
 
-                HStack(spacing: 4) {
+                HStack(spacing: 26) {
                     WatchDashboardMetric(
                         title: "심박수",
                         value: heartRate,
                         unit: "bpm",
                         valueSize: 29
                     )
+                    .frame(width: 58)
                     WatchDashboardMetric(
                         title: "거리",
                         value: viewModel.metrics.formattedDistance,
@@ -97,7 +98,9 @@ struct WatchRunningTabView: View {
                         valueSize: 29,
                         alignment: .trailing
                     )
+                    .frame(width: 58)
                 }
+                .frame(maxWidth: .infinity)
             }
             .padding(.top, 4)
 
