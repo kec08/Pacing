@@ -76,10 +76,12 @@ struct WatchRunningTabView: View {
                             unit: cornerUnit,
                             valueSize: 14,
                             alignment: .trailing,
-                            valueColor: PacingWatchTheme.textSecondary
+                            valueColor: PacingWatchTheme.textPrimary.opacity(0.86),
+                            valueWeight: .medium
                         )
                     }
                     .buttonStyle(.plain)
+                    .offset(y: -6)
                     .accessibilityLabel("\(viewModel.displayMetric.title), \(cornerValue)")
                     .accessibilityHint("탭하면 시간, 거리, 현재 페이스 표시를 변경합니다")
                 }
@@ -174,6 +176,7 @@ private struct WatchDashboardMetric: View {
     var alignment: HorizontalAlignment = .leading
     var isPrimary = false
     var valueColor: Color = PacingWatchTheme.main500
+    var valueWeight: Font.Weight = .bold
 
     var body: some View {
         VStack(alignment: alignment, spacing: 2) {
@@ -183,7 +186,7 @@ private struct WatchDashboardMetric: View {
                     .foregroundStyle(PacingWatchTheme.textSecondary)
             }
             Text(value)
-                .font(.system(size: valueSize, weight: .bold, design: .rounded))
+                .font(.system(size: valueSize, weight: valueWeight, design: .rounded))
                 .monospacedDigit()
                 .minimumScaleFactor(0.65)
                 .lineLimit(1)
