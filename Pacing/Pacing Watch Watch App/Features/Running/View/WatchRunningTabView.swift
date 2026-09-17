@@ -18,12 +18,6 @@ struct WatchRunningTabView: View {
             }
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: viewModel.state)
-        .alert("러닝을 종료할까요?", isPresented: $viewModel.isEndConfirmationPresented) {
-            Button("계속 러닝", role: .cancel) {}
-            Button("종료", role: .destructive) { viewModel.end() }
-        } message: {
-            Text("현재 러닝을 종료하고 기록을 저장합니다.")
-        }
     }
 
     private var startView: some View {
@@ -108,21 +102,6 @@ struct WatchRunningTabView: View {
             }
 
             Spacer(minLength: 0)
-
-            HStack(spacing: 8) {
-                Button { viewModel.pauseOrResume() } label: {
-                    Label(
-                        viewModel.state == .paused ? "재개" : "일시정지",
-                        systemImage: viewModel.state == .paused ? "play.fill" : "pause.fill"
-                    )
-                }
-                .tint(PacingWatchTheme.main500)
-
-                Button(role: .destructive) { viewModel.requestEnd() } label: {
-                    Label("종료", systemImage: "stop.fill")
-                }
-            }
-            .font(.caption.weight(.semibold))
         }
         .padding(.horizontal, 10)
         .padding(.bottom, 28)
@@ -130,11 +109,12 @@ struct WatchRunningTabView: View {
 
     private func countdownView(_ value: Int) -> some View {
         Text("\(value)")
-            .font(.system(size: 72, weight: .bold, design: .rounded))
+            .font(.system(size: 132, weight: .black, design: .rounded))
             .foregroundStyle(PacingWatchTheme.main500)
             .monospacedDigit()
             .accessibilityLabel("러닝 시작까지 \(value)초")
             .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var heartRate: String {
