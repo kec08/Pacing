@@ -2,58 +2,252 @@
 //  ContentView.swift
 //  Pacing Watch Watch App
 //
-//  Created by 김은찬 on 9/17/26.
-//
 
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var viewModel = WatchAppViewModel()
+
     var body: some View {
         ZStack {
-            PacingWatchTheme.background
-                .ignoresSafeArea()
+            PacingWatchTheme.background.ignoresSafeArea()
 
-            ScrollView {
-                VStack(spacing: 12) {
-                Image("PacingWatchMark")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 58, height: 58)
-                .accessibilityLabel("Pacing")
-
-                VStack(spacing: 4) {
-                    Text("Pacing")
-                        .font(.headline)
-                        .foregroundStyle(PacingWatchTheme.textPrimary)
-
-                    Text("워치 준비 완료")
-                        .font(.caption2)
-                        .foregroundStyle(PacingWatchTheme.textSecondary)
-                }
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("러닝 기록", systemImage: "iphone")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PacingWatchTheme.main500)
-
-                    Text("iPhone의 Pacing 앱에서 러닝을 시작하면 워치에서도 실시간 기록을 확인할 수 있어요.")
-                        .font(.caption2)
-                        .foregroundStyle(PacingWatchTheme.textSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(12)
-                .background(PacingWatchTheme.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+            TabView(selection: $viewModel.selectedTab) {
+                WatchMusicTabView().tag(WatchTab.music)
+                WatchRunningTabView(onStartRequested: viewModel.requestRunStart).tag(WatchTab.running)
+                WatchListenTogetherTabView().tag(WatchTab.listenTogether)
+                WatchActivityTabView().tag(WatchTab.activity)
             }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                WatchTabIndicator(selectedTab: $viewModel.selectedTab)
+                    .padding(.bottom, 3)
+            }
+        }
+        .alert("러닝 준비 중", isPresented: $viewModel.isRunStartNoticePresented) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text("실제 운동 세션과 거리·페이스 기록은 다음 단계에서 연결합니다.")
         }
     }
 }
 
 #Preview {
     ContentView()
+}
+
+/// Watch 앱의 페이지 순서와 공통 메타데이터를 한곳에서 관리합니다.
+enum WatchTab: Int, CaseIterable, Hashable, Identifiable {
+    case music
+    case running
+    case listenTogether
+    case activity
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .music: "음악"
+        case .running: "러닝"
+        case .listenTogether: "같이 듣기"
+        case .activity: "활동"
+        }
+    }
+}
+
+/// 실제 HealthKit 운동 세션을 연결하기 전, 화면의 공통 상태를 관리합니다.
+@MainActor
+final class WatchAppViewModel: ObservableObject {
+    @Published var selectedTab: WatchTab = .running
+    @Published var isRunStartNoticePresented = false
+
+    func requestRunStart() {
+        isRunStartNoticePresented = true
+    }
+}
+
+private struct WatchTabIndicator: View {
+    @Binding var selectedTab: WatchTab
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(WatchTab.allCases) { tab in
+                Button {
+                    selectedTab = tab
+                } label: {
+                    Capsule()
+                        .fill(tab == selectedTab ? PacingWatchTheme.main500 : PacingWatchTheme.textSecondary.opacity(0.38))
+                        .frame(width: tab == selectedTab ? 18 : 6, height: 5)
+                        .animation(.easeInOut(duration: 0.18), value: selectedTab)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(tab.title) 탭")
+                .accessibilityValue(tab == selectedTab ? "선택됨" : "선택 안 됨")
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .background(.black.opacity(0.45), in: Capsule())
+    }
+}
+
+private struct WatchMusicTabView: View {
+    var body: some View {
+        WatchPlaceholderPage(
+            title: "음악",
+            systemImage: "music.note.list",
+            accent: PacingWatchTheme.purple,
+            headline: "최근 재생한 음악",
+            message: "Apple Music을 연결하면 최근 재생 곡과 러닝 중인 곡을 여기에서 확인할 수 있어요."
+        )
+    }
+}
+
+private struct WatchRunningTabView: View {
+    let onStartRequested: () -> Void
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                Image("PacingWatchMark")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 42, height: 42)
+                    .accessibilityLabel("Pacing")
+
+                Text("러닝")
+                    .font(.headline)
+                    .foregroundStyle(PacingWatchTheme.textPrimary)
+
+                Text("오늘도 내 페이스로 달려볼까요?")
+                    .font(.caption2)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+
+                Button(action: onStartRequested) {
+                    Label("러닝 시작", systemImage: "figure.run.circle.fill")
+                        .font(.headline)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(PacingWatchTheme.brandGradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
+                .accessibilityHint("운동 세션 연결 전 안내를 표시합니다")
+
+                Text("운동 측정은 다음 단계에서 연결됩니다")
+                    .font(.caption2)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            }
+            .padding(.horizontal, 15)
+            .padding(.bottom, 30)
+        }
+    }
+}
+
+private struct WatchListenTogetherTabView: View {
+    var body: some View {
+        WatchPlaceholderPage(
+            title: "같이 듣기",
+            systemImage: "person.2.wave.2.fill",
+            accent: PacingWatchTheme.magenta,
+            headline: "함께 달릴 사람 찾기",
+            message: "주변 러너와 친구에게 같이 듣기 요청을 보내는 기능을 준비하고 있어요."
+        )
+    }
+}
+
+private struct WatchActivityTabView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Label("이번 달", systemImage: "calendar")
+                    .font(.headline)
+                    .foregroundStyle(PacingWatchTheme.textPrimary)
+
+                HStack(spacing: 8) {
+                    WatchMetricCard(value: "0.0", unit: "km", label: "누적 거리")
+                    WatchMetricCard(value: "0", unit: "회", label: "러닝 횟수")
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("최근 러닝")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PacingWatchTheme.textPrimary)
+                    Text("아직 기록된 러닝이 없어요")
+                        .font(.caption2)
+                        .foregroundStyle(PacingWatchTheme.textSecondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(10)
+                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            }
+            .padding(.horizontal, 14)
+            .padding(.bottom, 30)
+        }
+    }
+}
+
+private struct WatchMetricCard: View {
+    let value: String
+    let unit: String
+    let label: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(value).font(.title3.weight(.bold))
+                Text(unit)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            }
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct WatchPlaceholderPage: View {
+    let title: String
+    let systemImage: String
+    let accent: Color
+    let headline: String
+    let message: String
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.title2)
+                    .foregroundStyle(accent)
+                    .accessibilityHidden(true)
+
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(PacingWatchTheme.textPrimary)
+
+                VStack(spacing: 5) {
+                    Text(headline)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PacingWatchTheme.textPrimary)
+                    Text(message)
+                        .font(.caption2)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(PacingWatchTheme.textSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(12)
+                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(.horizontal, 15)
+            .padding(.bottom, 30)
+        }
+    }
 }
 
 /// iPhone 앱의 PacingColor를 Watch의 작은 화면과 기본 다크 모드에 맞춰 축약한 색상 토큰입니다.
