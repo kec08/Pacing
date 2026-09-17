@@ -16,13 +16,20 @@ struct ContentView: View {
             if viewModel.isRunExperiencePresented {
                 TabView(selection: $viewModel.selectedRunTab) {
                     WatchRunControlsTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.controls)
-                    WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.dashboard)
+                    if !viewModel.isRunPaused {
+                        WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.dashboard)
+                    }
                     WatchRunningMusicTabView().tag(WatchRunTab.music)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
+                .disabled(viewModel.isRunTabLocked)
                 .safeAreaInset(edge: .bottom, spacing: 0) {
-                    WatchRunTabIndicator(selectedTab: $viewModel.selectedRunTab)
+                    WatchRunTabIndicator(
+                        selectedTab: $viewModel.selectedRunTab,
+                        tabs: viewModel.runTabs
+                    )
                         .offset(y: 12)
+                        .disabled(viewModel.isRunTabLocked)
                 }
             } else {
                 TabView(selection: $viewModel.selectedTab) {
@@ -87,16 +94,33 @@ final class WatchAppViewModel: ObservableObject {
     let runningViewModel = WatchRunningViewModel()
     @Published var selectedRunTab: WatchRunTab = .controls
     @Published private(set) var isRunExperiencePresented = false
+    @Published private(set) var isRunPaused = false
+    @Published private(set) var isRunTabLocked = false
     private var cancellables = Set<AnyCancellable>()
+
+    var runTabs: [WatchRunTab] {
+        isRunPaused ? [.controls, .music] : [.controls, .dashboard, .music]
+    }
 
     init() {
         runningViewModel.$state
-            .map(\.isActive)
-            .removeDuplicates()
-            .sink { [weak self] isActive in
-                self?.isRunExperiencePresented = isActive
-                if isActive {
-                    self?.selectedRunTab = .controls
+            .sink { [weak self] state in
+                guard let self else { return }
+
+                isRunExperiencePresented = state.isActive
+                isRunPaused = state == .paused
+                isRunTabLocked = false
+
+                switch state {
+                case .countdown:
+                    selectedRunTab = .dashboard
+                    isRunTabLocked = true
+                case .running:
+                    selectedRunTab = .dashboard
+                case .paused:
+                    selectedRunTab = .controls
+                case .idle, .starting, .ending, .ended, .failed:
+                    break
                 }
             }
             .store(in: &cancellables)
@@ -127,10 +151,11 @@ private struct WatchTabIndicator: View {
 
 private struct WatchRunTabIndicator: View {
     @Binding var selectedTab: WatchRunTab
+    let tabs: [WatchRunTab]
 
     var body: some View {
         HStack(spacing: 5) {
-            ForEach(WatchRunTab.allCases) { tab in
+            ForEach(tabs) { tab in
                 Button { selectedTab = tab } label: {
                     Circle()
                         .fill(tab == selectedTab ? PacingWatchTheme.main500 : PacingWatchTheme.textSecondary.opacity(0.42))

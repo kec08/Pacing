@@ -45,11 +45,6 @@ struct WatchRunningTabView: View {
                     .foregroundStyle(PacingWatchTheme.textSecondary)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("운동과 위치 권한을 확인해요")
-                    .font(.system(size: 10, weight: .regular))
-                    .foregroundStyle(PacingWatchTheme.textSecondary)
-                    .multilineTextAlignment(.center)
             }
 
             Spacer(minLength: 12)

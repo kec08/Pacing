@@ -12,9 +12,9 @@ enum WatchRunState: Equatable {
 
     var isActive: Bool {
         switch self {
-        case .countdown, .running, .paused, .ending:
+        case .countdown, .starting, .running, .paused, .ending:
             true
-        case .idle, .starting, .ended, .failed:
+        case .idle, .ended, .failed:
             false
         }
     }

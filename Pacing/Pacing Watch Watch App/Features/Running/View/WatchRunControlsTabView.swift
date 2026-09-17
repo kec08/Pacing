@@ -23,7 +23,7 @@ struct WatchRunControlsTabView: View {
                     .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 66, height: 66)
-                    .background(Color.gray.opacity(0.72), in: Circle())
+                    .background(Color(red: 0.23, green: 0.23, blue: 0.25), in: Circle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("러닝 종료")
