@@ -4,7 +4,7 @@
 >
 > **관련 이슈**: [#160](https://github.com/kec08/Pacing/issues/160)
 >
-> **PR**: 생성 예정
+> **PR**: [#164](https://github.com/kec08/Pacing/pull/164)
 > **브랜치**: `feat/160-watch-navigation-foundation`
 
 ---
