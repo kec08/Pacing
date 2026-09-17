@@ -77,7 +77,7 @@ struct WatchRunningTabView: View {
                             unit: cornerUnit,
                             valueSize: 14,
                             alignment: .trailing,
-                            valueColor: PacingWatchTheme.textPrimary.opacity(0.86),
+                            valueColor: PacingWatchTheme.textSecondary,
                             valueWeight: .medium
                         )
                     }
@@ -140,7 +140,7 @@ struct WatchRunningTabView: View {
 
     private var cornerValue: String {
         switch viewModel.displayMetric {
-        case .elapsed: viewModel.metrics.formattedElapsed
+        case .elapsed: viewModel.metrics.formattedElapsedIncludingHours
         case .distance: viewModel.metrics.formattedDistance
         case .currentPace: viewModel.metrics.formattedPace
         }

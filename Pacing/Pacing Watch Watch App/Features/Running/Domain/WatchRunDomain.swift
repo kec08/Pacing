@@ -90,6 +90,14 @@ extension WatchRunMetrics {
             : String(format: "%02d:%02d", minutes, seconds)
     }
 
+    var formattedElapsedIncludingHours: String {
+        let totalSeconds = max(0, Int(elapsed.rounded(.down)))
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+    }
+
     var formattedDistance: String {
         String(format: "%.2f", distanceMeters / 1_000)
     }
