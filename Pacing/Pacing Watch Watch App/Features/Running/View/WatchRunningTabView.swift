@@ -82,7 +82,7 @@ struct WatchRunningTabView: View {
                         )
                     }
                     .buttonStyle(.plain)
-                    .offset(y: -6)
+                    .offset(y: -10)
                     .accessibilityLabel("\(viewModel.displayMetric.title), \(cornerValue)")
                     .accessibilityHint("탭하면 시간, 거리, 현재 페이스 표시를 변경합니다")
                 }
