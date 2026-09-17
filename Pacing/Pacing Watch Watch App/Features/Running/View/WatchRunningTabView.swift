@@ -66,6 +66,7 @@ struct WatchRunningTabView: View {
                         alignment: .center,
                         isPrimary: true
                     )
+                    .offset(y: 8)
                     Button {
                         WKInterfaceDevice.current().play(.click)
                         viewModel.selectNextDisplayMetric()
@@ -105,6 +106,7 @@ struct WatchRunningTabView: View {
                     .frame(width: 58)
                 }
                 .frame(maxWidth: .infinity)
+                .offset(y: 8)
             }
             .padding(.top, 4)
 
@@ -128,6 +130,7 @@ struct WatchRunningTabView: View {
             .accessibilityLabel("러닝 시작까지 \(value)초")
             .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .offset(y: -12)
     }
 
     private var heartRate: String {
