@@ -20,7 +20,7 @@ final class PacingTests: XCTestCase {
 
         XCTAssertEqual(
             announcement?.text,
-            "2킬로미터를 달렸습니다. 현재까지 총 시간은 10분 52초입니다. 평균 페이스는 킬로미터당 5분 27초입니다. 좋은 흐름이에요. 계속 달려볼까요?"
+            "2킬로미터. 현재 시간은 10분 52초. 킬로미터당 페이스는 5분 27초."
         )
     }
 
