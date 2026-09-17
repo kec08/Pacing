@@ -29,15 +29,10 @@ struct WatchRunningTabView: View {
             Spacer(minLength: 0)
 
             Button { viewModel.start() } label: {
-                ZStack {
-                    Circle()
-                        .fill(PacingWatchTheme.main500)
-                    Image("PacingWatchMark")
-                        .resizable()
-                        .scaledToFit()
-                        .padding(20)
-                        .accessibilityHidden(true)
-                }
+                Image("PacingWatchMark")
+                    .resizable()
+                    .scaledToFit()
+                    .accessibilityHidden(true)
                 .frame(width: 112, height: 112)
             }
             .buttonStyle(.plain)
@@ -55,11 +50,8 @@ struct WatchRunningTabView: View {
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("러닝 시작")
-                    .font(.headline)
-                    .foregroundStyle(PacingWatchTheme.textPrimary)
                 Text("운동과 위치 권한을 확인해요")
-                    .font(.caption2)
+                    .font(.system(size: 10, weight: .regular))
                     .foregroundStyle(PacingWatchTheme.textSecondary)
                     .multilineTextAlignment(.center)
             }

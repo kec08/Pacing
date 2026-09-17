@@ -19,7 +19,13 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             throw WatchRunError.healthDataUnavailable
         }
 
-        try await requestAuthorizationIfNeeded()
+        do {
+            try await requestAuthorizationIfNeeded()
+        } catch let error as WatchRunError {
+            throw error
+        } catch {
+            throw WatchRunError.healthAuthorizationRequired
+        }
 
         let configuration = HKWorkoutConfiguration()
         configuration.activityType = .running
@@ -38,9 +44,9 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
 
             try await beginCollection(builder)
             session.startActivity(with: .now)
-        } catch let error as WatchRunError {
-            throw error
         } catch {
+            workoutSession = nil
+            workoutBuilder = nil
             throw WatchRunError.sessionStartFailed
         }
     }
