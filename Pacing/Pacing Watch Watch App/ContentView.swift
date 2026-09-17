@@ -145,18 +145,19 @@ private struct WatchActivityTabView: View {
                 WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달", labelAboveValue: true)
                 WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("최근 러닝")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(PacingWatchTheme.textPrimary)
                     Text("아직 기록된 러닝이 없어요")
                         .font(.caption2)
                         .foregroundStyle(PacingWatchTheme.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 8)
-                .padding(10)
-                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .padding(.top, 12)
             }
             .padding(.horizontal, 14)
             .padding(.bottom, 30)
