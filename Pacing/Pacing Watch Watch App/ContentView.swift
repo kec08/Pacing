@@ -142,7 +142,7 @@ private struct WatchActivityTabView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
-                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달")
+                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달", labelAboveValue: true)
                 WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -154,6 +154,7 @@ private struct WatchActivityTabView: View {
                         .foregroundStyle(PacingWatchTheme.textSecondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 8)
                 .padding(10)
                 .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
             }
@@ -167,9 +168,14 @@ private struct WatchActivityMetric: View {
     let value: String
     let unit: String
     let label: String
+    var labelAboveValue = false
 
     var body: some View {
         VStack(spacing: 1) {
+            if labelAboveValue {
+                labelView
+            }
+
             HStack(alignment: .firstTextBaseline, spacing: 2) {
                 Text(value)
                     .font(.system(size: 30, weight: .bold, design: .rounded))
@@ -177,12 +183,19 @@ private struct WatchActivityMetric: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(PacingWatchTheme.textSecondary)
             }
-            Text(label)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(PacingWatchTheme.textSecondary)
+
+            if !labelAboveValue {
+                labelView
+            }
         }
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .combine)
+    }
+
+    private var labelView: some View {
+        Text(label)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(PacingWatchTheme.textSecondary)
     }
 }
 
