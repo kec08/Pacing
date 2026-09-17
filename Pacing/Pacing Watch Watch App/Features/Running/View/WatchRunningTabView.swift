@@ -59,9 +59,9 @@ struct WatchRunningTabView: View {
             VStack(spacing: 4) {
                 ZStack(alignment: .topTrailing) {
                     WatchDashboardMetric(
-                        title: "현재 페이스",
+                        title: "",
                         value: viewModel.metrics.formattedPace,
-                        unit: "/km",
+                        unit: "현재 페이스",
                         valueSize: 62,
                         alignment: .center,
                         isPrimary: true
@@ -71,7 +71,7 @@ struct WatchRunningTabView: View {
                         viewModel.selectNextDisplayMetric()
                     } label: {
                         WatchDashboardMetric(
-                            title: viewModel.displayMetric.title,
+                            title: "",
                             value: cornerValue,
                             unit: cornerUnit,
                             valueSize: 18,
@@ -85,16 +85,16 @@ struct WatchRunningTabView: View {
 
                 HStack(spacing: 26) {
                     WatchDashboardMetric(
-                        title: "심박수",
+                        title: "",
                         value: heartRate,
-                        unit: "bpm",
+                        unit: "심박수",
                         valueSize: 29
                     )
                     .frame(width: 58)
                     WatchDashboardMetric(
-                        title: "거리",
+                        title: "",
                         value: viewModel.metrics.formattedDistance,
-                        unit: "km",
+                        unit: "총 거리",
                         valueSize: 29,
                         alignment: .trailing
                     )
@@ -174,9 +174,11 @@ private struct WatchDashboardMetric: View {
 
     var body: some View {
         VStack(alignment: alignment, spacing: 2) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(PacingWatchTheme.textSecondary)
+            if !title.isEmpty {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            }
             Text(value)
                 .font(.system(size: valueSize, weight: .bold, design: .rounded))
                 .monospacedDigit()
@@ -198,7 +200,7 @@ private struct WatchDashboardMetric: View {
             alignment: isPrimary ? .center : (alignment == .leading ? .leading : .trailing)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title), \(accessibilityValue)")
+        .accessibilityLabel(title.isEmpty ? accessibilityValue : "\(title), \(accessibilityValue)")
     }
 
     private var accessibilityValue: String {
