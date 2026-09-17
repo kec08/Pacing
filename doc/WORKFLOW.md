@@ -1,6 +1,6 @@
 # 개발 워크플로우 (Development Workflow)
 
-기능 하나가 `feat` 브랜치에서 시작해 `main`에 병합되기까지의 전체 11단계 프로세스입니다.
+기능 하나가 `feat` 브랜치에서 시작해 `dev`에 병합되고, `staging` 실기기 QA를 거쳐 `main`에 반영되기까지의 전체 프로세스입니다.
 
 ---
 
@@ -28,6 +28,10 @@
 10. PR 생성 및 메시지 작성
       ↓
 11. 개발자 코드 리뷰 후 머지 (dev ← feat/*)
+      ↓
+12. 릴리즈 후보 QA (staging ← dev)
+      ↓
+13. 운영 반영 (main ← staging)
 ```
 
 ---
@@ -138,13 +142,47 @@ Closes #이슈번호
 
 ---
 
-## 릴리즈 흐름 (dev → main)
+## 배포 전 QA 흐름 (dev → staging)
+
+`staging`은 배포 후보만 검증하는 공용 브랜치입니다. 기능 개발이나 버그 수정은 여기서 하지 않습니다.
+
+1. 개발자가 QA 대상으로 확정한 `dev` 변경을 `staging`에 PR로 병합한다.
+2. `staging` 커밋으로 Archive를 생성하고 TestFlight에 업로드한다.
+3. iPhone과 페어링된 Apple Watch 실기기에서 아래 항목을 확인한다.
+4. QA 통과 후에만 `staging → main` PR을 생성한다.
+
+### iPhone 공통 QA
+
+- [ ] 앱 설치·업데이트·로그인·로그아웃이 정상 동작한다.
+- [ ] 권한 요청, 네트워크 오류, 빈 상태와 로딩 상태가 사용자에게 명확히 표시된다.
+- [ ] 라이트/다크 모드와 주요 화면 크기에서 레이아웃이 깨지지 않는다.
+- [ ] 실제 계정 및 네트워크에서 Firebase 읽기·쓰기가 정상 동작한다.
+
+### Apple Watch QA
+
+- [ ] iPhone 앱 설치 후 페어링된 Apple Watch에 Watch 앱이 정상 설치된다.
+- [ ] Watch 앱의 아이콘, 앱 이름, 컴패니언 iOS 앱 연결이 정상이다.
+- [ ] iPhone과 Watch 양쪽에서 실행·재실행 후 화면 상태가 안정적이다.
+- [ ] HealthKit, 위치, 알림, 음악 등 새로 추가한 권한의 허용·거절 흐름을 각각 확인한다.
+- [ ] 실제 러닝 중 거리·페이스·시간·음악·같이 듣기 등 해당 릴리즈 기능이 양쪽 기기에서 일관되게 동작한다.
+- [ ] 운동 종료, 통신 단절, 앱 백그라운드/재실행 상황에서 기록 손실이나 비정상 상태가 없는지 확인한다.
+
+### staging QA에서 문제를 발견한 경우
+
+- 문제를 GitHub 이슈와 QA 보고서에 기록한다.
+- `staging`에서 직접 고치지 않는다.
+- `dev` 기준 `fix/[이슈번호]-[설명]` 브랜치에서 수정한 뒤 `dev`에 먼저 병합한다.
+- 수정이 포함된 `dev → staging` PR로 다시 TestFlight QA를 수행한다.
+
+---
+
+## 릴리즈 흐름 (staging → main)
 
 ```
-1. dev 브랜치 QA 통과 확인
+1. staging 실기기·TestFlight QA 통과 확인
 2. CHANGELOG 업데이트
 3. 버전 태그 생성: git tag v1.0.0
-4. PR: main ← dev
+4. PR: main ← staging
 5. 개발자 최종 승인 후 머지
-6. TestFlight / App Store 제출
+6. App Store 제출 또는 운영 배포
 ```
