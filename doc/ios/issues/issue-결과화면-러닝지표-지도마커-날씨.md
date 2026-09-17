@@ -34,4 +34,4 @@
 
 ## 계획서
 
-`doc/fe/plans/feat-결과화면-러닝지표-지도마커-날씨-plan.md`
+`doc/ios/plans/feat-결과화면-러닝지표-지도마커-날씨-plan.md`

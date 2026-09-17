@@ -38,7 +38,7 @@
 ## 해결한 QA 이슈
 
 - `FriendRecentRunActivity`가 불필요하게 `Equatable`을 선언해 컴파일에 실패한 문제를 수정했다.
-- 상세 내용: `doc/fe/issues/issue-74-home-friend-running-qa.md`
+- 상세 내용: `doc/ios/issues/issue-74-home-friend-running-qa.md`
 
 ## 알려진 제한사항
 

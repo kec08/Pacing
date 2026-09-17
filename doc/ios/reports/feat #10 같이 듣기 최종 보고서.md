@@ -51,7 +51,7 @@ Firebase Realtime Database 기반 같이 듣기 기능 구현 및 러닝 화면 
 | `Core/Firebase/RealtimeDBService.swift` | listenSessions / incomingRequests CRUD 추가 |
 | `Models/RunRecord.swift` | `ListenSession` 구조체 확장 (전체 필드 + sessionStartDate) |
 | `Features/Running/View/RunningView.swift` | 플로팅 버튼, 참여자 시트, 지도 개선, 내 위치 버튼 |
-| `doc/fe/feat #10 같이 듣기.md` | 기능 계획서 |
+| `doc/ios/feat #10 같이 듣기.md` | 기능 계획서 |
 
 ---
 
