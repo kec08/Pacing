@@ -76,9 +76,9 @@ private struct WatchTabIndicator: View {
                 Button {
                     selectedTab = tab
                 } label: {
-                    Capsule()
-                        .fill(tab == selectedTab ? PacingWatchTheme.main500 : PacingWatchTheme.textSecondary.opacity(0.38))
-                        .frame(width: tab == selectedTab ? 18 : 6, height: 5)
+                    Circle()
+                        .fill(tab == selectedTab ? PacingWatchTheme.textPrimary : PacingWatchTheme.textSecondary.opacity(0.42))
+                        .frame(width: 5, height: 5)
                         .animation(.easeInOut(duration: 0.18), value: selectedTab)
                 }
                 .buttonStyle(.plain)
@@ -86,9 +86,6 @@ private struct WatchTabIndicator: View {
                 .accessibilityValue(tab == selectedTab ? "선택됨" : "선택 안 됨")
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(.black.opacity(0.45), in: Capsule())
     }
 }
 
@@ -108,41 +105,34 @@ private struct WatchRunningTabView: View {
     let onStartRequested: () -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
+        VStack(spacing: 12) {
+            Spacer(minLength: 4)
+
+            Button(action: onStartRequested) {
                 Image("PacingWatchMark")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 42, height: 42)
-                    .accessibilityLabel("Pacing")
-
-                Text("러닝")
-                    .font(.headline)
-                    .foregroundStyle(PacingWatchTheme.textPrimary)
-
-                Text("오늘도 내 페이스로 달려볼까요?")
-                    .font(.caption2)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(PacingWatchTheme.textSecondary)
-
-                Button(action: onStartRequested) {
-                    Label("러닝 시작", systemImage: "figure.run.circle.fill")
-                        .font(.headline)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(PacingWatchTheme.brandGradient, in: RoundedRectangle(cornerRadius: 15, style: .continuous))
-                .accessibilityHint("운동 세션 연결 전 안내를 표시합니다")
-
-                Text("운동 측정은 다음 단계에서 연결됩니다")
-                    .font(.caption2)
-                    .foregroundStyle(PacingWatchTheme.textSecondary)
+                    .frame(width: 78, height: 78)
+                    .accessibilityHidden(true)
+                    .frame(width: 132, height: 132)
+                    .background(PacingWatchTheme.brandGradient, in: Circle())
             }
-            .padding(.horizontal, 15)
-            .padding(.bottom, 30)
+            .buttonStyle(.plain)
+            .accessibilityLabel("러닝 시작")
+            .accessibilityHint("운동 세션 연결 전 안내를 표시합니다")
+
+            Text("실외 러닝")
+                .font(.headline)
+                .foregroundStyle(PacingWatchTheme.textPrimary)
+
+            Text("탭하여 시작")
+                .font(.caption2)
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+
+            Spacer(minLength: 2)
         }
+        .padding(.horizontal, 15)
+        .padding(.bottom, 22)
     }
 }
 
