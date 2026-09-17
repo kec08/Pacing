@@ -121,7 +121,7 @@ private struct WatchRunningTabView: View {
 
             Spacer(minLength: 2)
         }
-        .padding(.horizontal, 15)
+        .padding(.horizontal, 10)
         .padding(.bottom, 22)
     }
 }
@@ -154,12 +154,12 @@ private struct WatchActivityTabView: View {
                         .foregroundStyle(PacingWatchTheme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(10)
-                        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 12)
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 10)
             .padding(.bottom, 30)
         }
     }
@@ -230,9 +230,9 @@ private struct WatchPlaceholderPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(12)
-                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             }
-            .padding(.horizontal, 15)
+            .padding(.horizontal, 10)
             .padding(.bottom, 30)
         }
     }
