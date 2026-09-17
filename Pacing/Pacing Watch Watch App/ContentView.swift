@@ -15,7 +15,7 @@ struct ContentView: View {
 
             TabView(selection: $viewModel.selectedTab) {
                 WatchMusicTabView().tag(WatchTab.music)
-                WatchRunningTabView(onStartRequested: viewModel.requestRunStart).tag(WatchTab.running)
+                WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchTab.running)
                 WatchListenTogetherTabView().tag(WatchTab.listenTogether)
                 WatchActivityTabView().tag(WatchTab.activity)
             }
@@ -24,11 +24,6 @@ struct ContentView: View {
                 WatchTabIndicator(selectedTab: $viewModel.selectedTab)
                     .offset(y: 12)
             }
-        }
-        .alert("러닝 준비 중", isPresented: $viewModel.isRunStartNoticePresented) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text("실제 운동 세션과 거리·페이스 기록은 다음 단계에서 연결합니다.")
         }
     }
 }
@@ -60,11 +55,7 @@ enum WatchTab: Int, CaseIterable, Hashable, Identifiable {
 @MainActor
 final class WatchAppViewModel: ObservableObject {
     @Published var selectedTab: WatchTab = .running
-    @Published var isRunStartNoticePresented = false
-
-    func requestRunStart() {
-        isRunStartNoticePresented = true
-    }
+    let runningViewModel = WatchRunningViewModel()
 }
 
 private struct WatchTabIndicator: View {
@@ -98,31 +89,6 @@ private struct WatchMusicTabView: View {
             headline: "최근 재생한 음악",
             message: "Apple Music을 연결하면 최근 재생 곡과 러닝 중인 곡을 여기에서 확인할 수 있어요."
         )
-    }
-}
-
-private struct WatchRunningTabView: View {
-    let onStartRequested: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Spacer(minLength: 4)
-
-            Button(action: onStartRequested) {
-                Image("PacingWatchMark")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 112, height: 112)
-                    .accessibilityHidden(true)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("러닝 시작")
-            .accessibilityHint("운동 세션 연결 전 안내를 표시합니다")
-
-            Spacer(minLength: 2)
-        }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 22)
     }
 }
 
