@@ -188,6 +188,37 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(ElevationGainCalculator.gain(from: samples) ?? -1, 0, accuracy: 0.001)
     }
 
+    func testSevenPointFiveKilometerDriftScenarioUsesBarometerTwelveMeterGain() {
+        let start = Date(timeIntervalSince1970: 4_200)
+        // 절대 GPS 고도가 반복적으로 크게 흔들리는 평지 러닝 재현 샘플입니다.
+        let driftingGPSAltitudes = Array(repeating: [100.0, 115.0, 130.0, 145.0, 80.0], count: 9)
+            .flatMap { $0 }
+        let gpsLocations = driftingGPSAltitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(
+                    latitude: 37 + Double(index) * 0.00155,
+                    longitude: 127
+                ),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+        let barometerSamples = [0.0, 3.0, 6.0, 9.0, 12.0].enumerated().map { index, altitude in
+            ElevationSample(
+                timestamp: start.addingTimeInterval(Double(index) * 60),
+                altitudeMeters: altitude
+            )
+        }
+
+        let legacyGPSGain = RunMetricsCalculator.elevationGain(from: gpsLocations)
+        let barometerGain = ElevationGainCalculator.gain(from: barometerSamples)
+
+        XCTAssertGreaterThan(legacyGPSGain ?? 0, 140)
+        XCTAssertEqual(barometerGain ?? -1, 12, accuracy: 0.001)
+    }
+
     func testElevationGainIgnoresRepeatedAltitudeNoise() {
         let start = Date(timeIntervalSince1970: 2_500)
         let altitudes = [100.0, 106.0, 101.0, 107.0, 102.0, 106.0, 100.0]
