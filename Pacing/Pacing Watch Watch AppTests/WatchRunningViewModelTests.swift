@@ -27,4 +27,12 @@ final class WatchRunningViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.displayMetric, .heartRate)
     }
+
+    func testSelectingSecondaryMetricPublishesChangedSlot() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+
+        viewModel.selectNextSecondaryMetric(at: 0)
+
+        XCTAssertNotEqual(viewModel.secondaryMetrics[0], .distance)
+    }
 }

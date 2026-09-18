@@ -98,6 +98,7 @@ struct WatchRunningTabView: View {
                     }
                     .buttonStyle(.plain)
                     .frame(width: 70, height: 64)
+                    .background(Color.clear)
                     .contentShape(Rectangle())
                     .accessibilityLabel("\(secondaryLabel(at: 0)), \(secondaryValue(at: 0))")
                     .accessibilityHint("탭하면 다음 러닝 지표로 변경합니다")
@@ -112,6 +113,7 @@ struct WatchRunningTabView: View {
                     }
                     .buttonStyle(.plain)
                     .frame(width: 70, height: 64)
+                    .background(Color.clear)
                     .contentShape(Rectangle())
                     .accessibilityLabel("\(secondaryLabel(at: 1)), \(secondaryValue(at: 1))")
                     .accessibilityHint("탭하면 다음 러닝 지표로 변경합니다")

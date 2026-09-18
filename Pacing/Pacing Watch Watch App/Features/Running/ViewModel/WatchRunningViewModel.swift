@@ -160,7 +160,9 @@ final class WatchRunningViewModel: ObservableObject {
         let otherMetrics = Set(secondaryMetrics.enumerated().compactMap { offset, metric in
             offset == index ? nil : metric
         })
-        secondaryMetrics[index] = secondaryMetrics[index].next(excluding: otherMetrics)
+        var updatedMetrics = secondaryMetrics
+        updatedMetrics[index] = updatedMetrics[index].next(excluding: otherMetrics)
+        secondaryMetrics = updatedMetrics
     }
 
     private var isFailure: Bool {
