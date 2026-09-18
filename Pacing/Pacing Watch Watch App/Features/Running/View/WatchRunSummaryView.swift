@@ -14,6 +14,8 @@ struct WatchRunSummaryView: View {
                         .buttonStyle(.plain)
                     Spacer()
                 }
+                .offset(y: -12)
+                .padding(.bottom, -12)
                 summaryHeader
                 WatchRunRouteView(points: metrics.routePoints)
                 metricsGrid
