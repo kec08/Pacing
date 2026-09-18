@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import Combine
 
 /// Watch 단독 러닝 중 경로 요약에 필요한 위치 샘플만 수집합니다.
 @MainActor

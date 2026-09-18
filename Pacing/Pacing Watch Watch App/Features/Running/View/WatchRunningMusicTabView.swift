@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct WatchRunningMusicTabView: View {
     @StateObject private var viewModel = WatchRunningMusicViewModel()
