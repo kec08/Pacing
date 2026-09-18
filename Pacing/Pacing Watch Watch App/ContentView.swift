@@ -13,7 +13,9 @@ struct ContentView: View {
         ZStack {
             PacingWatchTheme.background.ignoresSafeArea()
 
-            if viewModel.isRunExperiencePresented {
+            if viewModel.isRunSummaryPresented {
+                WatchRunningTabView(viewModel: viewModel.runningViewModel)
+            } else if viewModel.isRunExperiencePresented {
                 TabView(selection: $viewModel.selectedRunTab) {
                     WatchRunControlsTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.controls)
                     if !viewModel.isRunPaused {
@@ -96,6 +98,7 @@ final class WatchAppViewModel: ObservableObject {
     @Published private(set) var isRunExperiencePresented = false
     @Published private(set) var isRunPaused = false
     @Published private(set) var isRunTabLocked = false
+    @Published private(set) var isRunSummaryPresented = false
     private var cancellables = Set<AnyCancellable>()
 
     var runTabs: [WatchRunTab] {
@@ -107,7 +110,8 @@ final class WatchAppViewModel: ObservableObject {
             .sink { [weak self] state in
                 guard let self else { return }
 
-                isRunExperiencePresented = state.isActive
+                isRunSummaryPresented = state == .ended
+                isRunExperiencePresented = state.isActive || isRunSummaryPresented
                 isRunPaused = state == .paused
                 isRunTabLocked = false
 

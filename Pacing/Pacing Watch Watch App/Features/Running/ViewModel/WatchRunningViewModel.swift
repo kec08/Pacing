@@ -7,13 +7,13 @@ final class WatchRunningViewModel: ObservableObject {
     @Published private(set) var metrics = WatchRunMetrics.empty
     @Published var displayMetric: WatchRunDisplayMetric = .averagePace
     @Published private(set) var secondaryMetrics: [WatchRunDisplayMetric] = [.distance, .heartRate]
-    @Published var isEndConfirmationPresented = false
 
     private var timer: AnyCancellable?
     private var countdownTask: Task<Void, Never>?
     private var startedAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private let workoutRepository: HealthKitWatchWorkoutRepository
+    private let locationRepository: WatchRunLocationRepository
     private var cancellables = Set<AnyCancellable>()
     /// Xcode Preview에는 HealthKit 운동 세션을 지원하는 Watch 런타임이 없으므로
     /// 화면 상태만 검증할 수 있는 안전한 타이머 경로를 사용한다.
@@ -21,10 +21,12 @@ final class WatchRunningViewModel: ObservableObject {
 
     init(
         workoutRepository: HealthKitWatchWorkoutRepository? = nil,
+        locationRepository: WatchRunLocationRepository? = nil,
         usesPreviewMetrics: Bool = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
     ) {
         let workoutRepository = workoutRepository ?? HealthKitWatchWorkoutRepository()
         self.workoutRepository = workoutRepository
+        self.locationRepository = locationRepository ?? WatchRunLocationRepository()
         self.usesPreviewMetrics = usesPreviewMetrics
 
         workoutRepository.$liveMetrics
@@ -33,6 +35,13 @@ final class WatchRunningViewModel: ObservableObject {
                 self?.metrics.distanceMeters = liveMetrics.distanceMeters
                 self?.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
                 self?.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
+            }
+            .store(in: &cancellables)
+
+        self.locationRepository.$routePoints
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] points in
+                self?.metrics.routePoints = points
             }
             .store(in: &cancellables)
     }
@@ -72,6 +81,7 @@ final class WatchRunningViewModel: ObservableObject {
                 try await workoutRepository.start()
                 startedAt = .now
                 state = .running
+                locationRepository.startTracking()
                 startTimer()
             } catch let error as WatchRunError {
                 state = .failed(error)
@@ -90,6 +100,7 @@ final class WatchRunningViewModel: ObservableObject {
             timer?.cancel()
             if !usesPreviewMetrics {
                 workoutRepository.pause()
+                locationRepository.pauseTracking()
             }
             state = .paused
         case .paused:
@@ -97,16 +108,12 @@ final class WatchRunningViewModel: ObservableObject {
             state = .running
             if !usesPreviewMetrics {
                 workoutRepository.resume()
+                locationRepository.startTracking()
             }
             startTimer()
         default:
             break
         }
-    }
-
-    func requestEnd() {
-        guard state == .running || state == .paused else { return }
-        isEndConfirmationPresented = true
     }
 
     func end() {
@@ -115,6 +122,7 @@ final class WatchRunningViewModel: ObservableObject {
         syncElapsed()
         timer?.cancel()
         startedAt = nil
+        locationRepository.pauseTracking()
 
         if usesPreviewMetrics {
             state = .ended
@@ -141,6 +149,7 @@ final class WatchRunningViewModel: ObservableObject {
         startedAt = nil
         elapsedBeforeCurrentSegment = 0
         resetMetrics()
+        locationRepository.reset()
         state = .idle
         displayMetric = .averagePace
         secondaryMetrics = [.distance, .heartRate]

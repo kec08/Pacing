@@ -173,19 +173,7 @@ struct WatchRunningTabView: View {
     }
 
     private var endedView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.title2)
-                .foregroundStyle(PacingWatchTheme.main500)
-            Text("러닝 완료")
-                .font(.headline)
-            Text("\(viewModel.metrics.formattedElapsed) · \(viewModel.metrics.formattedDistance) km")
-                .font(.caption)
-                .foregroundStyle(PacingWatchTheme.textSecondary)
-            Button("다시 시작") { viewModel.reset() }
-                .tint(PacingWatchTheme.main500)
-        }
-        .padding(.bottom, 28)
+        WatchRunSummaryView(metrics: viewModel.metrics, onDone: viewModel.reset)
     }
 }
 

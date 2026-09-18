@@ -56,8 +56,26 @@ struct WatchRunMetrics: Equatable {
     var heartRateBeatsPerMinute: Double?
     var activeEnergyKilocalories: Double?
     var elevationGainMeters: Double?
+    var routePoints: [WatchRunRoutePoint] = []
+    var splits: [WatchRunSplit] = []
 
     static let empty = WatchRunMetrics()
+}
+
+/// 경로를 Watch 화면 비율에 맞춰 정규화한 좌표입니다.
+/// 실제 위치 Repository는 위도·경도를 이 값으로 변환해 요약 화면에 전달합니다.
+struct WatchRunRoutePoint: Equatable {
+    let x: Double
+    let y: Double
+}
+
+/// 1 km 단위 구간 기록입니다. 운동 기록 저장소가 제공하면 종료 요약에 표시합니다.
+struct WatchRunSplit: Identifiable, Equatable {
+    let kilometer: Int
+    let paceSecondsPerKilometer: TimeInterval
+    let differenceSeconds: TimeInterval?
+
+    var id: Int { kilometer }
 }
 
 enum WatchRunDisplayMetric: CaseIterable, Hashable {
