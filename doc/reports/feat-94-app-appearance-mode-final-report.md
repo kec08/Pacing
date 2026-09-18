@@ -34,7 +34,7 @@
 
 ## QA 결과
 
-정적 검증 및 세부 결과는 `doc/fe/issues/issue-94-app-appearance-mode-qa.md`에 기록했다. `git diff --check`는 통과했고, 요청자가 제공한 실기기 화면 캡처로 친구·프로필·지도 카드·종료 버튼의 시각 QA를 완료했다. 자동 iOS 빌드는 개발 환경의 Xcode 부재로 미실행이다.
+정적 검증 및 세부 결과는 `doc/ios/issues/issue-94-app-appearance-mode-qa.md`에 기록했다. `git diff --check`는 통과했고, 요청자가 제공한 실기기 화면 캡처로 친구·프로필·지도 카드·종료 버튼의 시각 QA를 완료했다. 자동 iOS 빌드는 개발 환경의 Xcode 부재로 미실행이다.
 
 ## 알려진 제한사항
 

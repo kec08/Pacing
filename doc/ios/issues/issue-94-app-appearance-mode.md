@@ -20,4 +20,4 @@
 
 ## 관련 문서
 
-- 계획서: `doc/fe/plans/feat-94-app-appearance-mode.md`
+- 계획서: `doc/ios/plans/feat-94-app-appearance-mode.md`

@@ -13,7 +13,7 @@ Pacing v1.2의 5탭 구조에 맞춰 친구 탭 MVP를 구현했다. 친구 탭�
 
 ## 구현된 기능 목록
 
-- [x] `doc/fe/plans` 기반 계획서 구조 정리
+- [x] `doc/ios/plans` 기반 계획서 구조 정리
 - [x] 친구 도메인 모델 추가 (`FriendUser`, `FriendRequest`)
 - [x] Firestore 친구 API 추가
 - [x] `FriendsViewModel` 상태 관리 구현
