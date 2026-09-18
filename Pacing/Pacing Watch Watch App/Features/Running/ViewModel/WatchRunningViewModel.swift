@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import WatchKit
 
 @MainActor
 final class WatchRunningViewModel: ObservableObject {
@@ -103,6 +104,7 @@ final class WatchRunningViewModel: ObservableObject {
                 locationRepository.pauseTracking()
             }
             state = .paused
+            WKInterfaceDevice.current().play(.stop)
         case .paused:
             startedAt = .now
             state = .running
@@ -111,6 +113,7 @@ final class WatchRunningViewModel: ObservableObject {
                 locationRepository.startTracking()
             }
             startTimer()
+            WKInterfaceDevice.current().play(.start)
         default:
             break
         }
