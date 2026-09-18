@@ -13,7 +13,7 @@ struct WatchRunSummaryView: View {
                 splitsSection
                 Button("완료", action: onDone)
                     .tint(PacingWatchTheme.main500)
-                    .padding(.top, 2)
+                    .padding(.top, 12)
             }
             .padding(.horizontal, 10)
             .padding(.bottom, 26)
