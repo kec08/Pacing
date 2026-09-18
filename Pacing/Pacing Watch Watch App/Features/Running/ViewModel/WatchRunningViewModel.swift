@@ -5,7 +5,8 @@ import Foundation
 final class WatchRunningViewModel: ObservableObject {
     @Published private(set) var state: WatchRunState = .idle
     @Published private(set) var metrics = WatchRunMetrics.empty
-    @Published var displayMetric: WatchRunDisplayMetric = .currentPace
+    @Published var displayMetric: WatchRunDisplayMetric = .averagePace
+    @Published private(set) var secondaryMetrics: [WatchRunDisplayMetric] = [.distance, .heartRate]
     @Published var isEndConfirmationPresented = false
 
     private var timer: AnyCancellable?
@@ -141,7 +142,8 @@ final class WatchRunningViewModel: ObservableObject {
         elapsedBeforeCurrentSegment = 0
         resetMetrics()
         state = .idle
-        displayMetric = .currentPace
+        displayMetric = .averagePace
+        secondaryMetrics = [.distance, .heartRate]
     }
 
     func selectNextDisplayMetric() {
@@ -150,6 +152,15 @@ final class WatchRunningViewModel: ObservableObject {
 
     func selectDisplayMetric(_ metric: WatchRunDisplayMetric) {
         displayMetric = metric
+    }
+
+    func selectNextSecondaryMetric(at index: Int) {
+        guard secondaryMetrics.indices.contains(index) else { return }
+
+        let otherMetrics = Set(secondaryMetrics.enumerated().compactMap { offset, metric in
+            offset == index ? nil : metric
+        })
+        secondaryMetrics[index] = secondaryMetrics[index].next(excluding: otherMetrics)
     }
 
     private var isFailure: Bool {

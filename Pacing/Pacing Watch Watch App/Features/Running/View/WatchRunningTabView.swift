@@ -87,11 +87,11 @@ struct WatchRunningTabView: View {
                 }
 
                 HStack(spacing: 18) {
-                    Button { selectMetric(.heartRate) } label: {
+                    Button { selectNextSecondaryMetric(at: 0) } label: {
                         WatchDashboardMetric(
                             title: "",
-                            value: heartRate,
-                            unit: "심박수",
+                            value: secondaryValue(at: 0),
+                            unit: secondaryLabel(at: 0),
                             valueSize: 23,
                             alignment: .center
                         )
@@ -99,12 +99,13 @@ struct WatchRunningTabView: View {
                     .buttonStyle(.plain)
                     .frame(width: 70, height: 64)
                     .contentShape(Rectangle())
-                    .accessibilityLabel("심박수, \(heartRate)")
-                    Button { selectMetric(.distance) } label: {
+                    .accessibilityLabel("\(secondaryLabel(at: 0)), \(secondaryValue(at: 0))")
+                    .accessibilityHint("탭하면 다음 러닝 지표로 변경합니다")
+                    Button { selectNextSecondaryMetric(at: 1) } label: {
                         WatchDashboardMetric(
                             title: "",
-                            value: viewModel.metrics.formattedDistance,
-                            unit: "총 거리",
+                            value: secondaryValue(at: 1),
+                            unit: secondaryLabel(at: 1),
                             valueSize: 23,
                             alignment: .center
                         )
@@ -112,7 +113,8 @@ struct WatchRunningTabView: View {
                     .buttonStyle(.plain)
                     .frame(width: 70, height: 64)
                     .contentShape(Rectangle())
-                    .accessibilityLabel("총 거리, \(viewModel.metrics.formattedDistance) 킬로미터")
+                    .accessibilityLabel("\(secondaryLabel(at: 1)), \(secondaryValue(at: 1))")
+                    .accessibilityHint("탭하면 다음 러닝 지표로 변경합니다")
                 }
                 .frame(maxWidth: .infinity)
                 .offset(y: 8)
@@ -142,27 +144,12 @@ struct WatchRunningTabView: View {
             .offset(y: -12)
     }
 
-    private var heartRate: String {
-        guard let heartRate = viewModel.metrics.heartRateBeatsPerMinute else { return "--" }
-        return String(Int(heartRate.rounded()))
-    }
-
     private var primaryValue: String {
-        switch viewModel.displayMetric {
-        case .elapsed: viewModel.metrics.formattedElapsed
-        case .distance: viewModel.metrics.formattedDistance
-        case .currentPace: viewModel.metrics.formattedPace
-        case .heartRate: heartRate
-        }
+        viewModel.metrics.formattedValue(for: viewModel.displayMetric)
     }
 
     private var primaryLabel: String {
-        switch viewModel.displayMetric {
-        case .elapsed: "총 시간"
-        case .distance: "총 거리"
-        case .currentPace: "현재 페이스"
-        case .heartRate: "심박수"
-        }
+        viewModel.displayMetric.title
     }
 
     private func selectNextMetric() {
@@ -170,9 +157,17 @@ struct WatchRunningTabView: View {
         viewModel.selectNextDisplayMetric()
     }
 
-    private func selectMetric(_ metric: WatchRunDisplayMetric) {
+    private func selectNextSecondaryMetric(at index: Int) {
         WKInterfaceDevice.current().play(.click)
-        viewModel.selectDisplayMetric(metric)
+        viewModel.selectNextSecondaryMetric(at: index)
+    }
+
+    private func secondaryValue(at index: Int) -> String {
+        viewModel.metrics.formattedValue(for: viewModel.secondaryMetrics[index])
+    }
+
+    private func secondaryLabel(at index: Int) -> String {
+        viewModel.secondaryMetrics[index].title
     }
 
     private var endedView: some View {

@@ -55,22 +55,27 @@ struct WatchRunMetrics: Equatable {
     var currentPaceSecondsPerKilometer: Double?
     var heartRateBeatsPerMinute: Double?
     var activeEnergyKilocalories: Double?
+    var elevationGainMeters: Double?
 
     static let empty = WatchRunMetrics()
 }
 
-enum WatchRunDisplayMetric: CaseIterable {
+enum WatchRunDisplayMetric: CaseIterable, Hashable {
     case elapsed
     case distance
-    case currentPace
+    case averagePace
     case heartRate
+    case calories
+    case elevationGain
 
     var title: String {
         switch self {
         case .elapsed: "시간"
-        case .distance: "거리"
-        case .currentPace: "현재 페이스"
-        case .heartRate: "심박수"
+        case .distance: "킬로미터"
+        case .averagePace: "평균 페이스"
+        case .heartRate: "BPM"
+        case .calories: "칼로리"
+        case .elevationGain: "고도 상승"
         }
     }
 
@@ -78,6 +83,19 @@ enum WatchRunDisplayMetric: CaseIterable {
         let metrics = Self.allCases
         guard let index = metrics.firstIndex(of: self) else { return .elapsed }
         return metrics[(index + 1) % metrics.count]
+    }
+
+    func next(excluding excludedMetrics: Set<Self>) -> Self {
+        let metrics = Self.allCases
+        guard let startIndex = metrics.firstIndex(of: self) else { return .distance }
+
+        for offset in 1...metrics.count {
+            let candidate = metrics[(startIndex + offset) % metrics.count]
+            if !excludedMetrics.contains(candidate) {
+                return candidate
+            }
+        }
+        return self
     }
 }
 
@@ -111,5 +129,38 @@ extension WatchRunMetrics {
 
         let seconds = Int(currentPaceSecondsPerKilometer.rounded())
         return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
+    }
+
+    var formattedAveragePace: String {
+        guard distanceMeters > 0, elapsed > 0 else { return "--'--\"" }
+        let secondsPerKilometer = elapsed / (distanceMeters / 1_000)
+        guard secondsPerKilometer.isFinite, secondsPerKilometer > 0 else { return "--'--\"" }
+
+        let seconds = Int(secondsPerKilometer.rounded())
+        return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
+    }
+
+    var formattedCalories: String {
+        String(Int((activeEnergyKilocalories ?? 0).rounded()))
+    }
+
+    var formattedElevationGain: String {
+        "\(Int((elevationGainMeters ?? 0).rounded()))m"
+    }
+
+    var formattedHeartRate: String {
+        guard let heartRateBeatsPerMinute else { return "--" }
+        return String(Int(heartRateBeatsPerMinute.rounded()))
+    }
+
+    func formattedValue(for metric: WatchRunDisplayMetric) -> String {
+        switch metric {
+        case .elapsed: formattedElapsed
+        case .distance: formattedDistance
+        case .averagePace: formattedAveragePace
+        case .heartRate: formattedHeartRate
+        case .calories: formattedCalories
+        case .elevationGain: formattedElevationGain
+        }
     }
 }
