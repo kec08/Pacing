@@ -36,7 +36,7 @@ struct WatchRunSummaryView: View {
                 .font(.headline)
                 .foregroundStyle(PacingWatchTheme.textPrimary)
             Text(metrics.formattedDistance)
-                .font(.system(size: 36, weight: .bold, design: .rounded))
+                .font(.system(size: 46, weight: .bold, design: .rounded))
                 .foregroundStyle(PacingWatchTheme.main500)
                 .monospacedDigit()
             Text("킬로미터")
