@@ -62,6 +62,7 @@ final class RunningViewModel: ObservableObject {
     private var lastLocation: CLLocation?
     private var activeElapsedSeconds: TimeInterval = 0
     private var activeElevationLocations: [CLLocation] = []
+    private var activeBarometerElevationSamples: [ElevationSample] = []
     private var cancellables = Set<AnyCancellable>()
     private var nextLapDistanceMark: Double = 1.0
     private var lapStartDistance: Double = 0
@@ -72,6 +73,7 @@ final class RunningViewModel: ObservableObject {
     private var accumulatedElapsedSecondsBeforeResume: Int = 0
     private let heartRateRepository: HeartRateRepository
     private let cadenceRepository: CadenceRepository
+    private let elevationRepository: ElevationRepository
     private let lapVoiceAnnouncer: LapVoiceAnnouncing
     private var cadenceAccumulator = CadenceAccumulator()
     private var cadenceSegmentStartDate: Date?
@@ -81,11 +83,13 @@ final class RunningViewModel: ObservableObject {
         locationManager: LocationManager = .shared,
         heartRateRepository: HeartRateRepository = HealthKitHeartRateRepository(),
         cadenceRepository: CadenceRepository = CoreMotionCadenceRepository(),
+        elevationRepository: ElevationRepository = CoreMotionElevationRepository(),
         lapVoiceAnnouncer: LapVoiceAnnouncing = LapVoiceAnnouncementService()
     ) {
         self.locationManager = locationManager
         self.heartRateRepository = heartRateRepository
         self.cadenceRepository = cadenceRepository
+        self.elevationRepository = elevationRepository
         self.lapVoiceAnnouncer = lapVoiceAnnouncer
         locationManager.startMonitoringCurrentLocation()
 
@@ -111,6 +115,7 @@ final class RunningViewModel: ObservableObject {
         lastLocation = nil
         activeElapsedSeconds = 0
         activeElevationLocations = []
+        activeBarometerElevationSamples = []
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
         let startedAt = Date()
@@ -128,6 +133,7 @@ final class RunningViewModel: ObservableObject {
         state = .running
         startTimer()
         startCadenceUpdates(from: startedAt)
+        startElevationUpdates()
         return true
     }
 
@@ -141,6 +147,7 @@ final class RunningViewModel: ObservableObject {
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
+        elevationRepository.stopUpdates()
         cadenceAccumulator.resetBaseline()
         cadenceSegmentStartDate = nil
         currentCadenceStepsPerMinute = nil
@@ -158,6 +165,7 @@ final class RunningViewModel: ObservableObject {
         cadenceSegmentStartDate = resumedAt
         currentCadenceStepsPerMinute = nil
         startCadenceUpdates(from: resumedAt)
+        startElevationUpdates()
     }
 
     func stop() async {
@@ -170,14 +178,13 @@ final class RunningViewModel: ObservableObject {
         timer?.cancel()
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
+        elevationRepository.stopUpdates()
         state = .finished
         let lastLiveCadence = currentCadenceStepsPerMinute
 
         await finalizeCadence(at: endedAt)
 
-        elevationGainMeters = RunMetricsCalculator.elevationGain(
-            from: activeElevationLocations
-        )
+        updateElevationGain()
         if let healthStartedAt {
             _ = await healthAuthorizationTask?.value
             averageHeartRate = await heartRateRepository.averageHeartRate(
@@ -195,6 +202,7 @@ final class RunningViewModel: ObservableObject {
         timer?.cancel()
         lapVoiceAnnouncer.stop()
         cadenceRepository.stopUpdates()
+        elevationRepository.stopUpdates()
         locationManager.resetRoute()
         elapsedSeconds = 0
         distance = 0
@@ -313,6 +321,34 @@ final class RunningViewModel: ObservableObject {
         }
     }
 
+    private func startElevationUpdates() {
+        guard elevationRepository.isRelativeElevationAvailable else { return }
+
+        elevationRepository.startUpdates { [weak self] sample in
+            guard let self, self.state == .running else { return }
+            self.activeBarometerElevationSamples.append(sample)
+            self.updateElevationGain()
+        }
+    }
+
+    private func updateElevationGain() {
+        if elevationRepository.isRelativeElevationAvailable {
+            elevationGainMeters = ElevationGainCalculator.gain(
+                from: activeBarometerElevationSamples
+            )
+            return
+        }
+
+        // 기압계가 없는 기기에서만 보수적인 GPS 보조값을 사용한다.
+        elevationGainMeters = RunMetricsCalculator.elevationGain(
+            from: activeElevationLocations,
+            maximumVerticalAccuracy: 3,
+            minimumConfirmedClimb: 20,
+            minimumDescentForNewBaseline: 15,
+            maximumGainPerKilometer: 10
+        )
+    }
+
     private func updateDistance(with locations: [CLLocation]) {
         guard state == .running else { return }
         guard !locations.isEmpty else { return }
@@ -354,9 +390,7 @@ final class RunningViewModel: ObservableObject {
             updateDisplayedPace()
         }
 
-        elevationGainMeters = RunMetricsCalculator.elevationGain(
-            from: activeElevationLocations
-        ) ?? 0
+        updateElevationGain()
     }
 
     func saveRecord(
