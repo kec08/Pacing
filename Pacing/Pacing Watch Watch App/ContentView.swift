@@ -13,22 +13,39 @@ struct ContentView: View {
         ZStack {
             PacingWatchTheme.background.ignoresSafeArea()
 
-            TabView(selection: $viewModel.selectedTab) {
-                WatchMusicTabView().tag(WatchTab.music)
-                WatchRunningTabView(onStartRequested: viewModel.requestRunStart).tag(WatchTab.running)
-                WatchListenTogetherTabView().tag(WatchTab.listenTogether)
-                WatchActivityTabView().tag(WatchTab.activity)
+            if viewModel.isRunSummaryPresented {
+                WatchRunningTabView(viewModel: viewModel.runningViewModel)
+            } else if viewModel.isRunExperiencePresented {
+                TabView(selection: $viewModel.selectedRunTab) {
+                    WatchRunControlsTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.controls)
+                    if !viewModel.isRunPaused {
+                        WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.dashboard)
+                    }
+                    WatchRunningMusicTabView().tag(WatchRunTab.music)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .disabled(viewModel.isRunTabLocked)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    WatchRunTabIndicator(
+                        selectedTab: $viewModel.selectedRunTab,
+                        tabs: viewModel.runTabs
+                    )
+                        .offset(y: 12)
+                        .disabled(viewModel.isRunTabLocked)
+                }
+            } else {
+                TabView(selection: $viewModel.selectedTab) {
+                    WatchMusicTabView().tag(WatchTab.music)
+                    WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchTab.running)
+                    WatchListenTogetherTabView().tag(WatchTab.listenTogether)
+                    WatchActivityTabView().tag(WatchTab.activity)
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    WatchTabIndicator(selectedTab: $viewModel.selectedTab)
+                        .offset(y: 12)
+                }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                WatchTabIndicator(selectedTab: $viewModel.selectedTab)
-                    .offset(y: 12)
-            }
-        }
-        .alert("러닝 준비 중", isPresented: $viewModel.isRunStartNoticePresented) {
-            Button("확인", role: .cancel) {}
-        } message: {
-            Text("실제 운동 세션과 거리·페이스 기록은 다음 단계에서 연결합니다.")
         }
     }
 }
@@ -56,14 +73,61 @@ enum WatchTab: Int, CaseIterable, Hashable, Identifiable {
     }
 }
 
+enum WatchRunTab: Int, CaseIterable, Hashable, Identifiable {
+    case controls
+    case dashboard
+    case music
+
+    var id: Int { rawValue }
+
+    var accessibilityTitle: String {
+        switch self {
+        case .controls: "러닝 제어"
+        case .dashboard: "러닝 대시보드"
+        case .music: "현재 재생 음악"
+        }
+    }
+}
+
 /// 실제 HealthKit 운동 세션을 연결하기 전, 화면의 공통 상태를 관리합니다.
 @MainActor
 final class WatchAppViewModel: ObservableObject {
     @Published var selectedTab: WatchTab = .running
-    @Published var isRunStartNoticePresented = false
+    let runningViewModel = WatchRunningViewModel()
+    @Published var selectedRunTab: WatchRunTab = .controls
+    @Published private(set) var isRunExperiencePresented = false
+    @Published private(set) var isRunPaused = false
+    @Published private(set) var isRunTabLocked = false
+    @Published private(set) var isRunSummaryPresented = false
+    private var cancellables = Set<AnyCancellable>()
 
-    func requestRunStart() {
-        isRunStartNoticePresented = true
+    var runTabs: [WatchRunTab] {
+        isRunPaused ? [.controls, .music] : [.controls, .dashboard, .music]
+    }
+
+    init() {
+        runningViewModel.$state
+            .sink { [weak self] state in
+                guard let self else { return }
+
+                isRunSummaryPresented = state == .ended
+                isRunExperiencePresented = state.isActive || isRunSummaryPresented
+                isRunPaused = state == .paused
+                isRunTabLocked = false
+
+                switch state {
+                case .countdown:
+                    selectedRunTab = .dashboard
+                    isRunTabLocked = true
+                case .running:
+                    selectedRunTab = .dashboard
+                case .paused:
+                    selectedRunTab = .controls
+                case .idle, .starting, .ending, .ended, .failed:
+                    break
+                }
+            }
+            .store(in: &cancellables)
     }
 }
 
@@ -89,6 +153,26 @@ private struct WatchTabIndicator: View {
     }
 }
 
+private struct WatchRunTabIndicator: View {
+    @Binding var selectedTab: WatchRunTab
+    let tabs: [WatchRunTab]
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(tabs) { tab in
+                Button { selectedTab = tab } label: {
+                    Circle()
+                        .fill(tab == selectedTab ? PacingWatchTheme.main500 : PacingWatchTheme.textSecondary.opacity(0.42))
+                        .frame(width: 4, height: 4)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(tab.accessibilityTitle)
+                .accessibilityValue(tab == selectedTab ? "선택됨" : "선택 안 됨")
+            }
+        }
+    }
+}
+
 private struct WatchMusicTabView: View {
     var body: some View {
         WatchPlaceholderPage(
@@ -98,31 +182,6 @@ private struct WatchMusicTabView: View {
             headline: "최근 재생한 음악",
             message: "Apple Music을 연결하면 최근 재생 곡과 러닝 중인 곡을 여기에서 확인할 수 있어요."
         )
-    }
-}
-
-private struct WatchRunningTabView: View {
-    let onStartRequested: () -> Void
-
-    var body: some View {
-        VStack(spacing: 12) {
-            Spacer(minLength: 4)
-
-            Button(action: onStartRequested) {
-                Image("PacingWatchMark")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 112, height: 112)
-                    .accessibilityHidden(true)
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("러닝 시작")
-            .accessibilityHint("운동 세션 연결 전 안내를 표시합니다")
-
-            Spacer(minLength: 2)
-        }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 22)
     }
 }
 
