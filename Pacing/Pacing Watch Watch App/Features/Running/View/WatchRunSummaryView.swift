@@ -13,10 +13,10 @@ struct WatchRunSummaryView: View {
                 splitsSection
                 Button("완료", action: onDone)
                     .tint(PacingWatchTheme.main500)
-                    .padding(.top, 12)
+                    .padding(.top, 24)
             }
             .padding(.horizontal, 10)
-            .padding(.bottom, 26)
+            .padding(.bottom, 38)
         }
         .accessibilityLabel("러닝 종료 요약")
     }
