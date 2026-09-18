@@ -7,6 +7,13 @@ struct WatchRunSummaryView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 14) {
+                HStack {
+                    Button("닫기", action: onDone)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .buttonStyle(.plain)
+                    Spacer()
+                }
                 summaryHeader
                 WatchRunRouteView(points: metrics.routePoints)
                 metricsGrid
