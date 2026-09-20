@@ -15,6 +15,13 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
     }
 
     func start() async throws {
+        let configuration = HKWorkoutConfiguration()
+        configuration.activityType = .running
+        configuration.locationType = .outdoor
+        try await start(configuration: configuration, startDate: .now)
+    }
+
+    func start(configuration: HKWorkoutConfiguration, startDate: Date) async throws {
         guard HKHealthStore.isHealthDataAvailable() else {
             throw WatchRunError.healthDataUnavailable
         }
@@ -27,10 +34,6 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             throw WatchRunError.healthAuthorizationRequired
         }
 
-        let configuration = HKWorkoutConfiguration()
-        configuration.activityType = .running
-        configuration.locationType = .outdoor
-
         do {
             let session = try HKWorkoutSession(healthStore: healthStore, configuration: configuration)
             let builder = session.associatedWorkoutBuilder()
@@ -42,8 +45,9 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             workoutBuilder = builder
             liveMetrics = .empty
 
-            try await beginCollection(builder)
-            session.startActivity(with: .now)
+            try await session.startMirroringToCompanionDevice()
+            try await beginCollection(builder, startDate: startDate)
+            session.startActivity(with: startDate)
         } catch {
             workoutSession = nil
             workoutBuilder = nil
@@ -103,9 +107,9 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
         }
     }
 
-    private func beginCollection(_ builder: HKLiveWorkoutBuilder) async throws {
+    private func beginCollection(_ builder: HKLiveWorkoutBuilder, startDate: Date) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            builder.beginCollection(withStart: .now) { success, error in
+            builder.beginCollection(withStart: startDate) { success, error in
                 if let error {
                     continuation.resume(throwing: error)
                 } else if success {

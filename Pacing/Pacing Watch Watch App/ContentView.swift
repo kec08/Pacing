@@ -4,6 +4,7 @@
 //
 
 import Combine
+import HealthKit
 import SwiftUI
 
 struct ContentView: View {
@@ -106,6 +107,11 @@ final class WatchAppViewModel: ObservableObject {
     }
 
     init() {
+        PhoneRunSyncReceiver.shared.onSnapshot = { [weak self] snapshot in
+            self?.selectedTab = .running
+            self?.runningViewModel.applyPhoneSnapshot(snapshot)
+        }
+
         runningViewModel.$state
             .sink { [weak self] state in
                 guard let self else { return }
@@ -128,6 +134,19 @@ final class WatchAppViewModel: ObservableObject {
                 }
             }
             .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .phoneStartedRunning)
+            .compactMap { $0.object as? HKWorkoutConfiguration }
+            .sink { [weak self] configuration in
+                self?.selectedTab = .running
+                self?.runningViewModel.startFromPhone(configuration: configuration)
+            }
+            .store(in: &cancellables)
+
+        if let configuration = WatchWorkoutLaunchStore.shared.takePendingConfiguration() {
+            selectedTab = .running
+            runningViewModel.startFromPhone(configuration: configuration)
+        }
     }
 }
 

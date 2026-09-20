@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import HealthKit
 import WatchKit
 
 @MainActor
@@ -63,6 +64,54 @@ final class WatchRunningViewModel: ObservableObject {
 
             guard !Task.isCancelled, let self else { return }
             self.startWorkoutAfterCountdown()
+        }
+    }
+
+    func startFromPhone(configuration: HKWorkoutConfiguration) {
+        guard state == .idle || state == .ended || isFailure else { return }
+        countdownTask?.cancel()
+        resetMetrics()
+        state = .starting
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await workoutRepository.start(configuration: configuration, startDate: .now)
+                startedAt = .now
+                state = .running
+                locationRepository.startTracking()
+                startTimer()
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionStartFailed)
+            }
+        }
+    }
+
+    func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) {
+        metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
+        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
+            ? snapshot.paceMinutesPerKilometer * 60
+            : nil
+
+        switch snapshot.state {
+        case .running:
+            if state == .idle || state == .paused {
+                startedAt = snapshot.sentAt
+                elapsedBeforeCurrentSegment = metrics.elapsed
+                state = .running
+                startTimer()
+            }
+        case .paused:
+            timer?.cancel()
+            startedAt = nil
+            elapsedBeforeCurrentSegment = metrics.elapsed
+            state = .paused
+        case .ended:
+            timer?.cancel()
+            state = .ended
         }
     }
 
