@@ -132,7 +132,7 @@ final class RunningViewModel: ObservableObject {
         locationManager.startTracking()
         state = .running
         Task { @MainActor in
-            PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
+            await PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
         }
         publishRunSnapshot(state: .running, persist: true)
         startTimer()
