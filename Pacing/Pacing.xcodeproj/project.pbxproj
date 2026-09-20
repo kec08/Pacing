@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BCAF0393305B882100B0BFB3 /* Pacing Watch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BC5791DF2FED131F006C925A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791DE2FED131F006C925A /* FirebaseAuth */; };
 		BC5791E12FED131F006C925A /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791E02FED131F006C925A /* FirebaseDatabase */; };
 		BC5791E32FED131F006C925A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791E22FED131F006C925A /* FirebaseFirestore */; };
@@ -19,7 +20,28 @@
 		BC57937C2FF2CC58006C925A /* NaverThirdPartyLogin in Frameworks */ = {isa = PBXBuildFile; productRef = BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		BCAF0401305B882200B0BFB3 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 16;
+			files = (
+				BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXContainerItemProxy section */
+		BCAF0402305B882200B0BFB3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC5790122FEC4AEF006C925A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BCAF0392305B882100B0BFB3;
+			remoteInfo = "Pacing Watch Watch App";
+		};
 		BC5790282FEC4AF0006C925A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BC5790122FEC4AEF006C925A /* Project object */;
@@ -197,10 +219,12 @@
 				BC5790162FEC4AEF006C925A /* Sources */,
 				BC5790172FEC4AEF006C925A /* Frameworks */,
 				BC5790182FEC4AEF006C925A /* Resources */,
+				BCAF0401305B882200B0BFB3 /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				BCAF0403305B882200B0BFB3 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				BC57901C2FEC4AEF006C925A /* Pacing */,
@@ -492,6 +516,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		BCAF0403305B882200B0BFB3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BCAF0392305B882100B0BFB3 /* Pacing Watch Watch App */;
+			targetProxy = BCAF0402305B882200B0BFB3 /* PBXContainerItemProxy */;
+		};
 		BC5790292FEC4AF0006C925A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = BC5790192FEC4AEF006C925A /* Pacing */;
