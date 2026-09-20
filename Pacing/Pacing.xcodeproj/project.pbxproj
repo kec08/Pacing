@@ -24,8 +24,8 @@
 		BCAF0401305B882200B0BFB3 /* Embed Watch Content */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 16;
+			dstPath = Watch;
+			dstSubfolderSpec = 1;
 			files = (
 				BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */,
 			);
