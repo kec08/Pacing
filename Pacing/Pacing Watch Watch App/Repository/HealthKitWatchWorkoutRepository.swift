@@ -45,6 +45,7 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             workoutBuilder = builder
             liveMetrics = .empty
 
+            try await session.startMirroringToCompanionDevice()
             try await beginCollection(builder, startDate: startDate)
             session.startActivity(with: startDate)
         } catch {

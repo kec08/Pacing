@@ -9,12 +9,27 @@ import SwiftUI
 import HealthKit
 import WatchKit
 
+@MainActor
+final class WatchWorkoutLaunchStore {
+    static let shared = WatchWorkoutLaunchStore()
+    private var pendingConfiguration: HKWorkoutConfiguration?
+
+    func store(_ configuration: HKWorkoutConfiguration) {
+        pendingConfiguration = configuration
+        NotificationCenter.default.post(name: .phoneStartedRunning, object: configuration)
+    }
+
+    func takePendingConfiguration() -> HKWorkoutConfiguration? {
+        defer { pendingConfiguration = nil }
+        return pendingConfiguration
+    }
+}
+
 final class WatchApplicationDelegate: NSObject, WKApplicationDelegate {
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
-        NotificationCenter.default.post(
-            name: .phoneStartedRunning,
-            object: workoutConfiguration
-        )
+        Task { @MainActor in
+            WatchWorkoutLaunchStore.shared.store(workoutConfiguration)
+        }
     }
 }
 

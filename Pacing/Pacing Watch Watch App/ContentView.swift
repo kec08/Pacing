@@ -142,6 +142,11 @@ final class WatchAppViewModel: ObservableObject {
                 self?.runningViewModel.startFromPhone(configuration: configuration)
             }
             .store(in: &cancellables)
+
+        if let configuration = WatchWorkoutLaunchStore.shared.takePendingConfiguration() {
+            selectedTab = .running
+            runningViewModel.startFromPhone(configuration: configuration)
+        }
     }
 }
 
