@@ -134,6 +134,7 @@ final class RunningViewModel: ObservableObject {
         Task { @MainActor in
             PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
         }
+        publishRunSnapshot(state: .running, persist: true)
         startTimer()
         startCadenceUpdates(from: startedAt)
         startElevationUpdates()
@@ -145,6 +146,7 @@ final class RunningViewModel: ObservableObject {
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
         runningStartedAt = nil
         state = .paused
+        publishRunSnapshot(state: .paused, persist: true)
         timer?.cancel()
         lapVoiceAnnouncer.stop()
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
@@ -160,6 +162,7 @@ final class RunningViewModel: ObservableObject {
         let resumedAt = Date()
         runningStartedAt = resumedAt
         state = .running
+        publishRunSnapshot(state: .running, persist: true)
         lastLocation = nil
         activeElapsedSeconds = 0
         locationManager.startTracking()
@@ -183,6 +186,7 @@ final class RunningViewModel: ObservableObject {
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
         state = .finished
+        publishRunSnapshot(state: .ended, persist: true)
         let lastLiveCadence = currentCadenceStepsPerMinute
 
         await finalizeCadence(at: endedAt)
@@ -294,6 +298,7 @@ final class RunningViewModel: ObservableObject {
             .sink { [weak self] _ in
                 self?.syncElapsedSeconds()
                 self?.updateDisplayedPace()
+                self?.publishRunSnapshot(state: .running, persist: false)
             }
     }
 
@@ -391,6 +396,7 @@ final class RunningViewModel: ObservableObject {
 
         if hasDistanceChanged {
             updateDisplayedPace()
+            publishRunSnapshot(state: .running, persist: false)
         }
 
         updateElevationGain()
@@ -494,6 +500,19 @@ final class RunningViewModel: ObservableObject {
 
         let runningSeconds = max(Int(referenceDate.timeIntervalSince(runningStartedAt)), 0)
         elapsedSeconds = accumulatedElapsedSecondsBeforeResume + runningSeconds
+    }
+
+    private func publishRunSnapshot(state: PhoneRunSnapshot.State, persist: Bool) {
+        PhoneRunSyncPublisher.shared.publish(
+            PhoneRunSnapshot(
+                state: state,
+                elapsedSeconds: elapsedSeconds,
+                distanceKilometers: distance,
+                paceMinutesPerKilometer: currentPace,
+                sentAt: .now
+            ),
+            persist: persist
+        )
     }
 
     private func completePendingLapsIfNeeded() {

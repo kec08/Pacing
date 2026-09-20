@@ -89,6 +89,32 @@ final class WatchRunningViewModel: ObservableObject {
         }
     }
 
+    func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) {
+        metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
+        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
+            ? snapshot.paceMinutesPerKilometer * 60
+            : nil
+
+        switch snapshot.state {
+        case .running:
+            if state == .idle || state == .paused {
+                startedAt = snapshot.sentAt
+                elapsedBeforeCurrentSegment = metrics.elapsed
+                state = .running
+                startTimer()
+            }
+        case .paused:
+            timer?.cancel()
+            startedAt = nil
+            elapsedBeforeCurrentSegment = metrics.elapsed
+            state = .paused
+        case .ended:
+            timer?.cancel()
+            state = .ended
+        }
+    }
+
     private func startWorkoutAfterCountdown() {
         state = .starting
 

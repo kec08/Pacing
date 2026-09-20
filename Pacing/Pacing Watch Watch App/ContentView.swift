@@ -107,6 +107,11 @@ final class WatchAppViewModel: ObservableObject {
     }
 
     init() {
+        PhoneRunSyncReceiver.shared.onSnapshot = { [weak self] snapshot in
+            self?.selectedTab = .running
+            self?.runningViewModel.applyPhoneSnapshot(snapshot)
+        }
+
         runningViewModel.$state
             .sink { [weak self] state in
                 guard let self else { return }
