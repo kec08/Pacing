@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import HealthKit
 import WatchKit
 
 @MainActor
@@ -63,6 +64,28 @@ final class WatchRunningViewModel: ObservableObject {
 
             guard !Task.isCancelled, let self else { return }
             self.startWorkoutAfterCountdown()
+        }
+    }
+
+    func startFromPhone(configuration: HKWorkoutConfiguration) {
+        guard state == .idle || state == .ended || isFailure else { return }
+        countdownTask?.cancel()
+        resetMetrics()
+        state = .starting
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await workoutRepository.start(configuration: configuration, startDate: .now)
+                startedAt = .now
+                state = .running
+                locationRepository.startTracking()
+                startTimer()
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionStartFailed)
+            }
         }
     }
 

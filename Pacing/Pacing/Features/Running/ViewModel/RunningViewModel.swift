@@ -131,6 +131,9 @@ final class RunningViewModel: ObservableObject {
         healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
+        Task { @MainActor in
+            PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
+        }
         startTimer()
         startCadenceUpdates(from: startedAt)
         startElevationUpdates()

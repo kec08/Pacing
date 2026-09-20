@@ -7,6 +7,7 @@
 
 import SwiftUI
 import FirebaseCore
+import HealthKit
 import NaverThirdPartyLogin
 #if canImport(GoogleSignIn)
 import GoogleSignIn
@@ -18,9 +19,14 @@ import KakaoSDKAuth
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
     private let naverDelegate = NaverLoginDelegate()
+    private let healthStore = HKHealthStore()
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         FirebaseApp.configure()
+
+        healthStore.workoutSessionMirroringStartHandler = { session in
+            NSLog("[Pacing] Watch 운동 세션 미러링 수신: %@", session)
+        }
 
         #if canImport(KakaoSDKCommon)
         KakaoSDK.initSDK(appKey: "73e4e7c46ea882a0d78a306b29553c17")

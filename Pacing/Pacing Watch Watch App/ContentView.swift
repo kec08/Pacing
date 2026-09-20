@@ -4,6 +4,7 @@
 //
 
 import Combine
+import HealthKit
 import SwiftUI
 
 struct ContentView: View {
@@ -126,6 +127,14 @@ final class WatchAppViewModel: ObservableObject {
                 case .idle, .starting, .ending, .ended, .failed:
                     break
                 }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: .phoneStartedRunning)
+            .compactMap { $0.object as? HKWorkoutConfiguration }
+            .sink { [weak self] configuration in
+                self?.selectedTab = .running
+                self?.runningViewModel.startFromPhone(configuration: configuration)
             }
             .store(in: &cancellables)
     }
