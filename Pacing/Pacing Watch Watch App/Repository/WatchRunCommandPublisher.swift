@@ -1,16 +1,11 @@
 import Foundation
 import WatchConnectivity
 
-final class WatchRunCommandPublisher: NSObject {
+final class WatchRunCommandPublisher {
     static let shared = WatchRunCommandPublisher()
     private let session = WCSession.default
 
-    private override init() {
-        super.init()
-        guard WCSession.isSupported() else { return }
-        session.delegate = self
-        session.activate()
-    }
+    private init() {}
 
     func send(_ command: PhoneRunCommand) {
         guard let data = try? JSONEncoder().encode(command),
@@ -23,8 +18,4 @@ final class WatchRunCommandPublisher: NSObject {
             session.transferUserInfo(["phoneRunCommand": payload])
         }
     }
-}
-
-extension WatchRunCommandPublisher: WCSessionDelegate {
-    func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
 }
