@@ -57,8 +57,14 @@ struct WatchRunningMusicTabView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: emphasized ? 18 : 14, weight: .bold))
+                .foregroundStyle(PacingWatchTheme.textPrimary)
                 .frame(width: emphasized ? 40 : 32, height: emphasized ? 40 : 32)
-                .background(PacingWatchTheme.surface.opacity(emphasized ? 0.92 : 0.64), in: Circle())
+                .background(.ultraThinMaterial, in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(.white.opacity(emphasized ? 0.34 : 0.22), lineWidth: 0.8)
+                }
+                .shadow(color: .black.opacity(0.28), radius: 3, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
