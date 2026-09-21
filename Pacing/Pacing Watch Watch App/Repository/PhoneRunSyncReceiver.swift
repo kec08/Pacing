@@ -47,4 +47,5 @@ extension PhoneRunSyncReceiver: WCSessionDelegate {
     }
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) { consume(applicationContext) }
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { consume(message) }
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) { consume(userInfo) }
 }

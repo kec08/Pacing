@@ -20,13 +20,11 @@ final class WatchRunCommandPublisher: NSObject {
         if session.isReachable {
             session.sendMessage(["phoneRunCommand": payload], replyHandler: nil)
         } else {
-            try? session.updateApplicationContext(["phoneRunCommand": payload])
+            session.transferUserInfo(["phoneRunCommand": payload])
         }
     }
 }
 
 extension WatchRunCommandPublisher: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {}
-    func sessionDidBecomeInactive(_ session: WCSession) {}
-    func sessionDidDeactivate(_ session: WCSession) { session.activate() }
 }

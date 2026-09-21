@@ -28,7 +28,7 @@ final class PhoneRunSyncPublisher: NSObject {
         if session.isReachable {
             session.sendMessage(["phoneRunCommand": payload], replyHandler: nil)
         } else {
-            try? session.updateApplicationContext(["phoneRunCommand": payload])
+            session.transferUserInfo(["phoneRunCommand": payload])
         }
     }
 }
