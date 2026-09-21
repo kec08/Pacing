@@ -13,6 +13,7 @@ final class WatchRunningViewModel: ObservableObject {
     private var timer: AnyCancellable?
     private var countdownTask: Task<Void, Never>?
     private var startedAt: Date?
+    private var sessionID = UUID()
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
@@ -52,6 +53,10 @@ final class WatchRunningViewModel: ObservableObject {
         guard state == .idle || state == .ended || isFailure else { return }
 
         state = .countdown(3)
+        sessionID = UUID()
+        WatchRunCommandPublisher.shared.send(
+            PhoneRunCommand(action: .start, sender: .watch, sessionID: sessionID)
+        )
         resetMetrics()
 
         countdownTask?.cancel()
@@ -86,6 +91,25 @@ final class WatchRunningViewModel: ObservableObject {
             } catch {
                 state = .failed(.sessionStartFailed)
             }
+        }
+    }
+
+    func applyPhoneCommand(_ command: PhoneRunCommand) {
+        guard command.sender == .phone else { return }
+        sessionID = command.sessionID
+
+        switch command.action {
+        case .start:
+            return
+        case .pause:
+            guard state == .running else { return }
+            pauseOrResume(sendCommand: false)
+        case .resume:
+            guard state == .paused else { return }
+            pauseOrResume(sendCommand: false)
+        case .finish:
+            guard state == .running || state == .paused else { return }
+            end(sendCommand: false)
         }
     }
 
@@ -141,7 +165,7 @@ final class WatchRunningViewModel: ObservableObject {
         }
     }
 
-    func pauseOrResume() {
+    func pauseOrResume(sendCommand: Bool = true) {
         switch state {
         case .running:
             syncElapsed()
@@ -153,6 +177,11 @@ final class WatchRunningViewModel: ObservableObject {
                 locationRepository.pauseTracking()
             }
             state = .paused
+            if sendCommand {
+                WatchRunCommandPublisher.shared.send(
+                    PhoneRunCommand(action: .pause, sender: .watch, sessionID: sessionID)
+                )
+            }
             WKInterfaceDevice.current().play(.stop)
         case .paused:
             startedAt = .now
@@ -162,19 +191,29 @@ final class WatchRunningViewModel: ObservableObject {
                 locationRepository.startTracking()
             }
             startTimer()
+            if sendCommand {
+                WatchRunCommandPublisher.shared.send(
+                    PhoneRunCommand(action: .resume, sender: .watch, sessionID: sessionID)
+                )
+            }
             WKInterfaceDevice.current().play(.start)
         default:
             break
         }
     }
 
-    func end() {
+    func end(sendCommand: Bool = true) {
         guard state == .running || state == .paused else { return }
         state = .ending
         syncElapsed()
         timer?.cancel()
         startedAt = nil
         locationRepository.pauseTracking()
+        if sendCommand {
+            WatchRunCommandPublisher.shared.send(
+                PhoneRunCommand(action: .finish, sender: .watch, sessionID: sessionID)
+            )
+        }
 
         if usesPreviewMetrics {
             state = .ended

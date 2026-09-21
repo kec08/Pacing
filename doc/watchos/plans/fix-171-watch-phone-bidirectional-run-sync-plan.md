@@ -1,4 +1,4 @@
-# fix #170 iPhone·Watch 양방향 러닝 제어 및 종료 동기화 계획서
+# fix #171 iPhone·Watch 양방향 러닝 제어 및 종료 동기화 계획서
 
 > **작성일**: 2026-09-21
 > **관련 이슈**: [#171](https://github.com/kec08/Pacing/issues/171)
