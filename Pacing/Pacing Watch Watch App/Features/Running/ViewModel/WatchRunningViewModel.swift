@@ -14,6 +14,7 @@ final class WatchRunningViewModel: ObservableObject {
     private var countdownTask: Task<Void, Never>?
     private var startedAt: Date?
     private var sessionID = UUID()
+    private var pendingStartAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
@@ -52,10 +53,11 @@ final class WatchRunningViewModel: ObservableObject {
     func start() {
         guard state == .idle || state == .ended || isFailure else { return }
 
+        let startAt = Date.now.addingTimeInterval(3)
         state = .countdown(3)
         sessionID = UUID()
         WatchRunCommandPublisher.shared.send(
-            PhoneRunCommand(action: .start, sender: .watch, sessionID: sessionID)
+            PhoneRunCommand(action: .start, sender: .watch, sessionID: sessionID, startAt: startAt)
         )
         resetMetrics()
 
@@ -82,7 +84,8 @@ final class WatchRunningViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await workoutRepository.start(configuration: configuration, startDate: .now)
-                startedAt = .now
+                startedAt = pendingStartAt ?? .now
+                pendingStartAt = nil
                 state = .running
                 locationRepository.startTracking()
                 startTimer()
@@ -100,6 +103,7 @@ final class WatchRunningViewModel: ObservableObject {
 
         switch command.action {
         case .start:
+            pendingStartAt = command.startAt
             return
         case .pause:
             guard state == .running else { return }

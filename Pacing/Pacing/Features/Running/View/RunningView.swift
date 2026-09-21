@@ -325,6 +325,7 @@ struct RunningView: View {
         .onChange(of: viewModel.state) { _, newState in
             if newState == .finished {
                 nearbyVM.stopObserving()
+                showSummary = true
             } else {
                 startNearbyObservationIfNeeded()
                 if newState == .running {

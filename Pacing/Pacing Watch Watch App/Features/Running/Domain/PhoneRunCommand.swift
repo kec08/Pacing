@@ -17,12 +17,14 @@ struct PhoneRunCommand: Codable, Equatable {
     let action: Action
     let sender: Sender
     let sessionID: UUID
+    let startAt: Date?
     let sentAt: Date
 
     init(
         action: Action,
         sender: Sender,
         sessionID: UUID,
+        startAt: Date? = nil,
         id: UUID = UUID(),
         sentAt: Date = .now
     ) {
@@ -30,6 +32,7 @@ struct PhoneRunCommand: Codable, Equatable {
         self.action = action
         self.sender = sender
         self.sessionID = sessionID
+        self.startAt = startAt
         self.sentAt = sentAt
     }
 }

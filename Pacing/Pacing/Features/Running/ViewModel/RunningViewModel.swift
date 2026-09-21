@@ -105,8 +105,16 @@ final class RunningViewModel: ObservableObject {
             switch command.action {
             case .start:
                 guard self.state == .idle || self.state == .finished else { return }
-                self.sessionID = command.sessionID
-                _ = self.start(launchWatch: false)
+                let startAt = command.startAt ?? .now
+                let delay = max(0, startAt.timeIntervalSinceNow)
+                Task { @MainActor in
+                    if delay > 0 {
+                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
+                    guard self.state == .idle || self.state == .finished else { return }
+                    self.sessionID = command.sessionID
+                    _ = self.start(launchWatch: false, startDate: startAt)
+                }
             case .pause:
                 guard self.state == .running else { return }
                 self.pause()
@@ -123,7 +131,7 @@ final class RunningViewModel: ObservableObject {
     // MARK: - Controls
 
     @discardableResult
-    func start(launchWatch: Bool = true) -> Bool {
+    func start(launchWatch: Bool = true, startDate: Date = .now) -> Bool {
         guard locationManager.hasAlwaysAuthorization else {
             return false
         }
@@ -138,7 +146,7 @@ final class RunningViewModel: ObservableObject {
         activeBarometerElevationSamples = []
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
-        let startedAt = Date()
+        let startedAt = startDate
         if launchWatch {
             sessionID = UUID()
         }
@@ -160,7 +168,7 @@ final class RunningViewModel: ObservableObject {
             }
         }
         PhoneRunSyncPublisher.shared.send(
-            PhoneRunCommand(action: .start, sender: .phone, sessionID: sessionID)
+            PhoneRunCommand(action: .start, sender: .phone, sessionID: sessionID, startAt: startedAt)
         )
         publishRunSnapshot(state: .running, persist: true)
         startTimer()
