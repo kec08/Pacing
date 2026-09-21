@@ -20,6 +20,13 @@ private enum RunningMetric: CaseIterable, Hashable {
     case calories
 }
 
+enum RunningMapCameraPolicy {
+    /// 최초 진입은 MapKit의 `.automatic` 카메라가 아닌 내 위치 버튼과 같은 범위로 시작한다.
+    static func initialCameraDistance(locationFocusDistance: Double) -> Double {
+        locationFocusDistance
+    }
+}
+
 struct RunningView: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -32,7 +39,6 @@ struct RunningView: View {
     @State private var showSummary = false
     @State private var showMusicSheet = false
     @State private var showNearbySheet = false
-    @State private var countdown: Int? = nil
     // `.userLocation`은 시스템 위치 표시를 함께 노출할 수 있어, 지도에는 커스텀 프로필 핀만 보이도록 한다.
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
@@ -281,7 +287,7 @@ struct RunningView: View {
             }
 
             // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
-            if let cd = countdown {
+            if let cd = viewModel.countdown {
                 ZStack {
                     Color.black.opacity(0.85)
                         .ignoresSafeArea()
@@ -750,7 +756,7 @@ struct RunningView: View {
                     .background(Color.main500)
                     .clipShape(Circle())
             }
-            .disabled(countdown != nil)
+            .disabled(viewModel.countdown != nil)
 
             sideButton(icon: "person.2.fill", label: "주변") { showNearbySheet = true }
         }
@@ -2366,12 +2372,15 @@ struct RunningView: View {
               let coordinate = pendingInitialCameraCoordinate
         else { return }
 
-        mapZoomDistance = locationFocusDistance
+        let initialDistance = RunningMapCameraPolicy.initialCameraDistance(
+            locationFocusDistance: locationFocusDistance
+        )
+        mapZoomDistance = initialDistance
         isFollowingUser = true
         isProgrammaticMove = true
         hasCenteredOnInitialLocation = true
         cameraPosition = .camera(
-            MapCamera(centerCoordinate: coordinate, distance: locationFocusDistance)
+            MapCamera(centerCoordinate: coordinate, distance: initialDistance)
         )
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
             isProgrammaticMove = false
@@ -2424,23 +2433,10 @@ struct RunningView: View {
     }
 
     private func startCountdown() {
-
-        Task {
-            for i in stride(from: 3, through: 1, by: -1) {
-                await MainActor.run {
-                    withAnimation(.easeOut(duration: 0.2)) { countdown = i }
-                }
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
-                metricSlots = [.distance, .pace, .calories]
-                if viewModel.start() {
-                    startNearbyObservationIfNeeded()
-                } else {
-                    showAlwaysLocationPermissionAlert = true
-                }
-            }
+        metricSlots = [.distance, .pace, .calories]
+        guard viewModel.startCountdown() else {
+            showAlwaysLocationPermissionAlert = true
+            return
         }
     }
 }
