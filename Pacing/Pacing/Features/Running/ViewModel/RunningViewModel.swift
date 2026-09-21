@@ -12,6 +12,23 @@ enum RunningState {
     case finished
 }
 
+enum RunningCountdownPolicy {
+    nonisolated static func canStart(
+        state: RunningState,
+        hasAlwaysLocationAuthorization: Bool,
+        isCountdownActive: Bool
+    ) -> Bool {
+        guard hasAlwaysLocationAuthorization, !isCountdownActive else { return false }
+
+        switch state {
+        case .idle, .finished:
+            return true
+        case .running, .paused:
+            return false
+        }
+    }
+}
+
 enum RunningPacePolicy {
     /// 정지 상태의 GPS 흔들림으로 페이스가 표시되는 것을 막기 위한 최소 유효 이동 거리입니다.
     static let minimumDistanceForPaceKilometers = 0.10
@@ -44,6 +61,7 @@ enum RunningPacePolicy {
 
 final class RunningViewModel: ObservableObject {
     @Published var state: RunningState = .idle
+    @Published private(set) var countdown: Int?
     @Published var elapsedSeconds: Int = 0
     @Published var distance: Double = 0       // km
     @Published var currentPace: Double = 0    // 분/km, 1km 랩 기준 표시
@@ -59,6 +77,8 @@ final class RunningViewModel: ObservableObject {
     var musicViewModel: RunningMusicViewModel?
 
     private var timer: AnyCancellable?
+    private var countdownTask: Task<Void, Never>?
+    private var countdownBackgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
     private var lastLocation: CLLocation?
     private var activeElapsedSeconds: TimeInterval = 0
     private var activeElevationLocations: [CLLocation] = []
@@ -129,6 +149,50 @@ final class RunningViewModel: ObservableObject {
     }
 
     // MARK: - Controls
+
+    /// 시작 의도를 View가 아닌 ViewModel이 소유한다. 카운트다운 중 앱이 백그라운드가 되어도
+    /// 짧은 전환 작업을 마칠 수 있도록 iOS에 제한된 실행 시간을 요청한다.
+    @discardableResult
+    func startCountdown(launchWatch: Bool = true) -> Bool {
+        guard RunningCountdownPolicy.canStart(
+            state: state,
+            hasAlwaysLocationAuthorization: locationManager.hasAlwaysAuthorization,
+            isCountdownActive: countdownTask != nil
+        ) else {
+            return false
+        }
+
+        beginCountdownBackgroundTask()
+        countdown = 3
+
+        countdownTask = Task { [weak self] in
+            for value in stride(from: 3, through: 1, by: -1) {
+                guard !Task.isCancelled else { return }
+
+                await MainActor.run {
+                    self?.countdown = value
+                }
+
+                do {
+                    try await Task.sleep(nanoseconds: 1_000_000_000)
+                } catch {
+                    return
+                }
+            }
+
+            await MainActor.run {
+                self?.completeCountdown(launchWatch: launchWatch)
+            }
+        }
+        return true
+    }
+
+    func cancelCountdown() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        countdown = nil
+        endCountdownBackgroundTask()
+    }
 
     @discardableResult
     func start(launchWatch: Bool = true, startDate: Date = .now) -> Bool {
@@ -253,6 +317,7 @@ final class RunningViewModel: ObservableObject {
     }
 
     func reset() {
+        cancelCountdown()
         timer?.cancel()
         lapVoiceAnnouncer.stop()
         cadenceRepository.stopUpdates()
@@ -274,6 +339,13 @@ final class RunningViewModel: ObservableObject {
         cadenceAccumulator.reset()
         cadenceSegmentStartDate = nil
         state = .idle
+    }
+
+    deinit {
+        countdownTask?.cancel()
+        if countdownBackgroundTaskIdentifier != .invalid {
+            UIApplication.shared.endBackgroundTask(countdownBackgroundTaskIdentifier)
+        }
     }
 
     // MARK: - Formatting
@@ -347,6 +419,31 @@ final class RunningViewModel: ObservableObject {
                 self?.updateDisplayedPace()
                 self?.publishRunSnapshot(state: .running, persist: false)
             }
+    }
+
+    private func beginCountdownBackgroundTask() {
+        countdownBackgroundTaskIdentifier = UIApplication.shared.beginBackgroundTask(
+            withName: "PacingRunningCountdown"
+        ) { [weak self] in
+            DispatchQueue.main.async {
+                self?.cancelCountdown()
+            }
+        }
+    }
+
+    private func endCountdownBackgroundTask() {
+        guard countdownBackgroundTaskIdentifier != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(countdownBackgroundTaskIdentifier)
+        countdownBackgroundTaskIdentifier = .invalid
+    }
+
+    private func completeCountdown(launchWatch: Bool) {
+        guard countdownTask != nil else { return }
+
+        countdownTask = nil
+        countdown = nil
+        endCountdownBackgroundTask()
+        _ = start(launchWatch: launchWatch)
     }
 
     private func startCadenceUpdates(from startDate: Date) {

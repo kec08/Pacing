@@ -11,6 +11,44 @@ import CoreLocation
 import MapKit
 
 final class PacingTests: XCTestCase {
+    func testCountdownStartsOnlyOnceFromIdleOrFinishedWithAlwaysLocationPermission() {
+        XCTAssertTrue(
+            RunningCountdownPolicy.canStart(
+                state: .idle,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertTrue(
+            RunningCountdownPolicy.canStart(
+                state: .finished,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertFalse(
+            RunningCountdownPolicy.canStart(
+                state: .running,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertFalse(
+            RunningCountdownPolicy.canStart(
+                state: .idle,
+                hasAlwaysLocationAuthorization: false,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertFalse(
+            RunningCountdownPolicy.canStart(
+                state: .idle,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: true
+            )
+        )
+    }
+
     func testLapVoiceAnnouncementUsesKilometerTimeAndAveragePaceOrder() {
         let announcement = LapVoiceAnnouncement(
             kilometer: 2,
