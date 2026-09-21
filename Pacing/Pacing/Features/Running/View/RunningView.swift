@@ -20,6 +20,13 @@ private enum RunningMetric: CaseIterable, Hashable {
     case calories
 }
 
+enum RunningMapCameraPolicy {
+    /// 최초 진입은 MapKit의 `.automatic` 카메라가 아닌 내 위치 버튼과 같은 범위로 시작한다.
+    static func initialCameraDistance(locationFocusDistance: Double) -> Double {
+        locationFocusDistance
+    }
+}
+
 struct RunningView: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -290,7 +297,7 @@ struct RunningView: View {
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
             if !hasCenteredOnInitialLocation {
                 hasCenteredOnInitialLocation = true
-                recenterCamera(distance: mapZoomDistance)
+                applyInitialCameraPosition()
             } else if viewModel.state == .running && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             } else if viewModel.state == .paused && isFollowingUser {
@@ -314,7 +321,7 @@ struct RunningView: View {
             if let coord = viewModel.locationManager.currentLocation?.coordinate {
                 if !hasCenteredOnInitialLocation {
                     hasCenteredOnInitialLocation = true
-                    recenterCamera(distance: mapZoomDistance)
+                    applyInitialCameraPosition()
                 }
                 nearbyVM.updateMyLocation(coord)
             }
@@ -2351,6 +2358,15 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func applyInitialCameraPosition() {
+        let initialDistance = RunningMapCameraPolicy.initialCameraDistance(
+            locationFocusDistance: locationFocusDistance
+        )
+        mapZoomDistance = initialDistance
+        isFollowingUser = true
+        recenterCamera(distance: initialDistance)
     }
 
     private func refreshMyProfileImage() {
