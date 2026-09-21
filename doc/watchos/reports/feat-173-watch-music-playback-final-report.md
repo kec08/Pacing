@@ -3,6 +3,7 @@
 > **완료일**: 2026-09-21  
 > **관련 이슈**: [#173](https://github.com/kec08/Pacing/issues/173)  
 > **브랜치**: `feat/173-watch-music-playback`
+> **PR**: [#174](https://github.com/kec08/Pacing/pull/174)
 
 ## 구현 요약
 
