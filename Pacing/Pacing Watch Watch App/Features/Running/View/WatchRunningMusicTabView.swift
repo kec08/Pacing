@@ -1,4 +1,5 @@
 import Combine
+import ImageIO
 import SwiftUI
 
 struct WatchRunningMusicTabView: View {
@@ -41,7 +42,10 @@ struct WatchRunningMusicTabView: View {
     }
 
     @ViewBuilder private var artwork: some View {
-        if let url = viewModel.snapshot.artworkURL, let artworkURL = URL(string: url) {
+        if let artworkData = viewModel.snapshot.artworkData,
+           let image = image(from: artworkData) {
+            image.resizable().scaledToFill()
+        } else if let url = viewModel.snapshot.artworkURL, let artworkURL = URL(string: url) {
             AsyncImage(url: artworkURL) { image in image.resizable().scaledToFill() } placeholder: { artworkPlaceholder }
         } else { artworkPlaceholder }
     }
@@ -51,6 +55,13 @@ struct WatchRunningMusicTabView: View {
             .fill(PacingWatchTheme.surface)
             .overlay { Image(systemName: "music.note").font(.system(size: 30, weight: .medium)).foregroundStyle(PacingWatchTheme.purple) }
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func image(from data: Data) -> Image? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return Image(decorative: image, scale: 1)
     }
 
     @ViewBuilder

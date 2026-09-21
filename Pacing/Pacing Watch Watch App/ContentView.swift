@@ -216,8 +216,8 @@ private struct WatchMusicTabView: View {
                             HStack(spacing: 8) {
                                 WatchMusicArtwork(url: track.artworkURL, size: 38)
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(track.title).font(.caption.weight(.semibold)).lineLimit(1)
-                                    Text(track.artist).font(.caption2).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
+                                    Text(track.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                                    Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
                                 Image(systemName: "play.fill").font(.caption2)

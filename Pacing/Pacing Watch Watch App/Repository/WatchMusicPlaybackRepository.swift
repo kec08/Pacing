@@ -13,6 +13,7 @@ struct WatchMusicPlaybackSnapshot: Codable, Equatable {
     let title: String
     let artist: String
     let artworkURL: String?
+    let artworkData: Data?
     let isPlaying: Bool
     let recentlyPlayed: [WatchMusicTrack]
 
@@ -20,6 +21,7 @@ struct WatchMusicPlaybackSnapshot: Codable, Equatable {
         title: "재생 중인 음악 없음",
         artist: "iPhone에서 음악을 재생해 주세요",
         artworkURL: nil,
+        artworkData: nil,
         isPlaying: false,
         recentlyPlayed: []
     )

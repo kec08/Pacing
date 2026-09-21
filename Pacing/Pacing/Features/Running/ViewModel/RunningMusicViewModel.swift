@@ -64,6 +64,8 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
+    private var watchArtworkDataByURL: [String: Data] = [:]
+    private var downloadingWatchArtworkURLs = Set<String>()
 
     init() {
         observePlaybackState()
@@ -760,7 +762,7 @@ final class RunningMusicViewModel: ObservableObject {
     private func publishWatchMusicSnapshot() {
         guard let current = currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
-                PhoneMusicPlaybackSnapshot(title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack))
+                PhoneMusicPlaybackSnapshot(title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack))
             )
             return
         }
@@ -773,6 +775,7 @@ final class RunningMusicViewModel: ObservableObject {
                 title: current.title,
                 artist: current.artistName,
                 artworkURL: current.artworkURL,
+                artworkData: watchArtworkData(for: current),
                 isPlaying: isPlaying,
                 recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack)
             )
@@ -781,6 +784,37 @@ final class RunningMusicViewModel: ObservableObject {
 
     private func makeWatchTrack(_ snapshot: PlayerSongSnapshot) -> PhoneMusicTrack {
         PhoneMusicTrack(id: snapshot.songStoreID, title: snapshot.title, artist: snapshot.artistName, artworkURL: snapshot.artworkURL)
+    }
+
+    private func watchArtworkData(for snapshot: PlayerSongSnapshot) -> Data? {
+        if let artwork = snapshot.artwork,
+           let data = artwork.jpegData(compressionQuality: 0.72) {
+            return data
+        }
+
+        guard let urlString = snapshot.artworkURL,
+              let url = URL(string: urlString)
+        else { return nil }
+        if let data = watchArtworkDataByURL[urlString] { return data }
+        guard downloadingWatchArtworkURLs.insert(urlString).inserted else { return nil }
+
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.downloadingWatchArtworkURLs.remove(urlString) }
+            guard let (data, response) = try? await URLSession.shared.data(from: url),
+                  let response = response as? HTTPURLResponse,
+                  200 ..< 300 ~= response.statusCode,
+                  let image = UIImage(data: data)
+            else { return }
+
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
+            let thumbnail = renderer.jpegData(withCompressionQuality: 0.72) { _ in
+                image.draw(in: CGRect(origin: .zero, size: CGSize(width: 240, height: 240)))
+            }
+            self.watchArtworkDataByURL[urlString] = thumbnail
+            self.syncCurrentState()
+        }
+        return nil
     }
 
     private func presentTrack(at index: Int, mediaItem: MPMediaItem?) {

@@ -11,6 +11,8 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
     let title: String
     let artist: String
     let artworkURL: String?
+    /// Watch가 iPhone과 다른 네트워크 상태여도 현재 앨범 아트를 표시하도록 축소 JPEG를 함께 전달합니다.
+    let artworkData: Data?
     let isPlaying: Bool
     let recentlyPlayed: [PhoneMusicTrack]
 }
