@@ -8,9 +8,6 @@ struct WatchRunningMusicTabView: View {
 
     var body: some View {
         VStack(spacing: isArtworkExpanded ? 8 : 6) {
-            Text(Date.now, style: .time)
-                .font(.headline.monospacedDigit())
-
             Button {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { isArtworkExpanded.toggle() }
             } label: {
@@ -26,7 +23,7 @@ struct WatchRunningMusicTabView: View {
             .frame(maxWidth: .infinity)
 
             if !isArtworkExpanded {
-                HStack(spacing: 18) {
+                HStack(spacing: 15) {
                     controlButton("backward.fill", label: "이전 곡") { viewModel.previous() }
                     controlButton(viewModel.snapshot.isPlaying ? "pause.fill" : "play.fill", label: viewModel.snapshot.isPlaying ? "일시정지" : "재생", emphasized: true) { viewModel.togglePlayback() }
                     controlButton("forward.fill", label: "다음 곡") { viewModel.next() }
@@ -59,8 +56,8 @@ struct WatchRunningMusicTabView: View {
     private func controlButton(_ symbol: String, label: String, emphasized: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.system(size: emphasized ? 20 : 16, weight: .bold))
-                .frame(width: emphasized ? 46 : 36, height: emphasized ? 46 : 36)
+                .font(.system(size: emphasized ? 18 : 14, weight: .bold))
+                .frame(width: emphasized ? 40 : 32, height: emphasized ? 40 : 32)
                 .background(PacingWatchTheme.surface.opacity(emphasized ? 0.92 : 0.64), in: Circle())
         }
         .buttonStyle(.plain)
