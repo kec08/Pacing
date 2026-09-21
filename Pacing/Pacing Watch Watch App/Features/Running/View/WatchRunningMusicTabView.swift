@@ -59,11 +59,13 @@ struct WatchRunningMusicTabView: View {
             Button(action: action) { controlIcon(symbol, emphasized: true) }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)
+                .controlSize(.small)
                 .accessibilityLabel(label)
         } else {
             Button(action: action) { controlIcon(symbol, emphasized: false) }
                 .buttonStyle(.glass)
                 .buttonBorderShape(.circle)
+                .controlSize(.mini)
                 .accessibilityLabel(label)
         }
     }
