@@ -754,14 +754,28 @@ struct RunningView: View {
             if showStopConfirm {
                 // 종료 (꾹 눌러야) / 다시 시작
                 HStack(spacing: 24) {
+                    // 다시 시작
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        showStopConfirm = false
+                        viewModel.resume()
+                    } label: {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 80, height: 80)
+                            .background(Color.main500)
+                            .clipShape(Circle())
+                    }
+
                     // 종료 — 1초 꾹 누르기
                     ZStack {
                         Circle()
-                            .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
+                            .stroke(Color.main500.opacity(0.55), lineWidth: 4)
                             .frame(width: 80, height: 80)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
-                            .stroke(Color.stopHoldProgress, lineWidth: 4)
+                            .stroke(Color.main500, lineWidth: 4)
                             .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.05), value: stopHoldProgress)
@@ -779,19 +793,6 @@ struct RunningView: View {
                             .onEnded { _ in cancelStopHold() }
                     )
 
-                    // 다시 시작
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showStopConfirm = false
-                        viewModel.resume()
-                    } label: {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 26, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 80, height: 80)
-                            .background(Color.main500)
-                            .clipShape(Circle())
-                    }
                 }
                 .transition(.scale.combined(with: .opacity))
             } else {
@@ -825,13 +826,26 @@ struct RunningView: View {
     // paused: 이어서 / 종료 선택
     private var pausedControls: some View {
         HStack(spacing: 24) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showStopConfirm = false
+                viewModel.resume()
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 80, height: 80)
+                    .background(Color.main500)
+                    .clipShape(Circle())
+            }
+
             ZStack {
                 Circle()
-                    .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
+                    .stroke(Color.main500.opacity(0.55), lineWidth: 4)
                     .frame(width: 80, height: 80)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
-                    .stroke(Color.stopHoldProgress, lineWidth: 4)
+                    .stroke(Color.main500, lineWidth: 4)
                     .frame(width: 80, height: 80)
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.05), value: stopHoldProgress)
@@ -849,18 +863,6 @@ struct RunningView: View {
                     .onEnded { _ in cancelStopHold() }
             )
 
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showStopConfirm = false
-                viewModel.resume()
-            } label: {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
-                    .background(Color.main500)
-                    .clipShape(Circle())
-            }
         }
     }
 
