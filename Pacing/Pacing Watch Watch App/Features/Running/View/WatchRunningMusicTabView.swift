@@ -70,8 +70,8 @@ struct WatchRunningMusicTabView: View {
 
     private func controlIcon(_ symbol: String, emphasized: Bool) -> some View {
         Image(systemName: symbol)
-            .font(.system(size: emphasized ? 18 : 14, weight: .bold))
-            .frame(width: emphasized ? 40 : 32, height: emphasized ? 40 : 32)
+            .font(.system(size: emphasized ? 16 : 12, weight: .bold))
+            .frame(width: emphasized ? 34 : 26, height: emphasized ? 34 : 26)
     }
 }
 
