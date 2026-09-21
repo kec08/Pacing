@@ -38,6 +38,8 @@ struct RunningView: View {
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
+    @State private var stopHoldStartedAt: Date?
+    @State private var stopHoldHapticStep = 0
     @State private var collapsedPinIDs: Set<String> = []
     // 최초 진입도 내 위치 버튼과 같은 거리로 맞춰 내 위치가 너무 작게 보이지 않게 한다.
     @State private var mapZoomDistance: Double = 1_000
@@ -772,18 +774,17 @@ struct RunningView: View {
                     ZStack {
                         Circle()
                             .stroke(Color.white.opacity(0.2), lineWidth: 4)
-                            .frame(width: 66, height: 66)
+                            .frame(width: 80, height: 80)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
                             .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            .frame(width: 66, height: 66)
+                            .frame(width: 80, height: 80)
                             .rotationEffect(.degrees(-90))
-                            .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
                         Image(systemName: "stop.fill")
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 66, height: 66)
+                            .frame(width: 80, height: 80)
                             .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                             .clipShape(Circle())
                     }
@@ -842,18 +843,17 @@ struct RunningView: View {
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.2), lineWidth: 4)
-                    .frame(width: 66, height: 66)
+                    .frame(width: 80, height: 80)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
                     .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: 66, height: 66)
+                    .frame(width: 80, height: 80)
                     .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 66, height: 66)
+                    .frame(width: 80, height: 80)
                     .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                     .clipShape(Circle())
             }
@@ -887,16 +887,23 @@ struct RunningView: View {
     private func startStopHold() {
         guard stopHoldTimer == nil else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        stopHoldTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+        stopHoldStartedAt = .now
+        stopHoldHapticStep = 0
+        stopHoldTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
             Task { @MainActor in
-                stopHoldProgress += 0.05
-                // 0.2마다 진동 — 충전 느낌
-                if Int(stopHoldProgress * 20) % 4 == 0 {
+                guard let stopHoldStartedAt else { return }
+                let elapsed = Date.now.timeIntervalSince(stopHoldStartedAt)
+                stopHoldProgress = min(CGFloat(elapsed / 1.2), 1)
+
+                let hapticStep = Int(elapsed / 0.2)
+                if hapticStep > stopHoldHapticStep {
+                    stopHoldHapticStep = hapticStep
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                 }
                 if stopHoldProgress >= 1.0 {
                     stopHoldTimer?.invalidate()
                     stopHoldTimer = nil
+                    self.stopHoldStartedAt = nil
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     Task {
                         await viewModel.stop()
@@ -912,7 +919,9 @@ struct RunningView: View {
     private func cancelStopHold() {
         stopHoldTimer?.invalidate()
         stopHoldTimer = nil
-        withAnimation(.easeOut(duration: 0.2)) { stopHoldProgress = 0 }
+        stopHoldStartedAt = nil
+        stopHoldHapticStep = 0
+        stopHoldProgress = 0
     }
 
     // MARK: - 음악 시트
