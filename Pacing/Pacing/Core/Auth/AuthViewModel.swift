@@ -229,6 +229,7 @@ final class AuthViewModel: ObservableObject {
     // MARK: - 로그아웃
     func signOut(appState: AppState) {
         try? Auth.auth().signOut()
+        NaverCredentialStore.remove()
         appState.isLoggedIn = false
         appState.isProfileComplete = false
         // 다른 계정 로그인 시 이전 프로필 잔상 방지
@@ -312,10 +313,13 @@ final class AuthViewModel: ObservableObject {
 
             let functions = Functions.functions(region: "asia-northeast3")
             let result = try await functions.httpsCallable("naverLogin").call(["code": code, "state": state])
-            guard let data        = result.data as? [String: Any],
-                  let customToken = data["customToken"] as? String
+            guard let data         = result.data as? [String: Any],
+                  let customToken  = data["customToken"] as? String,
+                  let refreshToken = data["refreshToken"] as? String,
+                  !refreshToken.isEmpty
             else { errorMessage = "네이버 로그인 응답이 올바르지 않아요."; return }
 
+            try NaverCredentialStore.save(refreshToken: refreshToken)
             try await Auth.auth().signIn(withCustomToken: customToken)
             appState.isLoggedIn = true
             appState.isAuthLoading = true
