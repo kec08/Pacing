@@ -11,6 +11,13 @@ import CoreLocation
 import MapKit
 
 final class PacingTests: XCTestCase {
+    func testInitialRunningMapCameraUsesTheSameDistanceAsMyLocationButton() {
+        XCTAssertEqual(
+            RunningMapCameraPolicy.initialCameraDistance(locationFocusDistance: 1_000),
+            1_000
+        )
+    }
+
     func testCountdownStartsOnlyOnceFromIdleOrFinishedWithAlwaysLocationPermission() {
         XCTAssertTrue(
             RunningCountdownPolicy.canStart(

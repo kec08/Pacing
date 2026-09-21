@@ -20,6 +20,13 @@ private enum RunningMetric: CaseIterable, Hashable {
     case calories
 }
 
+enum RunningMapCameraPolicy {
+    /// 최초 진입은 MapKit의 `.automatic` 카메라가 아닌 내 위치 버튼과 같은 범위로 시작한다.
+    static func initialCameraDistance(locationFocusDistance: Double) -> Double {
+        locationFocusDistance
+    }
+}
+
 struct RunningView: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -54,6 +61,8 @@ struct RunningView: View {
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
     @State private var hasCenteredOnInitialLocation = false
+    @State private var isMapReady = false
+    @State private var pendingInitialCameraCoordinate: CLLocationCoordinate2D?
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
     @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
@@ -120,6 +129,10 @@ struct RunningView: View {
             }
             .mapStyle(.standard)
             .ignoresSafeArea()
+            .onAppear {
+                isMapReady = true
+                applyInitialCameraPositionIfPossible()
+            }
 
             // 맵 버튼 오버레이
             VStack {
@@ -289,8 +302,8 @@ struct RunningView: View {
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
             if !hasCenteredOnInitialLocation {
-                hasCenteredOnInitialLocation = true
-                recenterCamera(distance: mapZoomDistance)
+                pendingInitialCameraCoordinate = loc.coordinate
+                applyInitialCameraPositionIfPossible()
             } else if viewModel.state == .running && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             } else if viewModel.state == .paused && isFollowingUser {
@@ -299,7 +312,7 @@ struct RunningView: View {
             nearbyVM.updateMyLocation(loc.coordinate)
         }
         .onMapCameraChange(frequency: .continuous) { context in
-            guard !isProgrammaticMove else { return }
+            guard hasCenteredOnInitialLocation, !isProgrammaticMove else { return }
             mapZoomDistance = context.camera.distance
             isFollowingUser = false
         }
@@ -313,8 +326,8 @@ struct RunningView: View {
             listenVM.startObservingRequests()
             if let coord = viewModel.locationManager.currentLocation?.coordinate {
                 if !hasCenteredOnInitialLocation {
-                    hasCenteredOnInitialLocation = true
-                    recenterCamera(distance: mapZoomDistance)
+                    pendingInitialCameraCoordinate = coord
+                    applyInitialCameraPositionIfPossible()
                 }
                 nearbyVM.updateMyLocation(coord)
             }
@@ -2351,6 +2364,27 @@ struct RunningView: View {
         mapZoomDistance = locationFocusDistance
         isFollowingUser = true
         recenterCamera(distance: locationFocusDistance)
+    }
+
+    private func applyInitialCameraPositionIfPossible() {
+        guard isMapReady,
+              !hasCenteredOnInitialLocation,
+              let coordinate = pendingInitialCameraCoordinate
+        else { return }
+
+        let initialDistance = RunningMapCameraPolicy.initialCameraDistance(
+            locationFocusDistance: locationFocusDistance
+        )
+        mapZoomDistance = initialDistance
+        isFollowingUser = true
+        isProgrammaticMove = true
+        hasCenteredOnInitialLocation = true
+        cameraPosition = .camera(
+            MapCamera(centerCoordinate: coordinate, distance: initialDistance)
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            isProgrammaticMove = false
+        }
     }
 
     private func refreshMyProfileImage() {
