@@ -24,6 +24,9 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         FirebaseApp.configure()
 
+        // 러닝 시작 전에도 Watch에서 보내는 시작·정지·재개·종료 명령을 받을 수 있어야 합니다.
+        _ = PhoneRunSyncPublisher.shared
+
         healthStore.workoutSessionMirroringStartHandler = { session in
             NSLog("[Pacing] Watch 운동 세션 미러링 수신: %@", session)
         }

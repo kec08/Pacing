@@ -111,6 +111,9 @@ final class WatchAppViewModel: ObservableObject {
             self?.selectedTab = .running
             self?.runningViewModel.applyPhoneSnapshot(snapshot)
         }
+        PhoneRunSyncReceiver.shared.onCommand = { [weak self] command in
+            self?.runningViewModel.applyPhoneCommand(command)
+        }
 
         runningViewModel.$state
             .sink { [weak self] state in

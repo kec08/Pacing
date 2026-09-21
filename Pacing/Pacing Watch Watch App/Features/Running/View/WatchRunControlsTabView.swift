@@ -18,7 +18,7 @@ struct WatchRunControlsTabView: View {
             .buttonStyle(.plain)
             .accessibilityLabel(viewModel.state == .paused ? "러닝 재개" : "러닝 일시정지")
 
-            WatchRunEndHoldButton(action: viewModel.end)
+            WatchRunEndHoldButton(action: { viewModel.end() })
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

@@ -8,6 +8,7 @@ final class PhoneRunSyncReceiver: NSObject {
             if let latestSnapshot { onSnapshot?(latestSnapshot) }
         }
     }
+    var onCommand: ((PhoneRunCommand) -> Void)?
     private let session = WCSession.default
     private var latestSnapshot: PhoneRunSnapshot?
 
@@ -19,6 +20,15 @@ final class PhoneRunSyncReceiver: NSObject {
     }
 
     private func consume(_ container: [String: Any]) {
+        if let payload = container["phoneRunCommand"] as? [String: Any],
+           JSONSerialization.isValidJSONObject(payload),
+           let data = try? JSONSerialization.data(withJSONObject: payload),
+           let command = try? JSONDecoder().decode(PhoneRunCommand.self, from: data) {
+            DispatchQueue.main.async { [weak self] in
+                self?.onCommand?(command)
+            }
+        }
+
         guard let payload = container["phoneRun"] as? [String: Any],
               JSONSerialization.isValidJSONObject(payload),
               let data = try? JSONSerialization.data(withJSONObject: payload),
@@ -37,4 +47,5 @@ extension PhoneRunSyncReceiver: WCSessionDelegate {
     }
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) { consume(applicationContext) }
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) { consume(message) }
+    func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) { consume(userInfo) }
 }

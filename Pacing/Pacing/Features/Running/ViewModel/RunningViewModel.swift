@@ -78,6 +78,7 @@ final class RunningViewModel: ObservableObject {
     private var cadenceAccumulator = CadenceAccumulator()
     private var cadenceSegmentStartDate: Date?
     private var healthAuthorizationTask: Task<Bool, Never>?
+    private var sessionID = UUID()
 
     init(
         locationManager: LocationManager = .shared,
@@ -98,12 +99,39 @@ final class RunningViewModel: ObservableObject {
                 self?.updateDistance(with: locations)
             }
             .store(in: &cancellables)
+
+        PhoneRunCommandReceiver.shared.onCommand = { [weak self] command in
+            guard let self else { return }
+            switch command.action {
+            case .start:
+                guard self.state == .idle || self.state == .finished else { return }
+                let startAt = command.startAt ?? .now
+                let delay = max(0, startAt.timeIntervalSinceNow)
+                Task { @MainActor in
+                    if delay > 0 {
+                        try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
+                    guard self.state == .idle || self.state == .finished else { return }
+                    self.sessionID = command.sessionID
+                    _ = self.start(launchWatch: false, startDate: startAt)
+                }
+            case .pause:
+                guard self.state == .running else { return }
+                self.pause()
+            case .resume:
+                guard self.state == .paused else { return }
+                self.resume()
+            case .finish:
+                guard self.state == .running || self.state == .paused else { return }
+                Task { await self.stop(sendCommand: false) }
+            }
+        }
     }
 
     // MARK: - Controls
 
     @discardableResult
-    func start() -> Bool {
+    func start(launchWatch: Bool = true, startDate: Date = .now) -> Bool {
         guard locationManager.hasAlwaysAuthorization else {
             return false
         }
@@ -118,7 +146,10 @@ final class RunningViewModel: ObservableObject {
         activeBarometerElevationSamples = []
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
-        let startedAt = Date()
+        let startedAt = startDate
+        if launchWatch {
+            sessionID = UUID()
+        }
         runningStartedAt = startedAt
         healthRunStartedAt = startedAt
         elevationGainMeters = nil
@@ -131,9 +162,14 @@ final class RunningViewModel: ObservableObject {
         healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
-        Task { @MainActor in
-            await PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
+        if launchWatch {
+            Task { @MainActor in
+                await PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
+            }
         }
+        PhoneRunSyncPublisher.shared.send(
+            PhoneRunCommand(action: .start, sender: .phone, sessionID: sessionID, startAt: startedAt)
+        )
         publishRunSnapshot(state: .running, persist: true)
         startTimer()
         startCadenceUpdates(from: startedAt)
@@ -146,6 +182,9 @@ final class RunningViewModel: ObservableObject {
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
         runningStartedAt = nil
         state = .paused
+        PhoneRunSyncPublisher.shared.send(
+            PhoneRunCommand(action: .pause, sender: .phone, sessionID: sessionID)
+        )
         publishRunSnapshot(state: .paused, persist: true)
         timer?.cancel()
         lapVoiceAnnouncer.stop()
@@ -162,6 +201,9 @@ final class RunningViewModel: ObservableObject {
         let resumedAt = Date()
         runningStartedAt = resumedAt
         state = .running
+        PhoneRunSyncPublisher.shared.send(
+            PhoneRunCommand(action: .resume, sender: .phone, sessionID: sessionID)
+        )
         publishRunSnapshot(state: .running, persist: true)
         lastLocation = nil
         activeElapsedSeconds = 0
@@ -174,7 +216,7 @@ final class RunningViewModel: ObservableObject {
         startElevationUpdates()
     }
 
-    func stop() async {
+    func stop(sendCommand: Bool = true) async {
         syncElapsedSeconds()
         completePendingLapsIfNeeded()
         let endedAt = Date()
@@ -186,6 +228,11 @@ final class RunningViewModel: ObservableObject {
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
         state = .finished
+        if sendCommand {
+            PhoneRunSyncPublisher.shared.send(
+                PhoneRunCommand(action: .finish, sender: .phone, sessionID: sessionID)
+            )
+        }
         publishRunSnapshot(state: .ended, persist: true)
         let lastLiveCadence = currentCadenceStepsPerMinute
 
