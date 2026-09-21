@@ -27,8 +27,14 @@ enum PhoneMusicPlaybackCommand: String, Codable {
 final class PhoneMusicCommandReceiver {
     static let shared = PhoneMusicCommandReceiver()
     var onCommand: ((PhoneMusicPlaybackCommand, String?) -> Void)?
+    var onRefreshRequested: (() -> Void)?
 
     func consume(_ container: [String: Any]) {
+        if container["watchMusicRefresh"] as? Bool == true {
+            DispatchQueue.main.async { [weak self] in self?.onRefreshRequested?() }
+            return
+        }
+
         guard let payload = container["watchMusicCommand"] as? [String: Any],
               let action = payload["action"] as? String,
               let command = PhoneMusicPlaybackCommand(rawValue: action)

@@ -85,6 +85,9 @@ final class RunningMusicViewModel: ObservableObject {
                 }
             }
         }
+        PhoneMusicCommandReceiver.shared.onRefreshRequested = { [weak self] in
+            self?.syncCurrentState()
+        }
     }
 
     deinit {

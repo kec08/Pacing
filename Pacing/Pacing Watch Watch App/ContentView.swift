@@ -220,7 +220,9 @@ private struct WatchMusicTabView: View {
                                     Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
-                                Image(systemName: "play.fill").font(.caption2)
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.trailing, 14)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(7)
