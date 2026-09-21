@@ -31,6 +31,18 @@ final class PhoneRunSyncPublisher: NSObject {
             session.transferUserInfo(["phoneRunCommand": payload])
         }
     }
+
+    func publishMusic(_ snapshot: PhoneMusicPlaybackSnapshot) {
+        guard let data = try? JSONEncoder().encode(snapshot),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+
+        // 음악은 Watch가 늦게 연결돼도 최근 상태를 복구해야 하므로 application context에 보관합니다.
+        var context = session.applicationContext
+        context["phoneMusic"] = payload
+        try? session.updateApplicationContext(context)
+        if session.isReachable { session.sendMessage(["phoneMusic": payload], replyHandler: nil) }
+    }
 }
 
 extension PhoneRunSyncPublisher: WCSessionDelegate {
@@ -39,11 +51,14 @@ extension PhoneRunSyncPublisher: WCSessionDelegate {
     func sessionDidDeactivate(_ session: WCSession) { session.activate() }
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(message)
+        PhoneMusicCommandReceiver.shared.consume(message)
     }
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(applicationContext)
+        PhoneMusicCommandReceiver.shared.consume(applicationContext)
     }
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(userInfo)
+        PhoneMusicCommandReceiver.shared.consume(userInfo)
     }
 }

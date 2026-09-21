@@ -63,10 +63,26 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationQueueObserver: AnyCancellable?
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
+    private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
 
     init() {
         observePlaybackState()
         startPlaybackClock()
+        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID in
+            guard let self else { return }
+            Task { @MainActor in
+                switch command {
+                case .togglePlayback: await self.togglePlayPause()
+                case .previous: await self.skipToPrevious()
+                case .next: await self.skipToNext()
+                case .play:
+                    guard let songID,
+                          let index = self.queueSongs.firstIndex(where: { "\($0.id)" == songID })
+                    else { return }
+                    await self.play(at: index, from: self.currentSongIndex)
+                }
+            }
+        }
     }
 
     deinit {
@@ -630,6 +646,7 @@ final class RunningMusicViewModel: ObservableObject {
 
     // MARK: - 현재 상태 동기화
     func syncCurrentState() {
+        defer { publishWatchMusicSnapshot() }
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let entryKey = applicationEntryKey(for: entry)
@@ -738,6 +755,32 @@ final class RunningMusicViewModel: ObservableObject {
                 )
             }
         }
+    }
+
+    private func publishWatchMusicSnapshot() {
+        guard let current = currentSongSnapshot() else {
+            PhoneRunSyncPublisher.shared.publishMusic(
+                PhoneMusicPlaybackSnapshot(title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack))
+            )
+            return
+        }
+
+        recentlyPlayedSnapshots.removeAll { $0.songStoreID == current.songStoreID }
+        recentlyPlayedSnapshots.insert(current, at: 0)
+        recentlyPlayedSnapshots = Array(recentlyPlayedSnapshots.prefix(12))
+        PhoneRunSyncPublisher.shared.publishMusic(
+            PhoneMusicPlaybackSnapshot(
+                title: current.title,
+                artist: current.artistName,
+                artworkURL: current.artworkURL,
+                isPlaying: isPlaying,
+                recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack)
+            )
+        )
+    }
+
+    private func makeWatchTrack(_ snapshot: PlayerSongSnapshot) -> PhoneMusicTrack {
+        PhoneMusicTrack(id: snapshot.songStoreID, title: snapshot.title, artist: snapshot.artistName, artworkURL: snapshot.artworkURL)
     }
 
     private func presentTrack(at index: Int, mediaItem: MPMediaItem?) {
