@@ -3,7 +3,7 @@
 > **완료일**: 2026-09-21
 > **관련 이슈**: [#171](https://github.com/kec08/Pacing/issues/171)
 > **브랜치**: `feat/171-watch-phone-bidirectional-run-sync`
-> **PR**: 생성 예정
+> **PR**: [#172](https://github.com/kec08/Pacing/pull/172)
 
 ## 구현 요약
 
