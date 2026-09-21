@@ -774,17 +774,17 @@ struct RunningView: View {
                     ZStack {
                         Circle()
                             .stroke(Color.white.opacity(0.2), lineWidth: 4)
-                            .frame(width: 80, height: 80)
+                            .frame(width: 76, height: 76)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
                             .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                            .frame(width: 80, height: 80)
+                            .frame(width: 76, height: 76)
                             .rotationEffect(.degrees(-90))
 
                         Image(systemName: "stop.fill")
                             .font(.system(size: 26, weight: .semibold))
                             .foregroundStyle(.white)
-                            .frame(width: 80, height: 80)
+                            .frame(width: 76, height: 76)
                             .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                             .clipShape(Circle())
                     }
@@ -843,17 +843,17 @@ struct RunningView: View {
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.2), lineWidth: 4)
-                    .frame(width: 80, height: 80)
+                    .frame(width: 76, height: 76)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
                     .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                    .frame(width: 80, height: 80)
+                    .frame(width: 76, height: 76)
                     .rotationEffect(.degrees(-90))
 
                 Image(systemName: "stop.fill")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
+                    .frame(width: 76, height: 76)
                     .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                     .clipShape(Circle())
             }
