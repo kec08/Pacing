@@ -59,12 +59,39 @@ struct WatchRunningMusicTabView: View {
                 .font(.system(size: emphasized ? 18 : 14, weight: .bold))
                 .foregroundStyle(PacingWatchTheme.textPrimary)
                 .frame(width: emphasized ? 40 : 32, height: emphasized ? 40 : 32)
-                .background(.ultraThinMaterial, in: Circle())
+                .background {
+                    Circle()
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            Circle().fill(
+                                LinearGradient(
+                                    colors: [
+                                        PacingWatchTheme.main500.opacity(emphasized ? 0.62 : 0.48),
+                                        PacingWatchTheme.main500.opacity(emphasized ? 0.28 : 0.18),
+                                        .black.opacity(0.18)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        }
+                }
                 .overlay {
                     Circle()
-                        .stroke(.white.opacity(emphasized ? 0.34 : 0.22), lineWidth: 0.8)
+                        .stroke(PacingWatchTheme.main500.opacity(0.95), lineWidth: 1.1)
+                    Circle()
+                        .stroke(.white.opacity(emphasized ? 0.52 : 0.34), lineWidth: 0.7)
+                        .padding(1.2)
+                    if emphasized {
+                        Circle()
+                            .trim(from: 0.04, to: 0.27)
+                            .stroke(.white.opacity(0.92), style: StrokeStyle(lineWidth: 2.2, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .padding(1.2)
+                    }
                 }
-                .shadow(color: .black.opacity(0.28), radius: 3, y: 2)
+                .shadow(color: PacingWatchTheme.main500.opacity(0.5), radius: emphasized ? 5 : 3)
+                .shadow(color: .black.opacity(0.32), radius: 3, y: 2)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
