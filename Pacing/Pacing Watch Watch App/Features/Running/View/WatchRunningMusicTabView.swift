@@ -17,8 +17,8 @@ struct WatchRunningMusicTabView: View {
             .accessibilityLabel(isArtworkExpanded ? "앨범 아트 축소" : "앨범 아트 확대")
 
             VStack(spacing: 1) {
-                Text(viewModel.snapshot.title).font(.headline.weight(.bold)).lineLimit(1).minimumScaleFactor(0.65)
-                Text(viewModel.snapshot.artist).font(.caption).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
+                Text(viewModel.snapshot.title).font(.system(size: 15, weight: .bold)).lineLimit(1).minimumScaleFactor(0.65)
+                Text(viewModel.snapshot.artist).font(.system(size: 12)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
             }
             .frame(maxWidth: .infinity)
 
