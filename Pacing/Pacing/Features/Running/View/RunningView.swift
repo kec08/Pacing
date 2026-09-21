@@ -771,20 +771,20 @@ struct RunningView: View {
                     // 종료 — 1초 꾹 누르기
                     ZStack {
                         Circle()
-                            .stroke(Color.main500.opacity(0.55), lineWidth: 4)
-                            .frame(width: 80, height: 80)
+                            .stroke(Color.white.opacity(0.2), lineWidth: 4)
+                            .frame(width: 66, height: 66)
                         Circle()
                             .trim(from: 0, to: stopHoldProgress)
-                            .stroke(Color.main500, lineWidth: 4)
-                            .frame(width: 80, height: 80)
+                            .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 66, height: 66)
                             .rotationEffect(.degrees(-90))
                             .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
                         Image(systemName: "stop.fill")
-                            .font(.system(size: 26, weight: .semibold))
+                            .font(.system(size: 20, weight: .bold))
                             .foregroundStyle(.white)
-                            .frame(width: 80, height: 80)
-                            .background(Color.black.opacity(0.85))
+                            .frame(width: 66, height: 66)
+                            .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                             .clipShape(Circle())
                     }
                     .gesture(
@@ -841,20 +841,20 @@ struct RunningView: View {
 
             ZStack {
                 Circle()
-                    .stroke(Color.main500.opacity(0.55), lineWidth: 4)
-                    .frame(width: 80, height: 80)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 4)
+                    .frame(width: 66, height: 66)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
-                    .stroke(Color.main500, lineWidth: 4)
-                    .frame(width: 80, height: 80)
+                    .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .frame(width: 66, height: 66)
                     .rotationEffect(.degrees(-90))
                     .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 26, weight: .semibold))
+                    .font(.system(size: 20, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
-                    .background(Color.black.opacity(0.85))
+                    .frame(width: 66, height: 66)
+                    .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                     .clipShape(Circle())
             }
             .gesture(
