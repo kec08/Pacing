@@ -196,14 +196,68 @@ private struct WatchRunTabIndicator: View {
 }
 
 private struct WatchMusicTabView: View {
+    @StateObject private var viewModel = WatchMusicPlaybackViewModel()
+
     var body: some View {
-        WatchPlaceholderPage(
-            title: "음악",
-            systemImage: "music.note.list",
-            accent: PacingWatchTheme.purple,
-            headline: "최근 재생한 음악",
-            message: "Apple Music을 연결하면 최근 재생 곡과 러닝 중인 곡을 여기에서 확인할 수 있어요."
-        )
+        ScrollView {
+            VStack(alignment: .leading, spacing: 9) {
+                Text("최근 재생한 음악")
+                    .font(.headline)
+
+                if viewModel.snapshot.recentlyPlayed.isEmpty {
+                    ContentUnavailableView(
+                        "최근 재생 음악 없음",
+                        systemImage: "music.note.list",
+                        description: Text("iPhone에서 음악을 재생하면 여기에 표시됩니다."))
+                        .font(.caption)
+                } else {
+                    ForEach(viewModel.snapshot.recentlyPlayed) { track in
+                        Button { viewModel.play(track) } label: {
+                            HStack(spacing: 8) {
+                                WatchMusicArtwork(url: track.artworkURL, size: 38)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(track.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
+                                    Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "play.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .padding(.trailing, 14)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(7)
+                            .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(track.title), \(track.artist) 재생")
+                    }
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 30)
+        }
+        .onAppear { viewModel.refresh() }
+    }
+}
+
+private struct WatchMusicArtwork: View {
+    let url: String?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let url, let artworkURL = URL(string: url) {
+                AsyncImage(url: artworkURL) { image in image.resizable().scaledToFill() } placeholder: { placeholder }
+            } else { placeholder }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+            .fill(PacingWatchTheme.surface)
+            .overlay { Image(systemName: "music.note").font(.caption).foregroundStyle(PacingWatchTheme.purple) }
     }
 }
 

@@ -9,8 +9,14 @@ final class PhoneRunSyncReceiver: NSObject {
         }
     }
     var onCommand: ((PhoneRunCommand) -> Void)?
+    var onMusicSnapshot: ((WatchMusicPlaybackSnapshot) -> Void)? {
+        didSet {
+            if let latestMusicSnapshot { onMusicSnapshot?(latestMusicSnapshot) }
+        }
+    }
     private let session = WCSession.default
     private var latestSnapshot: PhoneRunSnapshot?
+    private var latestMusicSnapshot: WatchMusicPlaybackSnapshot?
 
     private override init() {
         super.init()
@@ -20,6 +26,15 @@ final class PhoneRunSyncReceiver: NSObject {
     }
 
     private func consume(_ container: [String: Any]) {
+        if let payload = container["phoneMusic"] as? [String: Any],
+           JSONSerialization.isValidJSONObject(payload),
+           let data = try? JSONSerialization.data(withJSONObject: payload),
+           let snapshot = try? JSONDecoder().decode(WatchMusicPlaybackSnapshot.self, from: data) {
+            DispatchQueue.main.async { [weak self] in
+                self?.latestMusicSnapshot = snapshot
+                self?.onMusicSnapshot?(snapshot)
+            }
+        }
         if let payload = container["phoneRunCommand"] as? [String: Any],
            JSONSerialization.isValidJSONObject(payload),
            let data = try? JSONSerialization.data(withJSONObject: payload),
