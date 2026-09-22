@@ -115,6 +115,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 3: 키 / 체중
     private var step3: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                moveBack(to: 2)
+            }
             stepHeader(title: "신체 정보를 알려주세요", subtitle: "더 정확한 러닝 데이터를 위해 필요해요")
 
             VStack(alignment: .leading, spacing: 24) {
@@ -158,6 +161,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 4: 프로필 사진
     private var step4: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                moveBack(to: 3)
+            }
             stepHeader(title: "프로필 사진을 설정해주세요", subtitle: "나중에 언제든지 바꿀 수 있어요")
 
             PhotosPicker(selection: $photoItem, matching: .images) {
