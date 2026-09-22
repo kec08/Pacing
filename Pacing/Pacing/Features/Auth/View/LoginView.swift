@@ -6,9 +6,7 @@ import Combine
 struct LoginView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var authVM = AuthViewModel()
-    @State private var navigateToOnboarding = false
     @State private var navigateToEmailLogin = false
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -42,8 +40,7 @@ struct LoginView: View {
                     Spacer()
 
                     if authVM.isLoading {
-                    ProgressView()
-                        .padding(.bottom, 48)
+                        EmptyView()
                     } else {
                     VStack(spacing: 12) {
                         Button {
@@ -69,9 +66,6 @@ struct LoginView: View {
                         AppleSignInButton { result in
                             Task {
                                 await authVM.handleSignInWithApple(result, appState: appState)
-                                if appState.isLoggedIn {
-                                    navigateToOnboarding = true
-                                }
                             }
                         } prepareNonce: {
                             authVM.prepareNonce()
@@ -81,9 +75,6 @@ struct LoginView: View {
                         Button {
                             Task {
                                 await authVM.signInWithGoogle(appState: appState)
-                                if appState.isLoggedIn {
-                                    navigateToOnboarding = true
-                                }
                             }
                         } label: {
                             HStack(spacing: 8) {
@@ -109,7 +100,6 @@ struct LoginView: View {
                         Button {
                             Task {
                                 await authVM.signInWithKakao(appState: appState)
-                                if appState.isLoggedIn { navigateToOnboarding = true }
                             }
                         } label: {
                             HStack(spacing: 8) {
@@ -131,7 +121,6 @@ struct LoginView: View {
                         Button {
                             Task {
                                 await authVM.signInWithNaver(appState: appState)
-                                if appState.isLoggedIn { navigateToOnboarding = true }
                             }
                         } label: {
                             HStack(spacing: 8) {
@@ -163,25 +152,16 @@ struct LoginView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            .navigationDestination(isPresented: $navigateToOnboarding) {
-                OnboardingPermissionView()
-                    .navigationBarBackButtonHidden(true)
+
+                if authVM.isLoading || appState.isAuthLoading {
+                    AuthenticationLoadingView()
+                        .transition(.opacity)
+                }
             }
             .navigationDestination(isPresented: $navigateToEmailLogin) {
-                EmailLoginView(authViewModel: authVM) {
-                    navigateToEmailLogin = false
-                    navigateToOnboarding = true
-                }
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active && authVM.isLoading {
-                    // 외부 로그인(네이버 등) 취소 후 앱으로 돌아왔을 때 로딩 해제
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        if authVM.isLoading { authVM.isLoading = false }
-                    }
-                }
+                EmailLoginView(authViewModel: authVM, onLoginSuccess: {})
             }
         }
     }
+
 }

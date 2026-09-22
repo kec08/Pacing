@@ -5,6 +5,7 @@ import FirebaseAuth
 struct ProfileSetupView: View {
     @EnvironmentObject var appState: AppState
     @State private var step: Int = 1
+    @State private var isMovingBackward = false
 
     @State private var nickname: String = ""
     @State private var gender: String = "선택 안 함"
@@ -40,10 +41,8 @@ struct ProfileSetupView: View {
                 default: step4
                 }
             }
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing),
-                removal: .move(edge: .leading)
-            ))
+            .id(step)
+            .transition(stepTransition)
             .animation(.easeInOut(duration: 0.25), value: step)
         }
         .background(Color.backgroundPrimary)
@@ -52,6 +51,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 1: 이름(닉네임)
     private var step1: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                cancelProfileSetup()
+            }
             stepHeader(title: "이름을 알려주세요", subtitle: "러닝할 때 사용할 닉네임을 입력해요")
 
             VStack(alignment: .leading, spacing: 8) {
@@ -75,7 +77,7 @@ struct ProfileSetupView: View {
             Spacer()
 
             nextButton(label: "다음", enabled: !nickname.trimmingCharacters(in: .whitespaces).isEmpty) {
-                step = 2
+                move(to: 2)
             }
         }
     }
@@ -83,6 +85,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 2: 성별
     private var step2: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                moveBack(to: 1)
+            }
             stepHeader(title: "기본 정보를 알려주세요", subtitle: "성별을 선택해주세요")
 
             VStack(alignment: .leading, spacing: 24) {
@@ -102,7 +107,7 @@ struct ProfileSetupView: View {
             Spacer()
 
             nextButton(label: "다음", enabled: true) {
-                step = 3
+                move(to: 3)
             }
         }
     }
@@ -110,6 +115,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 3: 키 / 체중
     private var step3: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                moveBack(to: 2)
+            }
             stepHeader(title: "신체 정보를 알려주세요", subtitle: "더 정확한 러닝 데이터를 위해 필요해요")
 
             VStack(alignment: .leading, spacing: 24) {
@@ -145,7 +153,7 @@ struct ProfileSetupView: View {
             Spacer()
 
             nextButton(label: "다음", enabled: true) {
-                step = 4
+                move(to: 4)
             }
         }
     }
@@ -153,6 +161,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 4: 프로필 사진
     private var step4: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                moveBack(to: 3)
+            }
             stepHeader(title: "프로필 사진을 설정해주세요", subtitle: "나중에 언제든지 바꿀 수 있어요")
 
             PhotosPicker(selection: $photoItem, matching: .images) {
@@ -207,6 +218,41 @@ struct ProfileSetupView: View {
     }
 
     // MARK: - 공통 컴포넌트
+
+    private var stepTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: isMovingBackward ? .leading : .trailing),
+            removal: .move(edge: isMovingBackward ? .trailing : .leading)
+        )
+    }
+
+    private func move(to nextStep: Int) {
+        isMovingBackward = false
+        step = nextStep
+    }
+
+    private func moveBack(to previousStep: Int) {
+        isMovingBackward = true
+        step = previousStep
+    }
+
+    private func profileSetupBackButton(action: @escaping () -> Void) -> some View {
+        HStack {
+            Button(action: action) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            }
+            .accessibilityLabel("뒤로 가기")
+
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+    }
 
     private func stepHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -270,6 +316,14 @@ struct ProfileSetupView: View {
         appState.isLoggedIn = true
         appState.isProfileComplete = true
         isSaving = false
+    }
+
+    private func cancelProfileSetup() {
+        try? Auth.auth().signOut()
+        withAnimation(.easeInOut(duration: 0.3)) {
+            appState.isProfileComplete = false
+            appState.isLoggedIn = false
+        }
     }
 
     private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {
