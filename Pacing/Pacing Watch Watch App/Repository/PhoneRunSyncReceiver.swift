@@ -31,8 +31,11 @@ final class PhoneRunSyncReceiver: NSObject {
            let data = try? JSONSerialization.data(withJSONObject: payload),
            let snapshot = try? JSONDecoder().decode(WatchMusicPlaybackSnapshot.self, from: data) {
             DispatchQueue.main.async { [weak self] in
-                self?.latestMusicSnapshot = snapshot
-                self?.onMusicSnapshot?(snapshot)
+                guard let self,
+                      (snapshot.updatedAt ?? 0) >= (self.latestMusicSnapshot?.updatedAt ?? 0)
+                else { return }
+                self.latestMusicSnapshot = snapshot
+                self.onMusicSnapshot?(snapshot)
             }
         }
         if let payload = container["phoneRunCommand"] as? [String: Any],
@@ -50,8 +53,11 @@ final class PhoneRunSyncReceiver: NSObject {
               let snapshot = try? JSONDecoder().decode(PhoneRunSnapshot.self, from: data)
         else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.latestSnapshot = snapshot
-            self?.onSnapshot?(snapshot)
+            guard let self,
+                  (self.latestSnapshot?.sentAt ?? .distantPast) < snapshot.sentAt
+            else { return }
+            self.latestSnapshot = snapshot
+            self.onSnapshot?(snapshot)
         }
     }
 }

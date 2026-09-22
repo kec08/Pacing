@@ -35,4 +35,68 @@ final class WatchRunningViewModelTests: XCTestCase {
 
         XCTAssertNotEqual(viewModel.secondaryMetrics[0], .distance)
     }
+
+    func testEndedPhoneSnapshotDoesNotOpenRunExperienceFromIdle() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        let endedAt = Date(timeIntervalSince1970: 1_000)
+        let snapshot = PhoneRunSnapshot(
+            state: .ended,
+            elapsedSeconds: 120,
+            distanceKilometers: 1,
+            paceMinutesPerKilometer: 5,
+            sentAt: endedAt
+        )
+
+        viewModel.applyPhoneSnapshot(snapshot)
+        XCTAssertEqual(viewModel.state, .idle)
+    }
+
+    func testEndedPhoneSnapshotReturnsAnActiveRunToIdle() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        let startedAt = Date(timeIntervalSince1970: 900)
+        viewModel.applyPhoneSnapshot(
+            PhoneRunSnapshot(
+                state: .running,
+                elapsedSeconds: 60,
+                distanceKilometers: 0.5,
+                paceMinutesPerKilometer: 5,
+                sentAt: startedAt
+            )
+        )
+
+        viewModel.applyPhoneSnapshot(
+            PhoneRunSnapshot(
+                state: .ended,
+                elapsedSeconds: 120,
+                distanceKilometers: 1,
+                paceMinutesPerKilometer: 5,
+                sentAt: Date(timeIntervalSince1970: 1_000)
+            )
+        )
+
+        XCTAssertEqual(viewModel.state, .idle)
+    }
+
+    func testPhoneFinishCommandReturnsAnActiveRunToIdleImmediately() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        viewModel.applyPhoneSnapshot(
+            PhoneRunSnapshot(
+                state: .running,
+                elapsedSeconds: 60,
+                distanceKilometers: 0.5,
+                paceMinutesPerKilometer: 5,
+                sentAt: Date(timeIntervalSince1970: 900)
+            )
+        )
+
+        viewModel.applyPhoneCommand(
+            PhoneRunCommand(
+                action: .finish,
+                sender: .phone,
+                sessionID: UUID()
+            )
+        )
+
+        XCTAssertEqual(viewModel.state, .idle)
+    }
 }

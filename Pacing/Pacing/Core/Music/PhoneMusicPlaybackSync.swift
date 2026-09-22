@@ -1,13 +1,17 @@
 import Foundation
+import UIKit
 
 struct PhoneMusicTrack: Codable, Equatable {
     let id: String
     let title: String
     let artist: String
     let artworkURL: String?
+    let artworkData: Data?
 }
 
 struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
+    /// WatchConnectivity 메시지가 순서와 다르게 도착해도 최신 iPhone 상태만 적용하기 위한 시각입니다.
+    let updatedAt: TimeInterval?
     let title: String
     let artist: String
     let artworkURL: String?
@@ -15,6 +19,33 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
     let artworkData: Data?
     let isPlaying: Bool
     let recentlyPlayed: [PhoneMusicTrack]
+    /// iPhone에서 현재 재생 중인 플레이리스트의 전체 큐입니다.
+    let playlistTracks: [PhoneMusicTrack]
+
+    func removingRecentArtworkData() -> Self {
+        Self(
+            updatedAt: updatedAt,
+            title: title,
+            artist: artist,
+            artworkURL: artworkURL,
+            artworkData: artworkData,
+            isPlaying: isPlaying,
+            recentlyPlayed: recentlyPlayed.map {
+                PhoneMusicTrack(id: $0.id, title: $0.title, artist: $0.artist, artworkURL: $0.artworkURL, artworkData: nil)
+            },
+            playlistTracks: playlistTracks.map {
+                PhoneMusicTrack(id: $0.id, title: $0.title, artist: $0.artist, artworkURL: $0.artworkURL, artworkData: nil)
+            }
+        )
+    }
+
+    func removingAllArtworkData() -> Self {
+        removingRecentArtworkData().withCurrentArtworkData(nil)
+    }
+
+    private func withCurrentArtworkData(_ artworkData: Data?) -> Self {
+        Self(updatedAt: updatedAt, title: title, artist: artist, artworkURL: artworkURL, artworkData: artworkData, isPlaying: isPlaying, recentlyPlayed: recentlyPlayed, playlistTracks: playlistTracks)
+    }
 }
 
 enum PhoneMusicPlaybackCommand: String, Codable {
@@ -22,6 +53,34 @@ enum PhoneMusicPlaybackCommand: String, Codable {
     case previous
     case next
     case play
+}
+
+enum WatchMusicArtworkEncoder {
+    static func encodeCurrentArtwork(_ image: UIImage) -> Data? {
+        encode(image, maximumPixelSize: 180, maximumByteCount: 14_000)
+    }
+
+    static func encodeRecentArtwork(_ image: UIImage) -> Data? {
+        encode(image, maximumPixelSize: 60, maximumByteCount: 2_500)
+    }
+
+    private static func encode(_ image: UIImage, maximumPixelSize: CGFloat, maximumByteCount: Int) -> Data? {
+        let largestDimension = max(image.size.width, image.size.height)
+        let scale = min(1, maximumPixelSize / largestDimension)
+        var size = CGSize(width: max(1, (image.size.width * scale).rounded()), height: max(1, (image.size.height * scale).rounded()))
+
+        for quality in stride(from: CGFloat(0.7), through: 0.2, by: -0.1) {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            format.opaque = true
+            let data = UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: quality) { _ in
+                image.draw(in: CGRect(origin: .zero, size: size))
+            }
+            if data.count <= maximumByteCount { return data }
+            size = CGSize(width: max(24, (size.width * 0.8).rounded()), height: max(24, (size.height * 0.8).rounded()))
+        }
+        return nil
+    }
 }
 
 final class PhoneMusicCommandReceiver {

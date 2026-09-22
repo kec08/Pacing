@@ -5,10 +5,12 @@
 
 import Combine
 import HealthKit
+import ImageIO
 import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = WatchAppViewModel()
+    @StateObject private var runningMusicPresentation = WatchRunningMusicPresentation()
 
     var body: some View {
         ZStack {
@@ -22,7 +24,7 @@ struct ContentView: View {
                     if !viewModel.isRunPaused {
                         WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.dashboard)
                     }
-                    WatchRunningMusicTabView().tag(WatchRunTab.music)
+                    WatchRunningMusicTabView(presentation: runningMusicPresentation).tag(WatchRunTab.music)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .disabled(viewModel.isRunTabLocked)
@@ -31,8 +33,15 @@ struct ContentView: View {
                         selectedTab: $viewModel.selectedRunTab,
                         tabs: viewModel.runTabs
                     )
-                        .offset(y: 12)
+                        .offset(y: 20)
                         .disabled(viewModel.isRunTabLocked)
+                }
+                .overlay(alignment: .topLeading) {
+                    if viewModel.selectedRunTab == .music {
+                        WatchRunningMusicPlaylistButton(presentation: runningMusicPresentation)
+                            .offset(x: 6, y: -36)
+                            .transaction { $0.animation = nil }
+                    }
                 }
             } else {
                 TabView(selection: $viewModel.selectedTab) {
@@ -119,8 +128,8 @@ final class WatchAppViewModel: ObservableObject {
             .sink { [weak self] state in
                 guard let self else { return }
 
-                isRunSummaryPresented = state == .ended
-                isRunExperiencePresented = state.isActive || isRunSummaryPresented
+                isRunSummaryPresented = false
+                isRunExperiencePresented = state.isActive
                 isRunPaused = state == .paused
                 isRunTabLocked = false
 
@@ -132,7 +141,11 @@ final class WatchAppViewModel: ObservableObject {
                     selectedRunTab = .dashboard
                 case .paused:
                     selectedRunTab = .controls
-                case .idle, .starting, .ending, .ended, .failed:
+                case .ended:
+                    // 기본 홈의 러닝 탭도 같은 ViewModel을 사용한다. 종료 상태를
+                    // 남겨두면 앱을 다시 열었을 때 종료 화면이 홈에 재표시된다.
+                    runningViewModel.reset()
+                case .idle, .starting, .ending, .failed:
                     break
                 }
             }
@@ -214,7 +227,7 @@ private struct WatchMusicTabView: View {
                     ForEach(viewModel.snapshot.recentlyPlayed) { track in
                         Button { viewModel.play(track) } label: {
                             HStack(spacing: 8) {
-                                WatchMusicArtwork(url: track.artworkURL, size: 38)
+                                WatchMusicArtwork(data: track.artworkData, url: track.artworkURL, size: 38)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(track.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
                                     Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
@@ -241,12 +254,17 @@ private struct WatchMusicTabView: View {
 }
 
 private struct WatchMusicArtwork: View {
+    let data: Data?
     let url: String?
     let size: CGFloat
 
     var body: some View {
         Group {
-            if let url, let artworkURL = URL(string: url) {
+            if let data, let image = image(from: data) {
+                image.resizable().scaledToFill()
+            } else if let url,
+                      let artworkURL = URL(string: url),
+                      ["http", "https"].contains(artworkURL.scheme?.lowercased() ?? "") {
                 AsyncImage(url: artworkURL) { image in image.resizable().scaledToFill() } placeholder: { placeholder }
             } else { placeholder }
         }
@@ -258,6 +276,13 @@ private struct WatchMusicArtwork: View {
         RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(PacingWatchTheme.surface)
             .overlay { Image(systemName: "music.note").font(.caption).foregroundStyle(PacingWatchTheme.purple) }
+    }
+
+    private func image(from data: Data) -> Image? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return Image(decorative: image, scale: 1)
     }
 }
 

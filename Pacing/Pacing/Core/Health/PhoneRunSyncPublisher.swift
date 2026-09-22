@@ -4,6 +4,7 @@ import WatchConnectivity
 final class PhoneRunSyncPublisher: NSObject {
     static let shared = PhoneRunSyncPublisher()
     private let session = WCSession.default
+    private let maximumMusicContextSize = 58_000
 
     private override init() {
         super.init()
@@ -33,15 +34,27 @@ final class PhoneRunSyncPublisher: NSObject {
     }
 
     func publishMusic(_ snapshot: PhoneMusicPlaybackSnapshot) {
-        guard let data = try? JSONEncoder().encode(snapshot),
-              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { return }
+        guard let payload = musicPayload(for: snapshot) else { return }
 
         // 음악은 Watch가 늦게 연결돼도 최근 상태를 복구해야 하므로 application context에 보관합니다.
         var context = session.applicationContext
         context["phoneMusic"] = payload
-        try? session.updateApplicationContext(context)
+        if let contextData = try? JSONSerialization.data(withJSONObject: context),
+           contextData.count <= maximumMusicContextSize {
+            try? session.updateApplicationContext(context)
+        }
         if session.isReachable { session.sendMessage(["phoneMusic": payload], replyHandler: nil) }
+    }
+
+    private func musicPayload(for snapshot: PhoneMusicPlaybackSnapshot) -> [String: Any]? {
+        for candidate in [snapshot, snapshot.removingRecentArtworkData(), snapshot.removingAllArtworkData()] {
+            guard let data = try? JSONEncoder().encode(candidate),
+                  data.count <= maximumMusicContextSize,
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            return payload
+        }
+        return nil
     }
 }
 
