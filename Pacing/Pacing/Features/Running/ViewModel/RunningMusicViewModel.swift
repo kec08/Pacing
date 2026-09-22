@@ -64,7 +64,7 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
-    private var watchArtworkDataByURL: [String: Data] = [:]
+    private var watchArtworkImagesByURL: [String: UIImage] = [:]
     private var downloadingWatchArtworkURLs = Set<String>()
 
     init() {
@@ -778,7 +778,7 @@ final class RunningMusicViewModel: ObservableObject {
                 title: current.title,
                 artist: current.artistName,
                 artworkURL: current.artworkURL,
-                artworkData: watchArtworkData(for: current),
+                artworkData: watchArtworkData(for: current, presentation: .current),
                 isPlaying: isPlaying,
                 recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack)
             )
@@ -786,19 +786,28 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func makeWatchTrack(_ snapshot: PlayerSongSnapshot) -> PhoneMusicTrack {
-        PhoneMusicTrack(id: snapshot.songStoreID, title: snapshot.title, artist: snapshot.artistName, artworkURL: snapshot.artworkURL)
+        PhoneMusicTrack(
+            id: snapshot.songStoreID,
+            title: snapshot.title,
+            artist: snapshot.artistName,
+            artworkURL: snapshot.artworkURL,
+            artworkData: watchArtworkData(for: snapshot, presentation: .recent)
+        )
     }
 
-    private func watchArtworkData(for snapshot: PlayerSongSnapshot) -> Data? {
-        if let artwork = snapshot.artwork,
-           let data = artwork.jpegData(compressionQuality: 0.72) {
-            return data
+    private enum WatchArtworkPresentation { case current, recent }
+
+    private func watchArtworkData(for snapshot: PlayerSongSnapshot, presentation: WatchArtworkPresentation) -> Data? {
+        if let artwork = snapshot.artwork ?? snapshot.artworkURL.flatMap({ watchArtworkImagesByURL[$0] }) {
+            return presentation == .current
+                ? WatchMusicArtworkEncoder.encodeCurrentArtwork(artwork)
+                : WatchMusicArtworkEncoder.encodeRecentArtwork(artwork)
         }
 
         guard let urlString = snapshot.artworkURL,
-              let url = URL(string: urlString)
+              let url = URL(string: urlString),
+              ["http", "https"].contains(url.scheme?.lowercased() ?? "")
         else { return nil }
-        if let data = watchArtworkDataByURL[urlString] { return data }
         guard downloadingWatchArtworkURLs.insert(urlString).inserted else { return nil }
 
         Task { [weak self] in
@@ -810,11 +819,7 @@ final class RunningMusicViewModel: ObservableObject {
                   let image = UIImage(data: data)
             else { return }
 
-            let renderer = UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240))
-            let thumbnail = renderer.jpegData(withCompressionQuality: 0.72) { _ in
-                image.draw(in: CGRect(origin: .zero, size: CGSize(width: 240, height: 240)))
-            }
-            self.watchArtworkDataByURL[urlString] = thumbnail
+            self.watchArtworkImagesByURL[urlString] = image
             self.syncCurrentState()
         }
         return nil

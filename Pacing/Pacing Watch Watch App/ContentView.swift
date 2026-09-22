@@ -5,6 +5,7 @@
 
 import Combine
 import HealthKit
+import ImageIO
 import SwiftUI
 
 struct ContentView: View {
@@ -214,7 +215,7 @@ private struct WatchMusicTabView: View {
                     ForEach(viewModel.snapshot.recentlyPlayed) { track in
                         Button { viewModel.play(track) } label: {
                             HStack(spacing: 8) {
-                                WatchMusicArtwork(url: track.artworkURL, size: 38)
+                                WatchMusicArtwork(data: track.artworkData, url: track.artworkURL, size: 38)
                                 VStack(alignment: .leading, spacing: 1) {
                                     Text(track.title).font(.system(size: 11, weight: .semibold)).lineLimit(1)
                                     Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
@@ -241,12 +242,17 @@ private struct WatchMusicTabView: View {
 }
 
 private struct WatchMusicArtwork: View {
+    let data: Data?
     let url: String?
     let size: CGFloat
 
     var body: some View {
         Group {
-            if let url, let artworkURL = URL(string: url) {
+            if let data, let image = image(from: data) {
+                image.resizable().scaledToFill()
+            } else if let url,
+                      let artworkURL = URL(string: url),
+                      ["http", "https"].contains(artworkURL.scheme?.lowercased() ?? "") {
                 AsyncImage(url: artworkURL) { image in image.resizable().scaledToFill() } placeholder: { placeholder }
             } else { placeholder }
         }
@@ -258,6 +264,13 @@ private struct WatchMusicArtwork: View {
         RoundedRectangle(cornerRadius: 7, style: .continuous)
             .fill(PacingWatchTheme.surface)
             .overlay { Image(systemName: "music.note").font(.caption).foregroundStyle(PacingWatchTheme.purple) }
+    }
+
+    private func image(from data: Data) -> Image? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return Image(decorative: image, scale: 1)
     }
 }
 

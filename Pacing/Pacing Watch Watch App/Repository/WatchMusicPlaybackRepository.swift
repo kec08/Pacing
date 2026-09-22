@@ -7,6 +7,7 @@ struct WatchMusicTrack: Codable, Equatable, Identifiable {
     let title: String
     let artist: String
     let artworkURL: String?
+    let artworkData: Data?
 }
 
 struct WatchMusicPlaybackSnapshot: Codable, Equatable {

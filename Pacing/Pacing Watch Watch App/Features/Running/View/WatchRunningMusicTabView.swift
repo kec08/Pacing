@@ -45,7 +45,9 @@ struct WatchRunningMusicTabView: View {
         if let artworkData = viewModel.snapshot.artworkData,
            let image = image(from: artworkData) {
             image.resizable().scaledToFill()
-        } else if let url = viewModel.snapshot.artworkURL, let artworkURL = URL(string: url) {
+        } else if let url = viewModel.snapshot.artworkURL,
+                  let artworkURL = URL(string: url),
+                  ["http", "https"].contains(artworkURL.scheme?.lowercased() ?? "") {
             AsyncImage(url: artworkURL) { image in image.resizable().scaledToFill() } placeholder: { artworkPlaceholder }
         } else { artworkPlaceholder }
     }
