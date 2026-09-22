@@ -218,7 +218,12 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
     }
 
     func refresh() { repository.refresh() }
-    func togglePlayback() { repository.send(.togglePlayback, songID: nil) }
+    func togglePlayback() {
+        // iPhone의 실제 재생 상태는 뒤이어 수신되는 스냅샷으로 확정한다.
+        // 다만 Watch 조작에는 즉시 반응해 버튼이 늦게 바뀌지 않게 한다.
+        snapshot = snapshot.updatingPlaybackState(to: !snapshot.isPlaying)
+        repository.send(.togglePlayback, songID: nil)
+    }
     func previous() { repository.send(.previous, songID: nil) }
     func next() { repository.send(.next, songID: nil) }
     func play(_ track: WatchMusicTrack) { repository.send(.play, songID: track.id) }
@@ -226,4 +231,15 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
 
 private extension WatchMusicPlaybackSnapshot {
     var id: String { [title, artist, artworkURL ?? ""].joined(separator: "|") }
+
+    func updatingPlaybackState(to isPlaying: Bool) -> Self {
+        Self(
+            title: title,
+            artist: artist,
+            artworkURL: artworkURL,
+            artworkData: artworkData,
+            isPlaying: isPlaying,
+            recentlyPlayed: recentlyPlayed
+        )
+    }
 }
