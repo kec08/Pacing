@@ -9,25 +9,7 @@ struct WatchRunningMusicTabView: View {
     @State private var isTrackListPresented = false
 
     var body: some View {
-        VStack(spacing: 4) {
-            HStack {
-                Button {
-                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
-                        isTrackListPresented.toggle()
-                    }
-                } label: {
-                    Image(systemName: isTrackListPresented ? "xmark" : "list.bullet")
-                        .font(.system(size: 11, weight: .bold))
-                        .frame(width: 26, height: 26)
-                }
-                .buttonStyle(.glass)
-                .buttonBorderShape(.circle)
-                .controlSize(.mini)
-                .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
-
-                Spacer()
-            }
-
+        ZStack(alignment: .topLeading) {
             if isTrackListPresented {
                 trackList
                     .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
@@ -35,6 +17,8 @@ struct WatchRunningMusicTabView: View {
                 nowPlaying
                     .transition(reduceMotion ? .identity : .opacity)
             }
+
+            playlistButton
         }
         .padding(.horizontal, 10)
         .padding(.bottom, isArtworkExpanded && !isTrackListPresented ? 8 : 27)
@@ -51,7 +35,7 @@ struct WatchRunningMusicTabView: View {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { isArtworkExpanded.toggle() }
             } label: {
                 artwork
-                    .frame(width: isArtworkExpanded ? 142 : 86, height: isArtworkExpanded ? 142 : 86)
+                    .frame(width: isArtworkExpanded ? 128 : 86, height: isArtworkExpanded ? 128 : 86)
                     .clipShape(RoundedRectangle(cornerRadius: isArtworkExpanded ? 18 : 14, style: .continuous))
             }
             .buttonStyle(.plain)
@@ -72,6 +56,23 @@ struct WatchRunningMusicTabView: View {
                 .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .bottom)))
             }
         }
+    }
+
+    private var playlistButton: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                isTrackListPresented.toggle()
+            }
+        } label: {
+            Image(systemName: isTrackListPresented ? "xmark" : "list.bullet")
+                .font(.system(size: 11, weight: .bold))
+                .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .controlSize(.mini)
+        .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
+        .zIndex(1)
     }
 
     private var trackList: some View {
@@ -108,6 +109,7 @@ struct WatchRunningMusicTabView: View {
                     .accessibilityLabel("\(track.title), \(track.artist) 재생")
                 }
             }
+            .padding(.top, 30)
             .padding(.bottom, 4)
         }
         .overlay {

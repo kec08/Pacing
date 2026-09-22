@@ -32,7 +32,7 @@ struct ContentView: View {
                         selectedTab: $viewModel.selectedRunTab,
                         tabs: viewModel.runTabs
                     )
-                        .offset(y: 12)
+                        .offset(y: 20)
                         .disabled(viewModel.isRunTabLocked)
                 }
             } else {
