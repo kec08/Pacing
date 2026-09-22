@@ -68,13 +68,13 @@ struct WatchRunningMusicTabView: View {
             }
         } label: {
             Image(systemName: isTrackListPresented ? "xmark" : "list.bullet")
-                .font(.system(size: 11, weight: .bold))
-                .frame(width: 26, height: 26)
+                .font(.system(size: 12, weight: .bold))
+                .frame(width: 30, height: 30)
         }
         .buttonStyle(.glass)
         .buttonBorderShape(.circle)
         .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
-        .frame(width: 30, height: 30, alignment: .topLeading)
+        .frame(width: 34, height: 34, alignment: .topLeading)
         .offset(x: -10, y: -24)
     }
 
