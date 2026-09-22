@@ -33,7 +33,7 @@ struct AuthenticationLoadingView: View {
 
                 ProgressView()
                     .controlSize(.large)
-                    .scaleEffect(1.25)
+                    .scaleEffect(1.1)
                     .tint(Color.textSecondary)
                     .padding(.bottom, 132)
             }
