@@ -10,6 +10,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var viewModel = WatchAppViewModel()
+    @StateObject private var runningMusicPresentation = WatchRunningMusicPresentation()
 
     var body: some View {
         ZStack {
@@ -23,7 +24,7 @@ struct ContentView: View {
                     if !viewModel.isRunPaused {
                         WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.dashboard)
                     }
-                    WatchRunningMusicTabView().tag(WatchRunTab.music)
+                    WatchRunningMusicTabView(presentation: runningMusicPresentation).tag(WatchRunTab.music)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .disabled(viewModel.isRunTabLocked)
@@ -34,6 +35,13 @@ struct ContentView: View {
                     )
                         .offset(y: 20)
                         .disabled(viewModel.isRunTabLocked)
+                }
+                .overlay(alignment: .topLeading) {
+                    if viewModel.selectedRunTab == .music {
+                        WatchRunningMusicPlaylistButton(presentation: runningMusicPresentation)
+                            .offset(x: 6, y: -16)
+                            .transaction { $0.animation = nil }
+                    }
                 }
             } else {
                 TabView(selection: $viewModel.selectedTab) {

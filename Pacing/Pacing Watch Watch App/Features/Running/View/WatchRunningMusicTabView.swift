@@ -2,61 +2,51 @@ import Combine
 import ImageIO
 import SwiftUI
 
+@MainActor
+final class WatchRunningMusicPresentation: ObservableObject {
+    @Published var isArtworkExpanded = false
+    @Published var isTrackListPresented = false
+}
+
 struct WatchRunningMusicTabView: View {
     @StateObject private var viewModel = WatchMusicPlaybackViewModel()
+    @ObservedObject var presentation: WatchRunningMusicPresentation
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var isArtworkExpanded = false
-    @State private var isTrackListPresented = false
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topLeading) {
-                Group {
-                    if isTrackListPresented {
-                        trackList
-                            .padding(.top, 2)
-                            .padding(.bottom, 27)
-                            .transition(reduceMotion ? .identity : .opacity)
-                    } else {
-                        nowPlaying
-                            .padding(.top, 12)
-                            .padding(.bottom, isArtworkExpanded ? 8 : 27)
-                            .transition(reduceMotion ? .identity : .opacity)
-                    }
-                }
-                .frame(
-                    width: max(0, proxy.size.width - 20),
-                    height: proxy.size.height,
-                    alignment: .topLeading
-                )
-                .padding(.horizontal, 10)
-                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
-
-                // 버튼은 콘텐츠와 완전히 분리된 Watch 탭 고정 좌표를 사용한다.
-                playlistButton
-                    .position(x: 23, y: 1)
-                    .transaction { $0.animation = nil }
+        Group {
+            if presentation.isTrackListPresented {
+                trackList
+                    .padding(.top, 2)
+                    .padding(.bottom, 27)
+                    .transition(reduceMotion ? .identity : .opacity)
+            } else {
+                nowPlaying
+                    .padding(.top, 12)
+                    .padding(.bottom, presentation.isArtworkExpanded ? 8 : 27)
+                    .transition(reduceMotion ? .identity : .opacity)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 10)
         .onAppear { viewModel.refresh() }
         .onChange(of: viewModel.snapshot.id) { _, _ in
-            guard isArtworkExpanded else { return }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isArtworkExpanded = false }
+            guard presentation.isArtworkExpanded else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { presentation.isArtworkExpanded = false }
         }
     }
 
     private var nowPlaying: some View {
-        VStack(spacing: isArtworkExpanded ? 8 : 6) {
+        VStack(spacing: presentation.isArtworkExpanded ? 8 : 6) {
             Button {
-                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { isArtworkExpanded.toggle() }
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { presentation.isArtworkExpanded.toggle() }
             } label: {
                 artwork
-                    .frame(width: isArtworkExpanded ? 118 : 86, height: isArtworkExpanded ? 118 : 86)
-                    .clipShape(RoundedRectangle(cornerRadius: isArtworkExpanded ? 16 : 14, style: .continuous))
+                    .frame(width: presentation.isArtworkExpanded ? 118 : 86, height: presentation.isArtworkExpanded ? 118 : 86)
+                    .clipShape(RoundedRectangle(cornerRadius: presentation.isArtworkExpanded ? 16 : 14, style: .continuous))
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(isArtworkExpanded ? "앨범 아트 축소" : "앨범 아트 확대")
+            .accessibilityLabel(presentation.isArtworkExpanded ? "앨범 아트 축소" : "앨범 아트 확대")
 
             VStack(spacing: 1) {
                 Text(viewModel.snapshot.title).font(.system(size: 17, weight: .bold)).lineLimit(1).minimumScaleFactor(0.6)
@@ -64,7 +54,7 @@ struct WatchRunningMusicTabView: View {
             }
             .frame(maxWidth: .infinity)
 
-            if !isArtworkExpanded {
+            if !presentation.isArtworkExpanded {
                 HStack(spacing: 15) {
                     controlButton("backward.fill", label: "이전 곡") { viewModel.previous() }
                     controlButton(viewModel.snapshot.isPlaying ? "pause.fill" : "play.fill", label: viewModel.snapshot.isPlaying ? "일시정지" : "재생", emphasized: true) { viewModel.togglePlayback() }
@@ -75,29 +65,13 @@ struct WatchRunningMusicTabView: View {
         }
     }
 
-    private var playlistButton: some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) {
-                isTrackListPresented.toggle()
-            }
-        } label: {
-            Image(systemName: isTrackListPresented ? "xmark" : "list.bullet")
-                .font(.system(size: 12, weight: .bold))
-                .frame(width: 30, height: 30)
-        }
-        .buttonStyle(.glass)
-        .buttonBorderShape(.circle)
-        .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
-        .frame(width: 34, height: 34, alignment: .topLeading)
-    }
-
     private var trackList: some View {
         ScrollView {
             LazyVStack(spacing: 5) {
                 ForEach(viewModel.snapshot.playlistTracks) { track in
                     Button {
                         viewModel.play(track)
-                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isTrackListPresented = false }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { presentation.isTrackListPresented = false }
                     } label: {
                         HStack(spacing: 8) {
                             WatchRunningMusicArtwork(data: track.artworkData, url: track.artworkURL, size: 38)
@@ -186,6 +160,27 @@ struct WatchRunningMusicTabView: View {
         Image(systemName: symbol)
             .font(.system(size: emphasized ? 16 : 12, weight: .bold))
             .frame(width: emphasized ? 34 : 26, height: emphasized ? 34 : 26)
+    }
+}
+
+struct WatchRunningMusicPlaylistButton: View {
+    @ObservedObject var presentation: WatchRunningMusicPresentation
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) {
+                presentation.isTrackListPresented.toggle()
+            }
+        } label: {
+            Image(systemName: presentation.isTrackListPresented ? "xmark" : "list.bullet")
+                .font(.system(size: 12, weight: .bold))
+                .frame(width: 30, height: 30)
+        }
+        .buttonStyle(.glass)
+        .buttonBorderShape(.circle)
+        .accessibilityLabel(presentation.isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
+        .frame(width: 34, height: 34)
     }
 }
 
