@@ -9,34 +9,27 @@ struct WatchRunningMusicTabView: View {
     @State private var isTrackListPresented = false
 
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .topLeading) {
-                Group {
-                    if isTrackListPresented {
-                        trackList
-                            .padding(.top, 2)
-                            .padding(.bottom, 4)
-                            .transition(reduceMotion ? .identity : .opacity)
-                    } else {
-                        nowPlaying
-                            .padding(.top, 12)
-                            .padding(.bottom, isArtworkExpanded ? 8 : 27)
-                            .transition(reduceMotion ? .identity : .opacity)
-                    }
-                }
-                .frame(
-                    width: max(0, proxy.size.width - 20),
-                    height: proxy.size.height,
-                    alignment: .topLeading
-                )
-                .padding(.horizontal, 10)
-
-                // 버튼 중심 좌표를 Watch 탭 전체 크기에 고정한다.
-                // 목록/X 전환과 앨범아트 확대는 이 좌표에 영향을 주지 않는다.
+        Group {
+            if isTrackListPresented {
+                trackList
+                    .padding(.top, 2)
+                    .padding(.bottom, 27)
+                    .transition(reduceMotion ? .identity : .opacity)
+            } else {
+                nowPlaying
+                    .padding(.top, 12)
+                    .padding(.bottom, isArtworkExpanded ? 8 : 27)
+                    .transition(reduceMotion ? .identity : .opacity)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(.horizontal, 10)
+        .overlay {
+            GeometryReader { proxy in
+                // 버튼 중심 좌표를 콘텐츠와 분리해 고정한다.
                 playlistButton
                     .position(x: 23, y: 1)
             }
-            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
         .onAppear { viewModel.refresh() }
         .onChange(of: viewModel.snapshot.id) { _, _ in
@@ -126,7 +119,6 @@ struct WatchRunningMusicTabView: View {
             }
             .padding(.vertical, 0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .overlay {
             if viewModel.snapshot.playlistTracks.isEmpty {
                 ContentUnavailableView("플레이리스트 없음", systemImage: "music.note.list")
