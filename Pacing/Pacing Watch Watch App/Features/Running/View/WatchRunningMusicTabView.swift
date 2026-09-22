@@ -20,6 +20,7 @@ struct WatchRunningMusicTabView: View {
 
             playlistButton
         }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
         .padding(.bottom, isArtworkExpanded && !isTrackListPresented ? 8 : 27)
         .onAppear { viewModel.refresh() }
