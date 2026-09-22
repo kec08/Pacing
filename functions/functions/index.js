@@ -141,17 +141,63 @@ async function deleteListenSessionsForUser(uid) {
   await realtimeDatabase.ref().update(updates);
 }
 
+function isNaverUser(authToken) {
+  return authToken?.provider === "naver";
+}
+
+async function revokeNaverToken(refreshToken, uid) {
+  try {
+    const response = await axios.post(
+      "https://nid.naver.com/oauth2.0/revoke",
+      new URLSearchParams({
+        client_id: "hxrh7_6fG3iRc6tKxOuY",
+        client_secret: "l6C67zJ5g2",
+        token: refreshToken,
+        token_type_hint: "refresh_token",
+      }).toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+    );
+
+    if (response.status !== 200) {
+      logger.error("Naver token revocation returned an unexpected status", { uid, status: response.status });
+      throw new HttpsError("unavailable", "네이버 로그인 연결을 해제하지 못했어요.");
+    }
+    logger.info("Naver token revoked", { uid, status: response.status });
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+
+    const status = error.response?.status;
+    logger.error("Naver token revocation failed", { uid, status, errorCode: error.code });
+    if (status === 401) {
+      throw new HttpsError("failed-precondition", "네이버 로그인 정보를 다시 확인해주세요.");
+    }
+    throw new HttpsError("unavailable", "네이버 로그인 연결을 해제하지 못했어요.");
+  }
+}
+
 /**
  * Permanently deletes the authenticated user's Pacing account and all Pacing data.
- * OAuth provider accounts (Apple, Google, Kakao, Naver) are not affected.
+ * The Naver OAuth connection is revoked before Pacing data is removed.
  */
-exports.deleteAccount = onCall(async (request) => {
+// Firestore recursiveDelete와 Realtime Database 정리를 같은 요청에서 수행하므로,
+// 기본 256MiB를 초과하지 않도록 이 함수에만 메모리를 늘린다.
+exports.deleteAccount = onCall({ memory: "512MiB" }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError("unauthenticated", "로그인한 사용자만 계정을 삭제할 수 있어요.");
   }
 
+  const isNaverAccount = isNaverUser(request.auth.token);
+  const naverRefreshToken = request.data?.naverRefreshToken;
+  if (isNaverAccount && (typeof naverRefreshToken !== "string" || !naverRefreshToken)) {
+    throw new HttpsError("failed-precondition", "네이버 로그인 정보를 다시 확인해주세요.");
+  }
+
   try {
+    if (isNaverAccount) {
+      await revokeNaverToken(naverRefreshToken, uid);
+    }
+
     const userRef = firestore.collection("users").doc(uid);
     const [sentRequests, receivedRequests, ownedPlaylists, ownFriends] = await Promise.all([
       firestore.collection("friendRequests").where("fromUID", "==", uid).get(),
@@ -182,6 +228,7 @@ exports.deleteAccount = onCall(async (request) => {
     logger.info("Pacing account deleted", { uid });
     return { deleted: true };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     logger.error("Pacing account deletion failed", {
       uid,
       errorCode: error?.code,
@@ -278,6 +325,7 @@ exports.naverLogin = onCall(async (request) => {
 
   // 인증 코드 → 액세스 토큰 교환
   let accessToken;
+  let refreshToken;
   try {
     const tokenRes = await axios.get("https://nid.naver.com/oauth2.0/token", {
       params: {
@@ -290,7 +338,8 @@ exports.naverLogin = onCall(async (request) => {
       },
     });
     accessToken = tokenRes.data.access_token;
-    if (!accessToken) throw new Error("access_token 없음");
+    refreshToken = tokenRes.data.refresh_token;
+    if (!accessToken || !refreshToken) throw new Error("Naver token response is incomplete");
     logger.info("Naver token obtained");
   } catch (e) {
     logger.error("Naver token error:", e.response?.data || e.message);
@@ -321,7 +370,7 @@ exports.naverLogin = onCall(async (request) => {
       profileImage,
     });
     logger.info("Custom token created for:", naverUID);
-    return { customToken, nickname, profileImage };
+    return { customToken, nickname, profileImage, refreshToken };
   } catch (e) {
     logger.error("Custom token error:", e.message);
     throw new HttpsError("internal", "Custom Token 생성에 실패했어요.");
