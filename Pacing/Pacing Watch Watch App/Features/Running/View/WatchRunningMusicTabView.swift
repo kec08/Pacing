@@ -231,9 +231,29 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
         snapshot = snapshot.updatingPlaybackState(to: !snapshot.isPlaying)
         repository.send(.togglePlayback, songID: nil)
     }
-    func previous() { repository.send(.previous, songID: nil) }
-    func next() { repository.send(.next, songID: nil) }
-    func play(_ track: WatchMusicTrack) { repository.send(.play, songID: track.id) }
+    func previous() {
+        moveCurrentTrack(by: -1)
+        repository.send(.previous, songID: nil)
+    }
+
+    func next() {
+        moveCurrentTrack(by: 1)
+        repository.send(.next, songID: nil)
+    }
+
+    func play(_ track: WatchMusicTrack) {
+        snapshot = snapshot.updatingCurrentTrack(to: track)
+        repository.send(.play, songID: track.id)
+    }
+
+    private func moveCurrentTrack(by offset: Int) {
+        guard let currentIndex = snapshot.playlistTracks.firstIndex(where: {
+            $0.title == snapshot.title && $0.artist == snapshot.artist
+        }) else { return }
+        let targetIndex = currentIndex + offset
+        guard snapshot.playlistTracks.indices.contains(targetIndex) else { return }
+        snapshot = snapshot.updatingCurrentTrack(to: snapshot.playlistTracks[targetIndex])
+    }
 }
 
 private extension WatchMusicPlaybackSnapshot {
@@ -246,6 +266,19 @@ private extension WatchMusicPlaybackSnapshot {
             artist: artist,
             artworkURL: artworkURL,
             artworkData: artworkData,
+            isPlaying: isPlaying,
+            recentlyPlayed: recentlyPlayed,
+            playlistTracks: playlistTracks
+        )
+    }
+
+    func updatingCurrentTrack(to track: WatchMusicTrack) -> Self {
+        Self(
+            updatedAt: updatedAt,
+            title: track.title,
+            artist: track.artist,
+            artworkURL: track.artworkURL,
+            artworkData: track.artworkData,
             isPlaying: isPlaying,
             recentlyPlayed: recentlyPlayed,
             playlistTracks: playlistTracks

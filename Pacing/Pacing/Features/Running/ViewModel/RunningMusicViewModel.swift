@@ -201,6 +201,9 @@ final class RunningMusicViewModel: ObservableObject {
                 artwork: nil
             )
             displayPlaybackTime = 0
+            // Watch에는 무거운 아트워크 인코딩을 기다리지 않고 곡 정보를 먼저 보낸다.
+            // 실제 재생 엔트리 전환 뒤에는 syncCurrentState()가 전체 상태를 보강한다.
+            publishWatchMusicSnapshot(currentOverride: nowPlayingSnapshot, includesArtwork: false)
 
             do {
                 if index > previousIndex {
@@ -765,10 +768,13 @@ final class RunningMusicViewModel: ObservableObject {
         }
     }
 
-    private func publishWatchMusicSnapshot() {
-        guard let current = currentSongSnapshot() else {
+    private func publishWatchMusicSnapshot(
+        currentOverride: PlayerSongSnapshot? = nil,
+        includesArtwork: Bool = true
+    ) {
+        guard let current = currentOverride ?? currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
-                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack), playlistTracks: makeWatchPlaylistTracks())
+                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) }, playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork))
             )
             return
         }
@@ -782,25 +788,25 @@ final class RunningMusicViewModel: ObservableObject {
                 title: current.title,
                 artist: current.artistName,
                 artworkURL: current.artworkURL,
-                artworkData: watchArtworkData(for: current, presentation: .current),
+                artworkData: includesArtwork ? watchArtworkData(for: current, presentation: .current) : nil,
                 isPlaying: isPlaying,
-                recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack),
-                playlistTracks: makeWatchPlaylistTracks()
+                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) },
+                playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork)
             )
         )
     }
 
-    private func makeWatchTrack(_ snapshot: PlayerSongSnapshot) -> PhoneMusicTrack {
+    private func makeWatchTrack(_ snapshot: PlayerSongSnapshot, includesArtwork: Bool) -> PhoneMusicTrack {
         PhoneMusicTrack(
             id: snapshot.songStoreID,
             title: snapshot.title,
             artist: snapshot.artistName,
             artworkURL: snapshot.artworkURL,
-            artworkData: watchArtworkData(for: snapshot, presentation: .recent)
+            artworkData: includesArtwork ? watchArtworkData(for: snapshot, presentation: .recent) : nil
         )
     }
 
-    private func makeWatchPlaylistTracks() -> [PhoneMusicTrack] {
+    private func makeWatchPlaylistTracks(includesArtwork: Bool) -> [PhoneMusicTrack] {
         queueSongs.map { song in
             let songID = "\(song.id)"
             let recentSnapshot = recentlyPlayedSnapshots.first { $0.songStoreID == songID }
@@ -810,7 +816,7 @@ final class RunningMusicViewModel: ObservableObject {
                 title: song.title,
                 artist: song.artistName,
                 artworkURL: artworkURL,
-                artworkData: recentSnapshot.flatMap { watchArtworkData(for: $0, presentation: .recent) }
+                artworkData: includesArtwork ? recentSnapshot.flatMap { watchArtworkData(for: $0, presentation: .recent) } : nil
             )
         }
     }
