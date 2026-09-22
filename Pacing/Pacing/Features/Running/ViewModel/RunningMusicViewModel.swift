@@ -271,10 +271,11 @@ final class RunningMusicViewModel: ObservableObject {
                 title: entry.title,
                 artistName: entry.subtitle ?? "Apple Music",
                 songStoreID: entry.id,
-                artworkURL: entry.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? song?.artwork?.url(width: 900, height: 900)?.absoluteString
-                    ?? artworkURL(for: song)
-                    ?? resolvedApplicationArtworkURLsByEntryKey[applicationEntryKey(for: entry)],
+                artworkURL: watchArtworkURL(
+                    for: entry,
+                    song: song,
+                    entryKey: applicationEntryKey(for: entry)
+                ),
                 artwork: nil
             )
         }
@@ -861,7 +862,8 @@ final class RunningMusicViewModel: ObservableObject {
         song: Song?,
         entryKey: String
     ) {
-        if let artworkURL = song?.artwork?.url(width: 900, height: 900)?.absoluteString {
+        if let artworkURL = song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+           isRemoteArtworkURL(artworkURL) {
             resolvedApplicationArtworkURLsByEntryKey[entryKey] = artworkURL
         }
 
@@ -900,7 +902,8 @@ final class RunningMusicViewModel: ObservableObject {
                 ) ?? songByID
             }
             let resolvedArtworkURL: String?
-            if let songArtworkURL = resolvedSong?.artwork?.url(width: 900, height: 900)?.absoluteString {
+            if let songArtworkURL = resolvedSong?.artwork?.url(width: 900, height: 900)?.absoluteString,
+               self.isRemoteArtworkURL(songArtworkURL) {
                 resolvedArtworkURL = songArtworkURL
             } else {
                 resolvedArtworkURL = await self.musicService.resolvedRecentSongArtworkURL(
@@ -926,6 +929,27 @@ final class RunningMusicViewModel: ObservableObject {
         for entry: MusicKit.MusicPlayer.Queue.Entry
     ) -> String {
         "\(entry.id)|\(entry.title)|\(entry.subtitle ?? "")"
+    }
+
+    private func watchArtworkURL(
+        for entry: MusicKit.MusicPlayer.Queue.Entry,
+        song: Song?,
+        entryKey: String
+    ) -> String? {
+        let candidates = [
+            resolvedApplicationArtworkURLsByEntryKey[entryKey],
+            entry.artwork?.url(width: 900, height: 900)?.absoluteString,
+            song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+            artworkURL(for: song)
+        ]
+        return candidates.compactMap { $0 }.first(where: isRemoteArtworkURL)
+    }
+
+    private func isRemoteArtworkURL(_ value: String?) -> Bool {
+        guard let value,
+              let url = URL(string: value)
+        else { return false }
+        return ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 
     private func cancelResolutionTasks(except currentEntryKey: String) {
