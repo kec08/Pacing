@@ -234,6 +234,7 @@ private extension WatchMusicPlaybackSnapshot {
 
     func updatingPlaybackState(to isPlaying: Bool) -> Self {
         Self(
+            updatedAt: updatedAt,
             title: title,
             artist: artist,
             artworkURL: artworkURL,

@@ -63,6 +63,7 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationQueueObserver: AnyCancellable?
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
+    private var applicationStateSyncTask: Task<Void, Never>?
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
     private var watchArtworkImagesByURL: [String: UIImage] = [:]
     private var downloadingWatchArtworkURLs = Set<String>()
@@ -94,6 +95,7 @@ final class RunningMusicViewModel: ObservableObject {
         playbackClock?.cancel()
         seekSyncTask?.cancel()
         applicationSongResolutionTasks.values.forEach { $0.cancel() }
+        applicationStateSyncTask?.cancel()
         listenSessionArtworkResolutionTask?.cancel()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
@@ -766,7 +768,7 @@ final class RunningMusicViewModel: ObservableObject {
     private func publishWatchMusicSnapshot() {
         guard let current = currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
-                PhoneMusicPlaybackSnapshot(title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack))
+                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack))
             )
             return
         }
@@ -776,6 +778,7 @@ final class RunningMusicViewModel: ObservableObject {
         recentlyPlayedSnapshots = Array(recentlyPlayedSnapshots.prefix(12))
         PhoneRunSyncPublisher.shared.publishMusic(
             PhoneMusicPlaybackSnapshot(
+                updatedAt: Date().timeIntervalSince1970,
                 title: current.title,
                 artist: current.artistName,
                 artworkURL: current.artworkURL,
@@ -1029,7 +1032,7 @@ final class RunningMusicViewModel: ObservableObject {
     private func observeApplicationPlayer() {
         applicationStateObserver = applicationPlayer.state.objectWillChange
             .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.syncCurrentState() }
+            .sink { [weak self] in self?.scheduleApplicationStateSync() }
 
         let queueObserver = NotificationCenter.default.addObserver(
             forName: .applicationMusicPlayerQueueDidChange,
@@ -1038,7 +1041,7 @@ final class RunningMusicViewModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.bindApplicationQueue()
-                self?.syncCurrentState()
+                self?.scheduleApplicationStateSync()
             }
         }
         notificationObservers.append(queueObserver)
@@ -1052,7 +1055,21 @@ final class RunningMusicViewModel: ObservableObject {
     private func bindApplicationQueue() {
         applicationQueueObserver = applicationPlayer.queue.objectWillChange
             .receive(on: RunLoop.main)
-            .sink { [weak self] in self?.syncCurrentState() }
+            .sink { [weak self] in self?.scheduleApplicationStateSync() }
+    }
+
+    /// MusicKit publisher는 값이 바뀌기 전 objectWillChange를 발행하므로,
+    /// 다음 run loop와 큐 안정화 뒤의 상태를 모두 Watch에 보냅니다.
+    private func scheduleApplicationStateSync() {
+        applicationStateSyncTask?.cancel()
+        applicationStateSyncTask = Task { @MainActor [weak self] in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            self?.syncCurrentState()
+            try? await Task.sleep(nanoseconds: 160_000_000)
+            guard !Task.isCancelled else { return }
+            self?.syncCurrentState()
+        }
     }
 
     private func startPlaybackClock() {

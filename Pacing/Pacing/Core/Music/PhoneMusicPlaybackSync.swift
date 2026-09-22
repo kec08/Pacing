@@ -10,6 +10,8 @@ struct PhoneMusicTrack: Codable, Equatable {
 }
 
 struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
+    /// WatchConnectivity 메시지가 순서와 다르게 도착해도 최신 iPhone 상태만 적용하기 위한 시각입니다.
+    let updatedAt: TimeInterval?
     let title: String
     let artist: String
     let artworkURL: String?
@@ -20,6 +22,7 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
 
     func removingRecentArtworkData() -> Self {
         Self(
+            updatedAt: updatedAt,
             title: title,
             artist: artist,
             artworkURL: artworkURL,
@@ -36,7 +39,7 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
     }
 
     private func withCurrentArtworkData(_ artworkData: Data?) -> Self {
-        Self(title: title, artist: artist, artworkURL: artworkURL, artworkData: artworkData, isPlaying: isPlaying, recentlyPlayed: recentlyPlayed)
+        Self(updatedAt: updatedAt, title: title, artist: artist, artworkURL: artworkURL, artworkData: artworkData, isPlaying: isPlaying, recentlyPlayed: recentlyPlayed)
     }
 }
 

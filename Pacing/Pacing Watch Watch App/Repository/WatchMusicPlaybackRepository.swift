@@ -11,6 +11,7 @@ struct WatchMusicTrack: Codable, Equatable, Identifiable {
 }
 
 struct WatchMusicPlaybackSnapshot: Codable, Equatable {
+    let updatedAt: TimeInterval?
     let title: String
     let artist: String
     let artworkURL: String?
@@ -19,6 +20,7 @@ struct WatchMusicPlaybackSnapshot: Codable, Equatable {
     let recentlyPlayed: [WatchMusicTrack]
 
     static let empty = Self(
+        updatedAt: nil,
         title: "재생 중인 음악 없음",
         artist: "iPhone에서 음악을 재생해 주세요",
         artworkURL: nil,
