@@ -18,7 +18,8 @@ struct WatchRunningMusicTabView: View {
             if presentation.isTrackListPresented {
                 trackList
                     .padding(.top, 2)
-                    .padding(.bottom, 27)
+                    // 탭 인디케이터 바로 위까지만 여백을 남겨 목록 노출량을 확보한다.
+                    .padding(.bottom, 12)
                     .transition(reduceMotion ? .identity : .opacity)
             } else {
                 nowPlaying
