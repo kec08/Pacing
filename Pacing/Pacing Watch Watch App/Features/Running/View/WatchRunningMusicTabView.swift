@@ -9,32 +9,35 @@ struct WatchRunningMusicTabView: View {
     @State private var isTrackListPresented = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            // 콘텐츠 크기가 바뀌어도 버튼 오버레이의 기준 프레임은 유지한다.
-            Color.clear
-
-            Group {
-                if isTrackListPresented {
-                    trackList
-                        .padding(.top, 2)
-                        .padding(.bottom, 27)
-                        .transition(reduceMotion ? .identity : .opacity)
-                } else {
-                    nowPlaying
-                        .padding(.top, 12)
-                        .padding(.bottom, isArtworkExpanded ? 8 : 27)
-                        .transition(reduceMotion ? .identity : .opacity)
+        GeometryReader { proxy in
+            ZStack(alignment: .topLeading) {
+                Group {
+                    if isTrackListPresented {
+                        trackList
+                            .padding(.top, 2)
+                            .padding(.bottom, 27)
+                            .transition(reduceMotion ? .identity : .opacity)
+                    } else {
+                        nowPlaying
+                            .padding(.top, 12)
+                            .padding(.bottom, isArtworkExpanded ? 8 : 27)
+                            .transition(reduceMotion ? .identity : .opacity)
+                    }
                 }
+                .frame(
+                    width: max(0, proxy.size.width - 20),
+                    height: proxy.size.height,
+                    alignment: .topLeading
+                )
+                .padding(.horizontal, 10)
+                .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
+
+                // 버튼은 콘텐츠와 완전히 분리된 Watch 탭 고정 좌표를 사용한다.
+                playlistButton
+                    .position(x: 23, y: 1)
+                    .transaction { $0.animation = nil }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(.horizontal, 10)
-        .overlay(alignment: .topLeading) {
-            // 목록/X 상태와 앨범아트 확대 상태가 바뀌어도 동일한 절대 오프셋을 사용한다.
-            playlistButton
-                .offset(x: 6, y: -16)
-                .transaction { $0.animation = nil }
+            .frame(width: proxy.size.width, height: proxy.size.height, alignment: .topLeading)
         }
         .onAppear { viewModel.refresh() }
         .onChange(of: viewModel.snapshot.id) { _, _ in
@@ -86,8 +89,6 @@ struct WatchRunningMusicTabView: View {
         .buttonBorderShape(.circle)
         .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
         .frame(width: 34, height: 34, alignment: .topLeading)
-        .animation(nil, value: isTrackListPresented)
-        .animation(nil, value: isArtworkExpanded)
     }
 
     private var trackList: some View {
