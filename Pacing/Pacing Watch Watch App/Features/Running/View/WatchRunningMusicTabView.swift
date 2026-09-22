@@ -9,22 +9,25 @@ struct WatchRunningMusicTabView: View {
     @State private var isTrackListPresented = false
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
+        Group {
             if isTrackListPresented {
                 trackList
-                    .padding(.top, 12)
+                    .padding(.top, 2)
                     .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
             } else {
                 nowPlaying
                     .padding(.top, 12)
                     .transition(reduceMotion ? .identity : .opacity)
             }
-
-            playlistButton
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
         .padding(.bottom, isArtworkExpanded && !isTrackListPresented ? 8 : 27)
+        .overlay(alignment: .topLeading) {
+            playlistButton
+                .padding(.leading, 6)
+                .offset(y: -16)
+        }
         .onAppear { viewModel.refresh() }
         .onChange(of: viewModel.snapshot.id) { _, _ in
             guard isArtworkExpanded else { return }
@@ -75,7 +78,6 @@ struct WatchRunningMusicTabView: View {
         .buttonBorderShape(.circle)
         .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
         .frame(width: 34, height: 34, alignment: .topLeading)
-        .offset(x: -4, y: -16)
     }
 
     private var trackList: some View {
