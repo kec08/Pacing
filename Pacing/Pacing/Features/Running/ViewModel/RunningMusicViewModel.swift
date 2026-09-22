@@ -865,7 +865,7 @@ final class RunningMusicViewModel: ObservableObject {
         song: Song?,
         entryKey: String
     ) {
-        if let artworkURL = song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+        if let artworkURL = song?.artwork?.url(width: 320, height: 320)?.absoluteString,
            isRemoteArtworkURL(artworkURL) {
             resolvedApplicationArtworkURLsByEntryKey[entryKey] = artworkURL
         }
@@ -905,7 +905,7 @@ final class RunningMusicViewModel: ObservableObject {
                 ) ?? songByID
             }
             let resolvedArtworkURL: String?
-            if let songArtworkURL = resolvedSong?.artwork?.url(width: 900, height: 900)?.absoluteString,
+            if let songArtworkURL = resolvedSong?.artwork?.url(width: 320, height: 320)?.absoluteString,
                self.isRemoteArtworkURL(songArtworkURL) {
                 resolvedArtworkURL = songArtworkURL
             } else {
@@ -941,8 +941,8 @@ final class RunningMusicViewModel: ObservableObject {
     ) -> String? {
         let candidates = [
             resolvedApplicationArtworkURLsByEntryKey[entryKey],
-            entry.artwork?.url(width: 900, height: 900)?.absoluteString,
-            song?.artwork?.url(width: 900, height: 900)?.absoluteString,
+            entry.artwork?.url(width: 320, height: 320)?.absoluteString,
+            song?.artwork?.url(width: 320, height: 320)?.absoluteString,
             artworkURL(for: song)
         ]
         return candidates.compactMap { $0 }.first(where: isRemoteArtworkURL)
