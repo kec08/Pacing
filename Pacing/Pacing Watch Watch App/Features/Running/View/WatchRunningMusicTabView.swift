@@ -12,11 +12,11 @@ struct WatchRunningMusicTabView: View {
         ZStack(alignment: .topLeading) {
             if isTrackListPresented {
                 trackList
-                    .padding(.top, 30)
+                    .padding(.top, 12)
                     .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
             } else {
                 nowPlaying
-                    .padding(.top, 30)
+                    .padding(.top, 12)
                     .transition(reduceMotion ? .identity : .opacity)
             }
 
@@ -75,6 +75,7 @@ struct WatchRunningMusicTabView: View {
         .buttonBorderShape(.circle)
         .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
         .frame(width: 30, height: 30, alignment: .topLeading)
+        .offset(x: -10, y: -24)
     }
 
     private var trackList: some View {
