@@ -179,7 +179,9 @@ async function revokeNaverToken(refreshToken, uid) {
  * Permanently deletes the authenticated user's Pacing account and all Pacing data.
  * The Naver OAuth connection is revoked before Pacing data is removed.
  */
-exports.deleteAccount = onCall(async (request) => {
+// Firestore recursiveDelete와 Realtime Database 정리를 같은 요청에서 수행하므로,
+// 기본 256MiB를 초과하지 않도록 이 함수에만 메모리를 늘린다.
+exports.deleteAccount = onCall({ memory: "512MiB" }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError("unauthenticated", "로그인한 사용자만 계정을 삭제할 수 있어요.");
