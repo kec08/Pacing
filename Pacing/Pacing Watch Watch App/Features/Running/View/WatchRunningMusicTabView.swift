@@ -9,27 +9,31 @@ struct WatchRunningMusicTabView: View {
     @State private var isTrackListPresented = false
 
     var body: some View {
-        Group {
-            if isTrackListPresented {
-                trackList
-                    .padding(.top, 2)
-                    .padding(.bottom, 27)
-                    .transition(reduceMotion ? .identity : .opacity)
-            } else {
-                nowPlaying
-                    .padding(.top, 12)
-                    .padding(.bottom, isArtworkExpanded ? 8 : 27)
-                    .transition(reduceMotion ? .identity : .opacity)
+        ZStack(alignment: .topLeading) {
+            // 콘텐츠 크기가 바뀌어도 버튼 오버레이의 기준 프레임은 유지한다.
+            Color.clear
+
+            Group {
+                if isTrackListPresented {
+                    trackList
+                        .padding(.top, 2)
+                        .padding(.bottom, 27)
+                        .transition(reduceMotion ? .identity : .opacity)
+                } else {
+                    nowPlaying
+                        .padding(.top, 12)
+                        .padding(.bottom, isArtworkExpanded ? 8 : 27)
+                        .transition(reduceMotion ? .identity : .opacity)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
-        .overlay {
-            GeometryReader { proxy in
-                // 버튼 중심 좌표를 콘텐츠와 분리해 고정한다.
-                playlistButton
-                    .position(x: 23, y: 1)
-            }
+        .overlay(alignment: .topLeading) {
+            // 목록/X 상태와 앨범아트 확대 상태가 바뀌어도 동일한 절대 오프셋을 사용한다.
+            playlistButton
+                .offset(x: 6, y: -16)
         }
         .onAppear { viewModel.refresh() }
         .onChange(of: viewModel.snapshot.id) { _, _ in
