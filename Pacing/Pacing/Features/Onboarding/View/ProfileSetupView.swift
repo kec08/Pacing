@@ -52,6 +52,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 1: 이름(닉네임)
     private var step1: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                cancelProfileSetup()
+            }
             stepHeader(title: "이름을 알려주세요", subtitle: "러닝할 때 사용할 닉네임을 입력해요")
 
             VStack(alignment: .leading, spacing: 8) {
@@ -83,6 +86,9 @@ struct ProfileSetupView: View {
     // MARK: - Step 2: 성별
     private var step2: some View {
         VStack(alignment: .leading, spacing: 0) {
+            profileSetupBackButton {
+                step = 1
+            }
             stepHeader(title: "기본 정보를 알려주세요", subtitle: "성별을 선택해주세요")
 
             VStack(alignment: .leading, spacing: 24) {
@@ -208,6 +214,24 @@ struct ProfileSetupView: View {
 
     // MARK: - 공통 컴포넌트
 
+    private func profileSetupBackButton(action: @escaping () -> Void) -> some View {
+        HStack {
+            Button(action: action) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(Color.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .background(.ultraThinMaterial, in: Circle())
+                    .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+            }
+            .accessibilityLabel("뒤로 가기")
+
+            Spacer()
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 16)
+    }
+
     private func stepHeader(title: String, subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -270,6 +294,12 @@ struct ProfileSetupView: View {
         appState.isLoggedIn = true
         appState.isProfileComplete = true
         isSaving = false
+    }
+
+    private func cancelProfileSetup() {
+        try? Auth.auth().signOut()
+        appState.isProfileComplete = false
+        appState.isLoggedIn = false
     }
 
     private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {

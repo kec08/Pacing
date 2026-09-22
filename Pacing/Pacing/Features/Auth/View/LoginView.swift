@@ -6,7 +6,6 @@ import Combine
 struct LoginView: View {
     @EnvironmentObject var appState: AppState
     @StateObject private var authVM = AuthViewModel()
-    @State private var navigateToOnboarding = false
     @State private var navigateToEmailLogin = false
 
     var body: some View {
@@ -67,9 +66,6 @@ struct LoginView: View {
                         AppleSignInButton { result in
                             Task {
                                 await authVM.handleSignInWithApple(result, appState: appState)
-                                if appState.isLoggedIn {
-                                    navigateToOnboarding = true
-                                }
                             }
                         } prepareNonce: {
                             authVM.prepareNonce()
@@ -79,9 +75,6 @@ struct LoginView: View {
                         Button {
                             Task {
                                 await authVM.signInWithGoogle(appState: appState)
-                                if appState.isLoggedIn {
-                                    navigateToOnboarding = true
-                                }
                             }
                         } label: {
                             HStack(spacing: 8) {
@@ -107,7 +100,6 @@ struct LoginView: View {
                         Button {
                             Task {
                                 await authVM.signInWithKakao(appState: appState)
-                                if appState.isLoggedIn { navigateToOnboarding = true }
                             }
                         } label: {
                             HStack(spacing: 8) {
@@ -129,7 +121,6 @@ struct LoginView: View {
                         Button {
                             Task {
                                 await authVM.signInWithNaver(appState: appState)
-                                if appState.isLoggedIn { navigateToOnboarding = true }
                             }
                         } label: {
                             HStack(spacing: 8) {
@@ -167,15 +158,8 @@ struct LoginView: View {
                         .transition(.opacity)
                 }
             }
-            .navigationDestination(isPresented: $navigateToOnboarding) {
-                OnboardingPermissionView()
-                    .navigationBarBackButtonHidden(true)
-            }
             .navigationDestination(isPresented: $navigateToEmailLogin) {
-                EmailLoginView(authViewModel: authVM) {
-                    navigateToEmailLogin = false
-                    navigateToOnboarding = true
-                }
+                EmailLoginView(authViewModel: authVM, onLoginSuccess: {})
             }
         }
     }
