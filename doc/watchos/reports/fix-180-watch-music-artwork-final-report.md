@@ -3,7 +3,7 @@
 > **완료일**: 2026-09-22  
 > **관련 이슈**: [#180](https://github.com/kec08/Pacing/issues/180)  
 > **브랜치**: `fix/180-watch-music-artwork`  
-> **PR**: 생성 대기
+> **PR**: [#184](https://github.com/kec08/Pacing/pull/184)
 
 ## 구현 요약
 
