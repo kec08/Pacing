@@ -51,7 +51,7 @@ final class WatchRunningViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.state, .idle)
     }
 
-    func testEndedPhoneSnapshotEndsAnActiveRun() {
+    func testEndedPhoneSnapshotReturnsAnActiveRunToIdle() {
         let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
         let startedAt = Date(timeIntervalSince1970: 900)
         viewModel.applyPhoneSnapshot(
@@ -74,6 +74,6 @@ final class WatchRunningViewModelTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(viewModel.state, .ended)
+        XCTAssertEqual(viewModel.state, .idle)
     }
 }

@@ -75,7 +75,7 @@ struct WatchRunningMusicTabView: View {
         .buttonBorderShape(.circle)
         .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
         .frame(width: 34, height: 34, alignment: .topLeading)
-        .offset(x: -10, y: -24)
+        .offset(x: -4, y: -16)
     }
 
     private var trackList: some View {
