@@ -11,8 +11,9 @@ struct EmailLoginView: View {
     @State private var isShowingSignUp = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                 Text("Pacing으로 로그인")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
@@ -46,19 +47,13 @@ struct EmailLoginView: View {
                 }
 
                 Button(action: signIn) {
-                    Group {
-                        if authViewModel.isLoading {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("로그인")
-                        }
-                    }
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(Color.main500)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Text("로그인")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.main500)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .disabled(authViewModel.isLoading)
                 .padding(.top, 32)
@@ -78,8 +73,14 @@ struct EmailLoginView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24)
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 36)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 36)
+            }
+
+            if authViewModel.isLoading {
+                AuthenticationLoadingView()
+                    .transition(.opacity)
+            }
         }
         .background(Color.backgroundPrimary)
         .navigationTitle("로그인")
