@@ -6,13 +6,53 @@ struct WatchRunningMusicTabView: View {
     @StateObject private var viewModel = WatchMusicPlaybackViewModel()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var isArtworkExpanded = false
+    @State private var isTrackListPresented = false
 
     var body: some View {
+        VStack(spacing: 4) {
+            HStack {
+                Button {
+                    withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                        isTrackListPresented.toggle()
+                    }
+                } label: {
+                    Image(systemName: isTrackListPresented ? "xmark" : "list.bullet")
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.glass)
+                .buttonBorderShape(.circle)
+                .controlSize(.mini)
+                .accessibilityLabel(isTrackListPresented ? "곡 목록 닫기" : "곡 목록 보기")
+
+                Spacer()
+            }
+
+            if isTrackListPresented {
+                trackList
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+            } else {
+                nowPlaying
+                    .transition(reduceMotion ? .identity : .opacity)
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, isArtworkExpanded && !isTrackListPresented ? 8 : 27)
+        .onAppear { viewModel.refresh() }
+        .onChange(of: viewModel.snapshot.id) { _, _ in
+            guard isArtworkExpanded else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isArtworkExpanded = false }
+        }
+    }
+
+    private var nowPlaying: some View {
         VStack(spacing: isArtworkExpanded ? 8 : 6) {
             Button {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { isArtworkExpanded.toggle() }
             } label: {
-                artwork.frame(width: isArtworkExpanded ? 142 : 102, height: isArtworkExpanded ? 142 : 102)
+                artwork
+                    .frame(width: isArtworkExpanded ? 142 : 86, height: isArtworkExpanded ? 142 : 86)
+                    .clipShape(RoundedRectangle(cornerRadius: isArtworkExpanded ? 18 : 14, style: .continuous))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isArtworkExpanded ? "앨범 아트 축소" : "앨범 아트 확대")
@@ -32,13 +72,54 @@ struct WatchRunningMusicTabView: View {
                 .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.bottom, isArtworkExpanded ? 8 : 27)
-        .onAppear { viewModel.refresh() }
-        .onChange(of: viewModel.snapshot.id) { _, _ in
-            guard isArtworkExpanded else { return }
-            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isArtworkExpanded = false }
+    }
+
+    private var trackList: some View {
+        ScrollView {
+            LazyVStack(spacing: 5) {
+                ForEach(viewModel.snapshot.recentlyPlayed) { track in
+                    Button {
+                        viewModel.play(track)
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isTrackListPresented = false }
+                    } label: {
+                        HStack(spacing: 8) {
+                            WatchRunningMusicArtwork(data: track.artworkData, url: track.artworkURL, size: 38)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(track.title)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .lineLimit(1)
+                                Text(track.artist)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(PacingWatchTheme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                            if isCurrentTrack(track) {
+                                Image(systemName: viewModel.snapshot.isPlaying ? "speaker.wave.2.fill" : "pause.fill")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(PacingWatchTheme.purple)
+                            }
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 6)
+                        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(track.title), \(track.artist) 재생")
+                }
+            }
+            .padding(.bottom, 4)
         }
+        .overlay {
+            if viewModel.snapshot.recentlyPlayed.isEmpty {
+                ContentUnavailableView("재생 목록 없음", systemImage: "music.note.list")
+                    .font(.caption2)
+            }
+        }
+    }
+
+    private func isCurrentTrack(_ track: WatchMusicTrack) -> Bool {
+        track.title == viewModel.snapshot.title && track.artist == viewModel.snapshot.artist
     }
 
     @ViewBuilder private var artwork: some View {
@@ -87,6 +168,41 @@ struct WatchRunningMusicTabView: View {
         Image(systemName: symbol)
             .font(.system(size: emphasized ? 16 : 12, weight: .bold))
             .frame(width: emphasized ? 34 : 26, height: emphasized ? 34 : 26)
+    }
+}
+
+private struct WatchRunningMusicArtwork: View {
+    let data: Data?
+    let url: String?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let data, let image = image(from: data) {
+                image.resizable().scaledToFill()
+            } else if let url,
+                      let artworkURL = URL(string: url),
+                      ["http", "https"].contains(artworkURL.scheme?.lowercased() ?? "") {
+                AsyncImage(url: artworkURL) { image in image.resizable().scaledToFill() } placeholder: { placeholder }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(PacingWatchTheme.surface)
+            .overlay { Image(systemName: "music.note").font(.caption).foregroundStyle(PacingWatchTheme.purple) }
+    }
+
+    private func image(from data: Data) -> Image? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return Image(decorative: image, scale: 1)
     }
 }
 
