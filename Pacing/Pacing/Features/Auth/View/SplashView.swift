@@ -26,14 +26,21 @@ struct SplashView: View {
                 }
             } else if appState.isAuthLoading {
                 AuthenticationLoadingView()
-            } else if appState.isLoggedIn {
-                if appState.isProfileComplete {
-                    MainTabView()
-                } else {
-                    ProfileSetupView()
-                }
             } else {
-                LoginView()
+                ZStack {
+                    if appState.isLoggedIn {
+                        if appState.isProfileComplete {
+                            MainTabView()
+                        } else {
+                            ProfileSetupView()
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    } else {
+                        LoginView()
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: appState.isLoggedIn)
             }
         }
         .onAppear {

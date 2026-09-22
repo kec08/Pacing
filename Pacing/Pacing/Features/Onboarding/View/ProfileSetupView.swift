@@ -314,8 +314,10 @@ struct ProfileSetupView: View {
 
     private func cancelProfileSetup() {
         try? Auth.auth().signOut()
-        appState.isProfileComplete = false
-        appState.isLoggedIn = false
+        withAnimation(.easeInOut(duration: 0.3)) {
+            appState.isProfileComplete = false
+            appState.isLoggedIn = false
+        }
     }
 
     private func resizedJPEG(_ image: UIImage, max side: CGFloat) -> Data? {
