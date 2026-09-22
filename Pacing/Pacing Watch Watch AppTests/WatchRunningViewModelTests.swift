@@ -76,4 +76,27 @@ final class WatchRunningViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.state, .idle)
     }
+
+    func testPhoneFinishCommandReturnsAnActiveRunToIdleImmediately() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        viewModel.applyPhoneSnapshot(
+            PhoneRunSnapshot(
+                state: .running,
+                elapsedSeconds: 60,
+                distanceKilometers: 0.5,
+                paceMinutesPerKilometer: 5,
+                sentAt: Date(timeIntervalSince1970: 900)
+            )
+        )
+
+        viewModel.applyPhoneCommand(
+            PhoneRunCommand(
+                action: .finish,
+                sender: .phone,
+                sessionID: UUID()
+            )
+        )
+
+        XCTAssertEqual(viewModel.state, .idle)
+    }
 }

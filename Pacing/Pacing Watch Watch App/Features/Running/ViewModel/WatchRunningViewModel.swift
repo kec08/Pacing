@@ -114,8 +114,7 @@ final class WatchRunningViewModel: ObservableObject {
             guard state == .paused else { return }
             pauseOrResume(sendCommand: false)
         case .finish:
-            guard state == .running || state == .paused else { return }
-            end(sendCommand: false)
+            finishFromPhone()
         }
     }
 
@@ -146,9 +145,20 @@ final class WatchRunningViewModel: ObservableObject {
             // Watch 앱을 다시 열면 WatchConnectivity가 마지막 applicationContext를
             // 재전달한다. 유휴 상태의 종료 스냅샷은 이전 러닝이므로 홈 화면을 유지한다.
             guard state.isActive else { return }
+            if state == .running || state == .paused {
+                // 종료 명령이 유실돼도 종료 스냅샷만으로 Watch 운동 세션을 정리한다.
+                end(sendCommand: false)
+            }
             dismissedPhoneEndAt = snapshot.sentAt
             reset()
         }
+    }
+
+    /// iPhone 종료는 Watch HealthKit 종료 완료를 기다리지 않고 즉시 홈으로 복귀한다.
+    private func finishFromPhone() {
+        guard state == .running || state == .paused else { return }
+        end(sendCommand: false)
+        reset()
     }
 
     private func startWorkoutAfterCountdown() {
