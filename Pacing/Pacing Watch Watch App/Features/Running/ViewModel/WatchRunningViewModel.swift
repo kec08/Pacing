@@ -128,9 +128,12 @@ final class WatchRunningViewModel: ObservableObject {
         switch snapshot.state {
         case .running:
             dismissedPhoneEndAt = nil
+            // iPhone 스냅샷과 Watch 자체 타이머가 서로 다른 시작 시각을 기준으로
+            // 시간을 갱신하면 화면 시간이 앞뒤로 튄다. 수신할 때마다 iPhone의
+            // 최신 경과 시간을 기준점으로 다시 맞춰 하나의 시간축만 사용한다.
+            elapsedBeforeCurrentSegment = metrics.elapsed
+            startedAt = snapshot.sentAt
             if state == .idle || state == .paused {
-                startedAt = snapshot.sentAt
-                elapsedBeforeCurrentSegment = metrics.elapsed
                 state = .running
                 startTimer()
             }

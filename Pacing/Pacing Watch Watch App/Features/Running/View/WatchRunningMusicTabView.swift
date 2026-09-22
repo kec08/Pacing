@@ -19,7 +19,7 @@ struct WatchRunningMusicTabView: View {
                 trackList
                     .padding(.top, 2)
                     // 탭 인디케이터 바로 위까지만 여백을 남겨 목록 노출량을 확보한다.
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 6)
                     .transition(reduceMotion ? .identity : .opacity)
             } else {
                 nowPlaying
@@ -43,7 +43,7 @@ struct WatchRunningMusicTabView: View {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { presentation.isArtworkExpanded.toggle() }
             } label: {
                 artwork
-                    .frame(width: presentation.isArtworkExpanded ? 118 : 86, height: presentation.isArtworkExpanded ? 118 : 86)
+                    .frame(width: presentation.isArtworkExpanded ? 126 : 86, height: presentation.isArtworkExpanded ? 126 : 86)
                     .clipShape(RoundedRectangle(cornerRadius: presentation.isArtworkExpanded ? 16 : 14, style: .continuous))
             }
             .buttonStyle(.plain)
