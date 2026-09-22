@@ -10,7 +10,7 @@ struct SplashView: View {
 
     var body: some View {
         Group {
-            if isLoading || appState.isAuthLoading {
+            if isLoading {
                 ZStack {
                     splashGradient
                         .opacity(isExiting ? 0 : 1)
@@ -24,6 +24,8 @@ struct SplashView: View {
                         .opacity(isExiting ? 0 : 1)
                         .accessibilityLabel("Pacing")
                 }
+            } else if appState.isAuthLoading {
+                AuthenticationLoadingView()
             } else if appState.isLoggedIn {
                 if appState.isProfileComplete {
                     MainTabView()

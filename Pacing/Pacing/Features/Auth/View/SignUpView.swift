@@ -73,7 +73,7 @@ struct SignUpView: View {
                 .padding(.bottom, 36)
             }
 
-            if authViewModel.isLoading {
+            if authViewModel.isLoading || appState.isAuthLoading {
                 AuthenticationLoadingView()
                     .transition(.opacity)
             }

@@ -162,7 +162,7 @@ struct LoginView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                if authVM.isLoading {
+                if authVM.isLoading || appState.isAuthLoading {
                     AuthenticationLoadingView()
                         .transition(.opacity)
                 }
