@@ -39,7 +39,7 @@ struct ContentView: View {
                 .overlay(alignment: .topLeading) {
                     if viewModel.selectedRunTab == .music {
                         WatchRunningMusicPlaylistButton(presentation: runningMusicPresentation)
-                            .offset(x: 6, y: -24)
+                            .offset(x: 6, y: -30)
                             .transaction { $0.animation = nil }
                     }
                 }
