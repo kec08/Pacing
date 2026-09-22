@@ -8,7 +8,6 @@ struct LoginView: View {
     @StateObject private var authVM = AuthViewModel()
     @State private var navigateToOnboarding = false
     @State private var navigateToEmailLogin = false
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -176,14 +175,6 @@ struct LoginView: View {
                 EmailLoginView(authViewModel: authVM) {
                     navigateToEmailLogin = false
                     navigateToOnboarding = true
-                }
-            }
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active && authVM.isLoading {
-                    // 외부 로그인(네이버 등) 취소 후 앱으로 돌아왔을 때 로딩 해제
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                        if authVM.isLoading { authVM.isLoading = false }
-                    }
                 }
             }
         }
