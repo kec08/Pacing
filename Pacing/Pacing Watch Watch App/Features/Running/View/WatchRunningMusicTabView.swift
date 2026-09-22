@@ -13,16 +13,17 @@ struct WatchRunningMusicTabView: View {
             if isTrackListPresented {
                 trackList
                     .padding(.top, 2)
-                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .top)))
+                    .padding(.bottom, 27)
+                    .transition(reduceMotion ? .identity : .opacity)
             } else {
                 nowPlaying
                     .padding(.top, 12)
+                    .padding(.bottom, isArtworkExpanded ? 8 : 27)
                     .transition(reduceMotion ? .identity : .opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(.horizontal, 10)
-        .padding(.bottom, isArtworkExpanded && !isTrackListPresented ? 8 : 27)
         .overlay(alignment: .topLeading) {
             playlistButton
                 .padding(.leading, 6)
@@ -41,8 +42,8 @@ struct WatchRunningMusicTabView: View {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { isArtworkExpanded.toggle() }
             } label: {
                 artwork
-                    .frame(width: isArtworkExpanded ? 128 : 86, height: isArtworkExpanded ? 128 : 86)
-                    .clipShape(RoundedRectangle(cornerRadius: isArtworkExpanded ? 18 : 14, style: .continuous))
+                    .frame(width: isArtworkExpanded ? 118 : 86, height: isArtworkExpanded ? 118 : 86)
+                    .clipShape(RoundedRectangle(cornerRadius: isArtworkExpanded ? 16 : 14, style: .continuous))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(isArtworkExpanded ? "앨범 아트 축소" : "앨범 아트 확대")
@@ -66,7 +67,7 @@ struct WatchRunningMusicTabView: View {
 
     private var playlistButton: some View {
         Button {
-            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) {
                 isTrackListPresented.toggle()
             }
         } label: {

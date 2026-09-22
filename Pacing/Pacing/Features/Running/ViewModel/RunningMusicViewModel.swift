@@ -269,6 +269,12 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     func currentSongSnapshot() -> PlayerSongSnapshot? {
+        // MusicKit은 skip 요청 직후에도 잠시 이전 queue entry를 노출한다.
+        // 그 사이 Watch에 이전 곡을 다시 전송하면 화면이 한 번 되돌아간다.
+        if pendingApplicationTrackIndex != nil, let nowPlayingSnapshot {
+            return nowPlayingSnapshot
+        }
+
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let song = applicationSong(from: entry)
