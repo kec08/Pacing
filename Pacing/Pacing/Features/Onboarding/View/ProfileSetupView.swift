@@ -5,6 +5,7 @@ import FirebaseAuth
 struct ProfileSetupView: View {
     @EnvironmentObject var appState: AppState
     @State private var step: Int = 1
+    @State private var isMovingBackward = false
 
     @State private var nickname: String = ""
     @State private var gender: String = "선택 안 함"
@@ -40,10 +41,8 @@ struct ProfileSetupView: View {
                 default: step4
                 }
             }
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing),
-                removal: .move(edge: .leading)
-            ))
+            .id(step)
+            .transition(stepTransition)
             .animation(.easeInOut(duration: 0.25), value: step)
         }
         .background(Color.backgroundPrimary)
@@ -78,7 +77,7 @@ struct ProfileSetupView: View {
             Spacer()
 
             nextButton(label: "다음", enabled: !nickname.trimmingCharacters(in: .whitespaces).isEmpty) {
-                step = 2
+                move(to: 2)
             }
         }
     }
@@ -87,7 +86,7 @@ struct ProfileSetupView: View {
     private var step2: some View {
         VStack(alignment: .leading, spacing: 0) {
             profileSetupBackButton {
-                step = 1
+                moveBack(to: 1)
             }
             stepHeader(title: "기본 정보를 알려주세요", subtitle: "성별을 선택해주세요")
 
@@ -108,7 +107,7 @@ struct ProfileSetupView: View {
             Spacer()
 
             nextButton(label: "다음", enabled: true) {
-                step = 3
+                move(to: 3)
             }
         }
     }
@@ -151,7 +150,7 @@ struct ProfileSetupView: View {
             Spacer()
 
             nextButton(label: "다음", enabled: true) {
-                step = 4
+                move(to: 4)
             }
         }
     }
@@ -213,6 +212,23 @@ struct ProfileSetupView: View {
     }
 
     // MARK: - 공통 컴포넌트
+
+    private var stepTransition: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: isMovingBackward ? .leading : .trailing),
+            removal: .move(edge: isMovingBackward ? .trailing : .leading)
+        )
+    }
+
+    private func move(to nextStep: Int) {
+        isMovingBackward = false
+        step = nextStep
+    }
+
+    private func moveBack(to previousStep: Int) {
+        isMovingBackward = true
+        step = previousStep
+    }
 
     private func profileSetupBackButton(action: @escaping () -> Void) -> some View {
         HStack {
