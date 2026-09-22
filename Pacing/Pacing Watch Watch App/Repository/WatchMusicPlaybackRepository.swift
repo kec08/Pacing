@@ -18,6 +18,7 @@ struct WatchMusicPlaybackSnapshot: Codable, Equatable {
     let artworkData: Data?
     let isPlaying: Bool
     let recentlyPlayed: [WatchMusicTrack]
+    let playlistTracks: [WatchMusicTrack]
 
     static let empty = Self(
         updatedAt: nil,
@@ -26,7 +27,8 @@ struct WatchMusicPlaybackSnapshot: Codable, Equatable {
         artworkURL: nil,
         artworkData: nil,
         isPlaying: false,
-        recentlyPlayed: []
+        recentlyPlayed: [],
+        playlistTracks: []
     )
 }
 

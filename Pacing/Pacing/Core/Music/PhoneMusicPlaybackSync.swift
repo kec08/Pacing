@@ -19,6 +19,8 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
     let artworkData: Data?
     let isPlaying: Bool
     let recentlyPlayed: [PhoneMusicTrack]
+    /// iPhone에서 현재 재생 중인 플레이리스트의 전체 큐입니다.
+    let playlistTracks: [PhoneMusicTrack]
 
     func removingRecentArtworkData() -> Self {
         Self(
@@ -30,6 +32,9 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
             isPlaying: isPlaying,
             recentlyPlayed: recentlyPlayed.map {
                 PhoneMusicTrack(id: $0.id, title: $0.title, artist: $0.artist, artworkURL: $0.artworkURL, artworkData: nil)
+            },
+            playlistTracks: playlistTracks.map {
+                PhoneMusicTrack(id: $0.id, title: $0.title, artist: $0.artist, artworkURL: $0.artworkURL, artworkData: nil)
             }
         )
     }
@@ -39,7 +44,7 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
     }
 
     private func withCurrentArtworkData(_ artworkData: Data?) -> Self {
-        Self(updatedAt: updatedAt, title: title, artist: artist, artworkURL: artworkURL, artworkData: artworkData, isPlaying: isPlaying, recentlyPlayed: recentlyPlayed)
+        Self(updatedAt: updatedAt, title: title, artist: artist, artworkURL: artworkURL, artworkData: artworkData, isPlaying: isPlaying, recentlyPlayed: recentlyPlayed, playlistTracks: playlistTracks)
     }
 }
 

@@ -79,7 +79,7 @@ struct WatchRunningMusicTabView: View {
     private var trackList: some View {
         ScrollView {
             LazyVStack(spacing: 5) {
-                ForEach(viewModel.snapshot.recentlyPlayed) { track in
+                ForEach(viewModel.snapshot.playlistTracks) { track in
                     Button {
                         viewModel.play(track)
                         withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) { isTrackListPresented = false }
@@ -114,8 +114,8 @@ struct WatchRunningMusicTabView: View {
             .padding(.bottom, 4)
         }
         .overlay {
-            if viewModel.snapshot.recentlyPlayed.isEmpty {
-                ContentUnavailableView("재생 목록 없음", systemImage: "music.note.list")
+            if viewModel.snapshot.playlistTracks.isEmpty {
+                ContentUnavailableView("플레이리스트 없음", systemImage: "music.note.list")
                     .font(.caption2)
             }
         }
@@ -244,7 +244,8 @@ private extension WatchMusicPlaybackSnapshot {
             artworkURL: artworkURL,
             artworkData: artworkData,
             isPlaying: isPlaying,
-            recentlyPlayed: recentlyPlayed
+            recentlyPlayed: recentlyPlayed,
+            playlistTracks: playlistTracks
         )
     }
 }

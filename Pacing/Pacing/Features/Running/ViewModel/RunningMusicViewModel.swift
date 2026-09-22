@@ -768,7 +768,7 @@ final class RunningMusicViewModel: ObservableObject {
     private func publishWatchMusicSnapshot() {
         guard let current = currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
-                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack))
+                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack), playlistTracks: makeWatchPlaylistTracks())
             )
             return
         }
@@ -784,7 +784,8 @@ final class RunningMusicViewModel: ObservableObject {
                 artworkURL: current.artworkURL,
                 artworkData: watchArtworkData(for: current, presentation: .current),
                 isPlaying: isPlaying,
-                recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack)
+                recentlyPlayed: recentlyPlayedSnapshots.map(makeWatchTrack),
+                playlistTracks: makeWatchPlaylistTracks()
             )
         )
     }
@@ -797,6 +798,21 @@ final class RunningMusicViewModel: ObservableObject {
             artworkURL: snapshot.artworkURL,
             artworkData: watchArtworkData(for: snapshot, presentation: .recent)
         )
+    }
+
+    private func makeWatchPlaylistTracks() -> [PhoneMusicTrack] {
+        queueSongs.map { song in
+            let songID = "\(song.id)"
+            let recentSnapshot = recentlyPlayedSnapshots.first { $0.songStoreID == songID }
+            let artworkURL = artworkURL(for: song).flatMap { isRemoteArtworkURL($0) ? $0 : nil }
+            return PhoneMusicTrack(
+                id: songID,
+                title: song.title,
+                artist: song.artistName,
+                artworkURL: artworkURL,
+                artworkData: recentSnapshot.flatMap { watchArtworkData(for: $0, presentation: .recent) }
+            )
+        }
     }
 
     private enum WatchArtworkPresentation { case current, recent }
