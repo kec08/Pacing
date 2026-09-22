@@ -265,7 +265,9 @@ final class RunningMusicViewModel: ObservableObject {
     // 음악 탭에서 시작한 ApplicationMusicPlayer 재생은 엔트리 메타데이터가
     // 가장 최신이므로, 러닝 시트도 동일한 스냅샷을 우선 렌더링한다.
     var isUsingApplicationPlayer: Bool {
-        applicationPlayer.queue.currentEntry != nil && applicationPlayer.state.playbackStatus != .stopped
+        // 정지 상태에서도 큐 엔트리는 현재 iPhone 음악을 가리킨다. 여기서
+        // systemMusicPlayer로 전환하면 iPhone의 정지/다음 곡 상태가 Watch에 전달되지 않는다.
+        applicationPlayer.queue.currentEntry != nil
     }
 
     func currentSongSnapshot() -> PlayerSongSnapshot? {
