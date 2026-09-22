@@ -57,11 +57,11 @@ enum PhoneMusicPlaybackCommand: String, Codable {
 
 enum WatchMusicArtworkEncoder {
     static func encodeCurrentArtwork(_ image: UIImage) -> Data? {
-        encode(image, maximumPixelSize: 144, maximumByteCount: 7_000)
+        encode(image, maximumPixelSize: 180, maximumByteCount: 14_000)
     }
 
     static func encodeRecentArtwork(_ image: UIImage) -> Data? {
-        encode(image, maximumPixelSize: 48, maximumByteCount: 1_500)
+        encode(image, maximumPixelSize: 60, maximumByteCount: 2_500)
     }
 
     private static func encode(_ image: UIImage, maximumPixelSize: CGFloat, maximumByteCount: Int) -> Data? {
