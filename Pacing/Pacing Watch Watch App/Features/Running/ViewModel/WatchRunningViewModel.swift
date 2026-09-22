@@ -143,6 +143,9 @@ final class WatchRunningViewModel: ObservableObject {
             state = .paused
         case .ended:
             latestPhoneEndAt = snapshot.sentAt
+            // Watch 앱을 다시 열면 WatchConnectivity가 마지막 applicationContext를
+            // 재전달한다. 유휴 상태의 종료 스냅샷은 이전 러닝이므로 홈 화면을 유지한다.
+            guard state.isActive else { return }
             guard dismissedPhoneEndAt != snapshot.sentAt else { return }
             timer?.cancel()
             state = .ended
