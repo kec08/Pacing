@@ -35,4 +35,24 @@ final class WatchRunningViewModelTests: XCTestCase {
 
         XCTAssertNotEqual(viewModel.secondaryMetrics[0], .distance)
     }
+
+    func testDismissedPhoneEndSnapshotDoesNotReopenSummary() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        let endedAt = Date(timeIntervalSince1970: 1_000)
+        let snapshot = PhoneRunSnapshot(
+            state: .ended,
+            elapsedSeconds: 120,
+            distanceKilometers: 1,
+            paceMinutesPerKilometer: 5,
+            sentAt: endedAt
+        )
+
+        viewModel.applyPhoneSnapshot(snapshot)
+        XCTAssertEqual(viewModel.state, .ended)
+
+        viewModel.reset()
+        viewModel.applyPhoneSnapshot(snapshot)
+
+        XCTAssertEqual(viewModel.state, .idle)
+    }
 }

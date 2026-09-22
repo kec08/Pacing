@@ -15,6 +15,8 @@ final class WatchRunningViewModel: ObservableObject {
     private var startedAt: Date?
     private var sessionID = UUID()
     private var pendingStartAt: Date?
+    private var latestPhoneEndAt: Date?
+    private var dismissedPhoneEndAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
@@ -126,6 +128,7 @@ final class WatchRunningViewModel: ObservableObject {
 
         switch snapshot.state {
         case .running:
+            dismissedPhoneEndAt = nil
             if state == .idle || state == .paused {
                 startedAt = snapshot.sentAt
                 elapsedBeforeCurrentSegment = metrics.elapsed
@@ -133,11 +136,14 @@ final class WatchRunningViewModel: ObservableObject {
                 startTimer()
             }
         case .paused:
+            dismissedPhoneEndAt = nil
             timer?.cancel()
             startedAt = nil
             elapsedBeforeCurrentSegment = metrics.elapsed
             state = .paused
         case .ended:
+            latestPhoneEndAt = snapshot.sentAt
+            guard dismissedPhoneEndAt != snapshot.sentAt else { return }
             timer?.cancel()
             state = .ended
         }
@@ -245,6 +251,9 @@ final class WatchRunningViewModel: ObservableObject {
         elapsedBeforeCurrentSegment = 0
         resetMetrics()
         locationRepository.reset()
+        if state == .ended {
+            dismissedPhoneEndAt = latestPhoneEndAt
+        }
         state = .idle
         displayMetric = .averagePace
         secondaryMetrics = [.distance, .heartRate]

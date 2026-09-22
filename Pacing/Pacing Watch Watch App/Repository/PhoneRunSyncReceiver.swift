@@ -53,8 +53,11 @@ final class PhoneRunSyncReceiver: NSObject {
               let snapshot = try? JSONDecoder().decode(PhoneRunSnapshot.self, from: data)
         else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.latestSnapshot = snapshot
-            self?.onSnapshot?(snapshot)
+            guard let self,
+                  (self.latestSnapshot?.sentAt ?? .distantPast) < snapshot.sentAt
+            else { return }
+            self.latestSnapshot = snapshot
+            self.onSnapshot?(snapshot)
         }
     }
 }
