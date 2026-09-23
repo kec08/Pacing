@@ -20,7 +20,7 @@ struct WatchRunningMusicTabView: View {
                     .padding(.top, 2)
                     // 탭 인디케이터가 안전 영역을 확보하므로 추가 하단 여백은 두지 않는다.
                     .padding(.bottom, 0)
-                    .transition(reduceMotion ? .identity : .opacity)
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .scale(scale: 0.97, anchor: .top)))
             } else {
                 nowPlaying
                     .padding(.top, 12)
@@ -43,8 +43,15 @@ struct WatchRunningMusicTabView: View {
                 withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.28)) { presentation.isArtworkExpanded.toggle() }
             } label: {
                 artwork
-                    .frame(width: presentation.isArtworkExpanded ? 126 : 86, height: presentation.isArtworkExpanded ? 126 : 86)
+                    // AsyncImage의 실제 레이아웃 크기를 고정하고 scale만 전환한다.
+                    // 확대 중 이미지 뷰가 다시 생성되며 placeholder로 깜빡이는 것을 막는다.
+                    .frame(width: 126, height: 126)
                     .clipShape(RoundedRectangle(cornerRadius: presentation.isArtworkExpanded ? 16 : 14, style: .continuous))
+                    .scaleEffect(presentation.isArtworkExpanded ? 1 : 86 / 126)
+                    .frame(
+                        width: presentation.isArtworkExpanded ? 126 : 86,
+                        height: presentation.isArtworkExpanded ? 126 : 86
+                    )
             }
             .buttonStyle(.plain)
             .accessibilityLabel(presentation.isArtworkExpanded ? "앨범 아트 축소" : "앨범 아트 확대")
@@ -87,9 +94,9 @@ struct WatchRunningMusicTabView: View {
                             }
                             Spacer(minLength: 0)
                             if isCurrentTrack(track) {
-                                Image(systemName: viewModel.snapshot.isPlaying ? "speaker.wave.2.fill" : "pause.fill")
+                                Image(systemName: "speaker.wave.2.fill")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(PacingWatchTheme.purple)
+                                    .foregroundStyle(PacingWatchTheme.main500)
                             }
                         }
                         .padding(.horizontal, 7)
@@ -224,42 +231,71 @@ private struct WatchRunningMusicArtwork: View {
 final class WatchMusicPlaybackViewModel: ObservableObject {
     @Published private(set) var snapshot = WatchMusicPlaybackSnapshot.empty
     private let repository: any WatchMusicPlaybackRepository
+    private var cancellables = Set<AnyCancellable>()
+    private var awaitingPlaybackState: Bool?
+    private var awaitingTrack: WatchMusicTrack?
 
     init(repository: (any WatchMusicPlaybackRepository)? = nil) {
         let repository = repository ?? PhoneMusicPlaybackRepository.shared
         self.repository = repository
-        repository.snapshot.receive(on: DispatchQueue.main).assign(to: &$snapshot)
+        repository.snapshot
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] snapshot in
+                self?.applyPhoneSnapshot(snapshot)
+            }
+            .store(in: &cancellables)
     }
 
     func refresh() { repository.refresh() }
     func togglePlayback() {
         // iPhone의 실제 재생 상태는 뒤이어 수신되는 스냅샷으로 확정한다.
         // 다만 Watch 조작에는 즉시 반응해 버튼이 늦게 바뀌지 않게 한다.
-        snapshot = snapshot.updatingPlaybackState(to: !snapshot.isPlaying)
-        repository.send(.togglePlayback, songID: nil)
+        let expectedPlaybackState = !snapshot.isPlaying
+        awaitingPlaybackState = expectedPlaybackState
+        snapshot = snapshot.updatingPlaybackState(to: expectedPlaybackState)
+        repository.send(.setPlaybackState, songID: nil, isPlaying: expectedPlaybackState)
     }
     func previous() {
-        moveCurrentTrack(by: -1)
-        repository.send(.previous, songID: nil)
+        awaitingTrack = moveCurrentTrack(by: -1)
+        repository.send(.previous, songID: nil, isPlaying: nil)
     }
 
     func next() {
-        moveCurrentTrack(by: 1)
-        repository.send(.next, songID: nil)
+        awaitingTrack = moveCurrentTrack(by: 1)
+        repository.send(.next, songID: nil, isPlaying: nil)
     }
 
     func play(_ track: WatchMusicTrack) {
+        awaitingTrack = track
         snapshot = snapshot.updatingCurrentTrack(to: track)
-        repository.send(.play, songID: track.id)
+        repository.send(.play, songID: track.id, isPlaying: nil)
     }
 
-    private func moveCurrentTrack(by offset: Int) {
+    @discardableResult
+    private func moveCurrentTrack(by offset: Int) -> WatchMusicTrack? {
         guard let currentIndex = snapshot.playlistTracks.firstIndex(where: {
             $0.title == snapshot.title && $0.artist == snapshot.artist
-        }) else { return }
+        }) else { return nil }
         let targetIndex = currentIndex + offset
-        guard snapshot.playlistTracks.indices.contains(targetIndex) else { return }
-        snapshot = snapshot.updatingCurrentTrack(to: snapshot.playlistTracks[targetIndex])
+        guard snapshot.playlistTracks.indices.contains(targetIndex) else { return nil }
+        let targetTrack = snapshot.playlistTracks[targetIndex]
+        snapshot = snapshot.updatingCurrentTrack(to: targetTrack)
+        return targetTrack
+    }
+
+    private func applyPhoneSnapshot(_ incoming: WatchMusicPlaybackSnapshot) {
+        // Watch 터치 직후 iPhone의 이전 상태 스냅샷이 먼저 도착할 수 있다.
+        // 반대 상태는 실제 명령 결과가 도착할 때까지 무시해 아이콘이
+        // 재생 ↔ 일시정지로 깜빡이지 않게 한다.
+        if let awaitingPlaybackState {
+            guard incoming.isPlaying == awaitingPlaybackState else { return }
+            self.awaitingPlaybackState = nil
+        }
+        if let awaitingTrack {
+            guard incoming.title == awaitingTrack.title, incoming.artist == awaitingTrack.artist else { return }
+            self.awaitingTrack = nil
+        }
+        snapshot = incoming
     }
 }
 

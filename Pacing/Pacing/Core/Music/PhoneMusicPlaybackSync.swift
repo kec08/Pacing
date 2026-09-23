@@ -33,9 +33,10 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
             recentlyPlayed: recentlyPlayed.map {
                 PhoneMusicTrack(id: $0.id, title: $0.title, artist: $0.artist, artworkURL: $0.artworkURL, artworkData: nil)
             },
-            playlistTracks: playlistTracks.map {
-                PhoneMusicTrack(id: $0.id, title: $0.title, artist: $0.artist, artworkURL: $0.artworkURL, artworkData: nil)
-            }
+            // 플레이리스트의 현재 곡 인접 아트워크는 Watch에서 즉시 보여 줄
+            // 우선순위 데이터다. 최근 재생 썸네일만 먼저 제거해도 현재 목록의
+            // 앨범 아트를 유지할 수 있다.
+            playlistTracks: playlistTracks
         )
     }
 
@@ -50,6 +51,7 @@ struct PhoneMusicPlaybackSnapshot: Codable, Equatable {
 
 enum PhoneMusicPlaybackCommand: String, Codable {
     case togglePlayback
+    case setPlaybackState
     case previous
     case next
     case play
@@ -85,7 +87,7 @@ enum WatchMusicArtworkEncoder {
 
 final class PhoneMusicCommandReceiver {
     static let shared = PhoneMusicCommandReceiver()
-    var onCommand: ((PhoneMusicPlaybackCommand, String?) -> Void)?
+    var onCommand: ((PhoneMusicPlaybackCommand, String?, Bool?) -> Void)?
     var onRefreshRequested: (() -> Void)?
 
     func consume(_ container: [String: Any]) {
@@ -99,6 +101,7 @@ final class PhoneMusicCommandReceiver {
               let command = PhoneMusicPlaybackCommand(rawValue: action)
         else { return }
         let songID = payload["songID"] as? String
-        DispatchQueue.main.async { [weak self] in self?.onCommand?(command, songID) }
+        let isPlaying = payload["isPlaying"] as? Bool
+        DispatchQueue.main.async { [weak self] in self?.onCommand?(command, songID, isPlaying) }
     }
 }

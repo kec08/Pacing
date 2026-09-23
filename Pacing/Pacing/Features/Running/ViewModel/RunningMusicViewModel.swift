@@ -67,15 +67,20 @@ final class RunningMusicViewModel: ObservableObject {
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
     private var watchArtworkImagesByURL: [String: UIImage] = [:]
     private var downloadingWatchArtworkURLs = Set<String>()
+    private var queuedWatchPlaybackState: Bool?
+    private var isApplyingWatchPlaybackState = false
 
     init() {
         observePlaybackState()
         startPlaybackClock()
-        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID in
+        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID, isPlaying in
             guard let self else { return }
             Task { @MainActor in
                 switch command {
                 case .togglePlayback: await self.togglePlayPause()
+                case .setPlaybackState:
+                    guard let isPlaying else { return }
+                    self.enqueueWatchPlaybackState(isPlaying)
                 case .previous: await self.skipToPrevious()
                 case .next: await self.skipToNext()
                 case .play:
@@ -528,17 +533,15 @@ final class RunningMusicViewModel: ObservableObject {
     /// 긴 플레이리스트에서도 네트워크 요청과 메모리 사용량이 급증하지 않는다.
     func loadArtworkURLIfNeeded(for song: Song) async {
         let songID = "\(song.id)"
-        let loadID = activePlaylistLoadID
         guard artworkURL(for: song) == nil,
               queueArtworkURLsBySongID[songID] == nil,
-              !resolvingSongArtworkIDs.contains(songID),
-              loadID != nil
+              !resolvingSongArtworkIDs.contains(songID)
         else { return }
 
         resolvingSongArtworkIDs.insert(songID)
         let resolvedArtworkURLs = await musicService.resolvedArtworkURLs(for: [song])
         resolvingSongArtworkIDs.remove(songID)
-        guard activePlaylistLoadID == loadID,
+        guard queueSongs.contains(where: { "\($0.id)" == songID }),
               let resolvedArtworkURL = resolvedArtworkURLs[songID]
         else { return }
         queueArtworkURLsBySongID[songID] = resolvedArtworkURL
@@ -629,6 +632,54 @@ final class RunningMusicViewModel: ObservableObject {
             player.play()
             isPlaying = true
         }
+    }
+
+    /// Watch의 빠른 연속 탭은 토글 순서가 아니라 마지막으로 선택한 상태를
+    /// 보장해야 한다. 실행 중인 요청이 끝난 뒤 큐에 남은 최종 상태만 적용한다.
+    private func enqueueWatchPlaybackState(_ isPlaying: Bool) {
+        queuedWatchPlaybackState = isPlaying
+        guard !isApplyingWatchPlaybackState else { return }
+        isApplyingWatchPlaybackState = true
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            while let requestedState = self.queuedWatchPlaybackState {
+                self.queuedWatchPlaybackState = nil
+                await self.setPlaybackState(requestedState)
+            }
+            self.isApplyingWatchPlaybackState = false
+        }
+    }
+
+    private func setPlaybackState(_ shouldPlay: Bool) async {
+        if isUsingApplicationPlayer {
+            let isActuallyPlaying = applicationPlayer.state.playbackStatus == .playing
+            guard isActuallyPlaying != shouldPlay else {
+                syncCurrentState()
+                return
+            }
+            if shouldPlay {
+                try? await applicationPlayer.play()
+            } else {
+                applicationPlayer.pause()
+            }
+            syncCurrentState()
+            return
+        }
+
+        guard isPlaying != shouldPlay else {
+            syncCurrentState()
+            return
+        }
+        if shouldPlay {
+            startOptimisticPlaybackClock(from: displayPlaybackTime)
+            player.play()
+        } else {
+            player.pause()
+            stopOptimisticPlaybackClock()
+        }
+        isPlaying = shouldPlay
+        syncCurrentState()
     }
 
     // MARK: - 이전 곡
@@ -780,6 +831,7 @@ final class RunningMusicViewModel: ObservableObject {
         currentOverride: PlayerSongSnapshot? = nil,
         includesArtwork: Bool = true
     ) {
+        resolveVisibleWatchPlaylistArtworkIfNeeded()
         guard let current = currentOverride ?? currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
                 PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) }, playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork))
@@ -787,9 +839,9 @@ final class RunningMusicViewModel: ObservableObject {
             return
         }
 
-        recentlyPlayedSnapshots.removeAll { $0.songStoreID == current.songStoreID }
+        recentlyPlayedSnapshots.removeAll { isSameTrack($0, current) }
         recentlyPlayedSnapshots.insert(current, at: 0)
-        recentlyPlayedSnapshots = Array(recentlyPlayedSnapshots.prefix(12))
+        recentlyPlayedSnapshots = Array(recentlyPlayedSnapshots.prefix(10))
         PhoneRunSyncPublisher.shared.publishMusic(
             PhoneMusicPlaybackSnapshot(
                 updatedAt: Date().timeIntervalSince1970,
@@ -798,7 +850,7 @@ final class RunningMusicViewModel: ObservableObject {
                 artworkURL: current.artworkURL,
                 artworkData: includesArtwork ? watchArtworkData(for: current, presentation: .current) : nil,
                 isPlaying: isPlaying,
-                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) },
+                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: false) },
                 playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork)
             )
         )
@@ -814,17 +866,55 @@ final class RunningMusicViewModel: ObservableObject {
         )
     }
 
+    private func isSameTrack(_ lhs: PlayerSongSnapshot, _ rhs: PlayerSongSnapshot) -> Bool {
+        let hasMatchingMetadata = lhs.title.caseInsensitiveCompare(rhs.title) == .orderedSame
+            && lhs.artistName.caseInsensitiveCompare(rhs.artistName) == .orderedSame
+        return lhs.songStoreID == rhs.songStoreID || hasMatchingMetadata
+    }
+
+    /// Watch 목록에 처음 보이는 현재 곡 주변만 iPhone에서 선해결한다. MusicKit
+    /// 큐 엔트리가 Artwork를 비워서 보내는 경우에도 Watch가 URL을 받을 수 있다.
+    private func resolveVisibleWatchPlaylistArtworkIfNeeded() {
+        let visibleSongs = queueSongs.enumerated().compactMap { index, song in
+            abs(index - currentSongIndex) <= 4 && artworkURL(for: song) == nil ? song : nil
+        }
+        guard !visibleSongs.isEmpty else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            for song in visibleSongs {
+                await self.loadArtworkURLIfNeeded(for: song)
+            }
+            self.syncCurrentState()
+        }
+    }
+
     private func makeWatchPlaylistTracks(includesArtwork: Bool) -> [PhoneMusicTrack] {
-        queueSongs.map { song in
+        queueSongs.enumerated().map { index, song in
             let songID = "\(song.id)"
-            let recentSnapshot = recentlyPlayedSnapshots.first { $0.songStoreID == songID }
             let artworkURL = artworkURL(for: song).flatMap { isRemoteArtworkURL($0) ? $0 : nil }
+            // 전체 큐에 저용량 이미지를 모두 실으면 application context 한도를
+            // 넘어 목록 이미지가 통째로 제거된다. 현재 곡 주변의 즉시 표시 영역만
+            // 데이터로 전달하고, 나머지는 URL/Watch 캐시로 보강한다.
+            let isNearCurrentTrack = abs(index - currentSongIndex) <= 4
+            let snapshot = PlayerSongSnapshot(
+                title: song.title,
+                artistName: song.artistName,
+                songStoreID: songID,
+                artworkURL: artworkURL,
+                // MusicKit Artwork은 UIImage를 직접 노출하지 않는다. URL 기반
+                // 비동기 보강 경로가 이미 Watch용 JPEG 캐시를 채운 뒤 다음
+                // 스냅샷에서 썸네일을 전달한다.
+                artwork: nil
+            )
             return PhoneMusicTrack(
                 id: songID,
                 title: song.title,
                 artist: song.artistName,
                 artworkURL: artworkURL,
-                artworkData: includesArtwork ? recentSnapshot.flatMap { watchArtworkData(for: $0, presentation: .recent) } : nil
+                artworkData: includesArtwork && isNearCurrentTrack
+                    ? watchArtworkData(for: snapshot, presentation: .recent)
+                    : nil
             )
         }
     }
