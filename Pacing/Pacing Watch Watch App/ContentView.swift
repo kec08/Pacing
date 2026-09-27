@@ -224,7 +224,7 @@ private struct WatchMusicTabView: View {
                         description: Text("iPhone에서 음악을 재생하면 여기에 표시됩니다."))
                         .font(.caption)
                 } else {
-                    ForEach(viewModel.snapshot.recentlyPlayed) { track in
+                    ForEach(viewModel.snapshot.recentlyPlayed.prefix(10)) { track in
                         Button { viewModel.play(track) } label: {
                             HStack(spacing: 8) {
                                 WatchMusicArtwork(data: track.artworkData, url: track.artworkURL, size: 38)
@@ -233,9 +233,11 @@ private struct WatchMusicTabView: View {
                                     Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .padding(.trailing, 14)
+                                if isCurrentTrack(track) {
+                                    Image(systemName: viewModel.snapshot.isPlaying ? "speaker.wave.2.fill" : "pause.fill")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(PacingWatchTheme.main500)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(7)
@@ -250,6 +252,10 @@ private struct WatchMusicTabView: View {
             .padding(.bottom, 30)
         }
         .onAppear { viewModel.refresh() }
+    }
+
+    private func isCurrentTrack(_ track: WatchMusicTrack) -> Bool {
+        track.title == viewModel.snapshot.title && track.artist == viewModel.snapshot.artist
     }
 }
 

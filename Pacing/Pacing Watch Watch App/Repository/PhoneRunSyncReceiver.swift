@@ -32,7 +32,10 @@ final class PhoneRunSyncReceiver: NSObject {
            let snapshot = try? JSONDecoder().decode(WatchMusicPlaybackSnapshot.self, from: data) {
             DispatchQueue.main.async { [weak self] in
                 guard let self,
-                      (snapshot.updatedAt ?? 0) >= (self.latestMusicSnapshot?.updatedAt ?? 0)
+                      // application context와 실시간 메시지가 같은 상태를 서로
+                      // 다른 순서로 전달할 수 있다. 동시각 상태는 이미 적용한
+                      // 값이므로 다시 적용하지 않아 낙관적 UI가 되돌아가지 않게 한다.
+                      (snapshot.updatedAt ?? 0) > (self.latestMusicSnapshot?.updatedAt ?? -.infinity)
                 else { return }
                 self.latestMusicSnapshot = snapshot
                 self.onMusicSnapshot?(snapshot)
