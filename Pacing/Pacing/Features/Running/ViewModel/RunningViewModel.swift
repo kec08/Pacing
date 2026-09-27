@@ -57,6 +57,19 @@ enum RunningPacePolicy {
     static func canDisplayPace(distanceKilometers: Double, elapsedSeconds: Int) -> Bool {
         distanceKilometers >= minimumDistanceForPaceKilometers && elapsedSeconds > 0
     }
+
+    /// 일시정지 시간을 제외한 전체 러닝 시간 기준 평균 페이스입니다.
+    static func overallAveragePace(
+        elapsedSeconds: Int,
+        distanceKilometers: Double
+    ) -> Double {
+        guard canDisplayPace(
+            distanceKilometers: distanceKilometers,
+            elapsedSeconds: elapsedSeconds
+        ) else { return 0 }
+
+        return Double(elapsedSeconds) / 60.0 / distanceKilometers
+    }
 }
 
 final class RunningViewModel: ObservableObject {
@@ -270,7 +283,6 @@ final class RunningViewModel: ObservableObject {
         )
         publishRunSnapshot(state: .running, persist: true)
         lastLocation = nil
-        activeElapsedSeconds = 0
         locationManager.startTracking()
         startTimer()
         cadenceAccumulator.resetBaseline(at: resumedAt)
@@ -375,6 +387,15 @@ final class RunningViewModel: ObservableObject {
             elapsedSeconds: Int(activeElapsedSeconds)
         ) else { return 0 }
         return activeElapsedSeconds / 60.0 / distance
+    }
+
+    /// 종료 요약에 표시할 전체 평균 페이스입니다.
+    /// `elapsedSeconds`는 일시정지 시간을 제외한 누적 러닝 시간입니다.
+    var overallAveragePace: Double {
+        RunningPacePolicy.overallAveragePace(
+            elapsedSeconds: elapsedSeconds,
+            distanceKilometers: distance
+        )
     }
 
     var formattedAvgPace: String {
