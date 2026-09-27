@@ -156,6 +156,26 @@ final class PacingTests: XCTestCase {
         XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.10, elapsedSeconds: 30))
     }
 
+    func testOverallAveragePaceUsesEntireElapsedRunDuration() {
+        let pace = RunningPacePolicy.overallAveragePace(
+            elapsedSeconds: 3_676,
+            distanceKilometers: 11.44
+        )
+
+        XCTAssertEqual(pace, 5.356, accuracy: 0.001)
+    }
+
+    func testOverallAveragePaceRejectsInsufficientRunData() {
+        XCTAssertEqual(
+            RunningPacePolicy.overallAveragePace(elapsedSeconds: 120, distanceKilometers: 0.09),
+            0
+        )
+        XCTAssertEqual(
+            RunningPacePolicy.overallAveragePace(elapsedSeconds: 0, distanceKilometers: 1),
+            0
+        )
+    }
+
     func testPacePolicyRejectsStationaryGPSDriftAndAcceptsRunningSegment() {
         XCTAssertFalse(
             RunningPacePolicy.isValidRunningSegment(

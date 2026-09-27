@@ -387,7 +387,7 @@ struct RunningView: View {
             RunSummaryView(
                 distance: viewModel.distance,
                 elapsedSeconds: viewModel.elapsedSeconds,
-                avgPace: viewModel.avgPace,
+                avgPace: viewModel.overallAveragePace,
                 calories: viewModel.estimatedCalories,
                 lapPaces: viewModel.completedLapPaces,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,
