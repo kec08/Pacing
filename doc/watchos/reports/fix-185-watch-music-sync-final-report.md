@@ -3,7 +3,7 @@
 > **완료일**: 2026-09-27  
 > **관련 이슈**: [#185](https://github.com/kec08/Pacing/issues/185)  
 > **브랜치**: `feat/185-watch-music-sync`  
-> **PR**: 생성 후 반영
+> **PR**: [#186](https://github.com/kec08/Pacing/pull/186)
 
 ## 구현 요약
 
