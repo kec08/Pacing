@@ -1,4 +1,5 @@
 import CoreLocation
+import FirebaseAuth
 import Foundation
 import WatchConnectivity
 
@@ -135,13 +136,29 @@ extension PhoneRunSyncPublisher: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(message)
         PhoneMusicCommandReceiver.shared.consume(message)
+        refreshRunHistoryIfRequested(by: message)
     }
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(applicationContext)
         PhoneMusicCommandReceiver.shared.consume(applicationContext)
+        refreshRunHistoryIfRequested(by: applicationContext)
     }
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(userInfo)
         PhoneMusicCommandReceiver.shared.consume(userInfo)
+        refreshRunHistoryIfRequested(by: userInfo)
+    }
+
+    private func refreshRunHistoryIfRequested(by container: [String: Any]) {
+        guard container["watchRunHistoryRefresh"] as? Bool == true,
+              let uid = Auth.auth().currentUser?.uid
+        else { return }
+
+        Task { [weak self] in
+            guard let self,
+                  let records = try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
+            else { return }
+            self.publishRunHistory(records: records)
+        }
     }
 }

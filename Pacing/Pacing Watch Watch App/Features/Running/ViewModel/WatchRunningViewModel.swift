@@ -118,15 +118,11 @@ final class WatchRunningViewModel: ObservableObject {
         }
     }
 
-    func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) {
-        metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
-        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
-        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
-            ? snapshot.paceMinutesPerKilometer * 60
-            : nil
-
+    @discardableResult
+    func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) -> Bool {
         switch snapshot.state {
         case .running:
+            updateMetrics(from: snapshot)
             dismissedPhoneEndAt = nil
             // iPhone 스냅샷과 Watch 자체 타이머가 서로 다른 시작 시각을 기준으로
             // 시간을 갱신하면 화면 시간이 앞뒤로 튄다. 수신할 때마다 iPhone의
@@ -137,24 +133,39 @@ final class WatchRunningViewModel: ObservableObject {
                 state = .running
                 startTimer()
             }
+            return true
         case .paused:
+            // 유휴 상태에서 온 정지 스냅샷은 과거 세션의 상태일 수 있다.
+            // 실제로 실행 중인 세션만 iPhone의 정지 상태를 받아들인다.
+            guard state == .running || state == .paused else { return false }
+            updateMetrics(from: snapshot)
             dismissedPhoneEndAt = nil
             timer?.cancel()
             startedAt = nil
             elapsedBeforeCurrentSegment = metrics.elapsed
             state = .paused
+            return true
         case .ended:
             latestPhoneEndAt = snapshot.sentAt
             // Watch 앱을 다시 열면 WatchConnectivity가 마지막 applicationContext를
             // 재전달한다. 유휴 상태의 종료 스냅샷은 이전 러닝이므로 홈 화면을 유지한다.
-            guard state.isActive else { return }
+            guard state.isActive else { return false }
             if state == .running || state == .paused {
                 // 종료 명령이 유실돼도 종료 스냅샷만으로 Watch 운동 세션을 정리한다.
                 end(sendCommand: false)
             }
             dismissedPhoneEndAt = snapshot.sentAt
             reset()
+            return true
         }
+    }
+
+    private func updateMetrics(from snapshot: PhoneRunSnapshot) {
+        metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
+        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
+            ? snapshot.paceMinutesPerKilometer * 60
+            : nil
     }
 
     /// iPhone 종료는 Watch HealthKit 종료 완료를 기다리지 않고 즉시 홈으로 복귀한다.

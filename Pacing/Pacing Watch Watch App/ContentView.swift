@@ -118,8 +118,10 @@ final class WatchAppViewModel: ObservableObject {
 
     init() {
         PhoneRunSyncReceiver.shared.onSnapshot = { [weak self] snapshot in
-            self?.selectedTab = .running
-            self?.runningViewModel.applyPhoneSnapshot(snapshot)
+            guard let self,
+                  self.runningViewModel.applyPhoneSnapshot(snapshot)
+            else { return }
+            self.selectedTab = .running
         }
         PhoneRunSyncReceiver.shared.onCommand = { [weak self] command in
             self?.runningViewModel.applyPhoneCommand(command)
@@ -313,6 +315,7 @@ private final class WatchRunHistoryViewModel: ObservableObject {
         receiver.onRunHistorySnapshot = { [weak self] snapshot in
             self?.snapshot = snapshot
         }
+        receiver.requestContentRefresh()
     }
 }
 

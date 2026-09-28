@@ -67,8 +67,12 @@ final class PhoneMusicPlaybackRepository: NSObject, WatchMusicPlaybackRepository
     }
 
     func refresh() {
-        guard session.isReachable else { return }
-        session.sendMessage(["watchMusicRefresh": true], replyHandler: nil)
+        let request = ["watchMusicRefresh": true]
+        if session.isReachable {
+            session.sendMessage(request, replyHandler: nil)
+        } else {
+            session.transferUserInfo(request)
+        }
     }
 
     func send(_ command: WatchMusicPlaybackCommand, songID: String? = nil, isPlaying: Bool? = nil) {
