@@ -489,6 +489,7 @@ private struct WatchRecentRunRouteView: View {
                     )
                 }
                 .frame(height: 76)
+                .frame(maxWidth: 142)
                 .accessibilityLabel("러닝 경로")
             } else {
                 Text("러닝 경로가 없어요")
