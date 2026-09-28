@@ -118,8 +118,10 @@ final class WatchAppViewModel: ObservableObject {
 
     init() {
         PhoneRunSyncReceiver.shared.onSnapshot = { [weak self] snapshot in
-            self?.selectedTab = .running
-            self?.runningViewModel.applyPhoneSnapshot(snapshot)
+            guard let self,
+                  self.runningViewModel.applyPhoneSnapshot(snapshot)
+            else { return }
+            self.selectedTab = .running
         }
         PhoneRunSyncReceiver.shared.onCommand = { [weak self] command in
             self?.runningViewModel.applyPhoneCommand(command)
@@ -309,10 +311,12 @@ private struct WatchListenTogetherTabView: View {
 private final class WatchRunHistoryViewModel: ObservableObject {
     @Published private(set) var snapshot = PhoneRunHistorySnapshot.empty
 
-    init(receiver: PhoneRunSyncReceiver = .shared) {
+    init(receiver: PhoneRunSyncReceiver? = nil) {
+        let receiver = receiver ?? PhoneRunSyncReceiver.shared
         receiver.onRunHistorySnapshot = { [weak self] snapshot in
             self?.snapshot = snapshot
         }
+        receiver.requestContentRefresh()
     }
 }
 
@@ -421,9 +425,10 @@ private struct WatchRunHistoryDetailView: View {
                     if let averageHeartRate = run.averageHeartRate {
                         metricRow("BPM", "\(Int(averageHeartRate.rounded()))")
                     }
-                    if let averageCadence = run.averageCadence {
-                        metricRow("케이던스", "\(Int(averageCadence.rounded()))")
+                    if let calories = run.calories {
+                        metricRow("칼로리", "\(calories) kcal")
                     }
+                    metricRow("케이던스", formattedCadence)
                 }
             }
             .padding(.horizontal, 10)
@@ -441,6 +446,14 @@ private struct WatchRunHistoryDetailView: View {
                 .foregroundStyle(PacingWatchTheme.textPrimary)
         }
         .font(.caption)
+    }
+
+    private var formattedCadence: String {
+        guard let averageCadence = run.averageCadence,
+              averageCadence.isFinite,
+              averageCadence > 0
+        else { return "--" }
+        return "\(Int(averageCadence.rounded()))"
     }
 }
 

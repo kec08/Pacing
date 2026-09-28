@@ -1,4 +1,5 @@
 import CoreLocation
+import FirebaseAuth
 import Foundation
 import WatchConnectivity
 
@@ -100,6 +101,7 @@ final class PhoneRunSyncPublisher: NSObject {
                     elevationGainMeters: record.elevationGainMeters,
                     averageHeartRate: record.averageHeartRate,
                     averageCadence: record.averageCadence,
+                    calories: estimatedCalories(for: record),
                     routePoints: compactRoutePoints(from: record.routeCoordinates)
                 )
             },
@@ -126,6 +128,12 @@ final class PhoneRunSyncPublisher: NSObject {
             return PhoneRunHistoryRoutePoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
         }
     }
+
+    private func estimatedCalories(for record: RunRecord) -> Int {
+        let storedWeight = UserDefaults.standard.integer(forKey: "weight")
+        let weight = storedWeight > 0 ? Double(storedWeight) : 60.0
+        return Int((weight * record.distance * 1.036).rounded())
+    }
 }
 
 extension PhoneRunSyncPublisher: WCSessionDelegate {
@@ -135,13 +143,29 @@ extension PhoneRunSyncPublisher: WCSessionDelegate {
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(message)
         PhoneMusicCommandReceiver.shared.consume(message)
+        refreshRunHistoryIfRequested(by: message)
     }
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(applicationContext)
         PhoneMusicCommandReceiver.shared.consume(applicationContext)
+        refreshRunHistoryIfRequested(by: applicationContext)
     }
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
         PhoneRunCommandReceiver.shared.consume(userInfo)
         PhoneMusicCommandReceiver.shared.consume(userInfo)
+        refreshRunHistoryIfRequested(by: userInfo)
+    }
+
+    private func refreshRunHistoryIfRequested(by container: [String: Any]) {
+        guard container["watchRunHistoryRefresh"] as? Bool == true,
+              let uid = Auth.auth().currentUser?.uid
+        else { return }
+
+        Task { [weak self] in
+            guard let self,
+                  let records = try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
+            else { return }
+            self.publishRunHistory(records: records)
+        }
     }
 }

@@ -32,6 +32,7 @@ struct PhoneRunHistoryItem: Codable, Equatable, Identifiable {
     let elevationGainMeters: Double?
     let averageHeartRate: Double?
     let averageCadence: Double?
+    let calories: Int?
     let routePoints: [PhoneRunHistoryRoutePoint]
 }
 
