@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import WatchConnectivity
 
@@ -98,11 +99,32 @@ final class PhoneRunSyncPublisher: NSObject {
                     averagePaceMinutesPerKilometer: record.displayPace,
                     elevationGainMeters: record.elevationGainMeters,
                     averageHeartRate: record.averageHeartRate,
-                    averageCadence: record.averageCadence
+                    averageCadence: record.averageCadence,
+                    routePoints: compactRoutePoints(from: record.routeCoordinates)
                 )
             },
             updatedAt: now
         )
+    }
+
+    private func compactRoutePoints(
+        from coordinates: [CLLocationCoordinate2D],
+        maximumPointCount: Int = 40
+    ) -> [PhoneRunHistoryRoutePoint] {
+        guard coordinates.count > maximumPointCount else {
+            return coordinates.map {
+                PhoneRunHistoryRoutePoint(latitude: $0.latitude, longitude: $0.longitude)
+            }
+        }
+
+        let lastIndex = coordinates.count - 1
+        return (0..<maximumPointCount).map { index in
+            let coordinateIndex = Int(
+                (Double(index) * Double(lastIndex) / Double(maximumPointCount - 1)).rounded()
+            )
+            let coordinate = coordinates[coordinateIndex]
+            return PhoneRunHistoryRoutePoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        }
     }
 }
 

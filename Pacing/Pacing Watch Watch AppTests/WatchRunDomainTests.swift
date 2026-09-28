@@ -42,7 +42,8 @@ final class WatchRunDomainTests: XCTestCase {
             averagePaceMinutesPerKilometer: 5.77,
             elevationGainMeters: 42,
             averageHeartRate: 155,
-            averageCadence: 168
+            averageCadence: 168,
+            routePoints: [PhoneRunHistoryRoutePoint(latitude: 37.5, longitude: 127.0)]
         )
         let snapshot = PhoneRunHistorySnapshot(
             monthDistanceKilometers: 12.7,

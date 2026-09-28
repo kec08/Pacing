@@ -398,9 +398,8 @@ private struct WatchRunHistoryDetailView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                Text("러닝 기록")
-                    .font(.headline)
-                    .foregroundStyle(PacingWatchTheme.textPrimary)
+                WatchRecentRunRouteView(points: run.routePoints)
+                    .padding(.bottom, 8)
                 HStack(alignment: .firstTextBaseline, spacing: 3) {
                     Text(String(format: "%.2f", run.distanceKilometers))
                         .font(.system(size: 42, weight: .bold, design: .rounded))
@@ -430,7 +429,6 @@ private struct WatchRunHistoryDetailView: View {
             .padding(.horizontal, 10)
             .padding(.bottom, 24)
         }
-        .navigationTitle("최근 러닝")
     }
 
     private func metricRow(_ title: String, _ value: String) -> some View {
@@ -443,6 +441,64 @@ private struct WatchRunHistoryDetailView: View {
                 .foregroundStyle(PacingWatchTheme.textPrimary)
         }
         .font(.caption)
+    }
+}
+
+private struct WatchRecentRunRouteView: View {
+    let points: [PhoneRunHistoryRoutePoint]
+
+    var body: some View {
+        Group {
+            if points.count >= 2 {
+                Canvas { context, size in
+                    let latitudes = points.map(\.latitude)
+                    let longitudes = points.map(\.longitude)
+                    guard let minimumLatitude = latitudes.min(),
+                          let maximumLatitude = latitudes.max(),
+                          let minimumLongitude = longitudes.min(),
+                          let maximumLongitude = longitudes.max()
+                    else { return }
+
+                    let latitudeSpan = max(maximumLatitude - minimumLatitude, 0.000_01)
+                    let longitudeSpan = max(maximumLongitude - minimumLongitude, 0.000_01)
+                    let horizontalInset = size.width * 0.08
+                    let verticalInset = size.height * 0.12
+
+                    func position(for point: PhoneRunHistoryRoutePoint) -> CGPoint {
+                        let xRatio = (point.longitude - minimumLongitude) / longitudeSpan
+                        let yRatio = (point.latitude - minimumLatitude) / latitudeSpan
+                        return CGPoint(
+                            x: horizontalInset + CGFloat(xRatio) * (size.width - horizontalInset * 2),
+                            y: size.height - verticalInset - CGFloat(yRatio) * (size.height - verticalInset * 2)
+                        )
+                    }
+
+                    var path = Path()
+                    path.move(to: position(for: points[0]))
+                    for point in points.dropFirst() {
+                        path.addLine(to: position(for: point))
+                    }
+                    context.stroke(
+                        path,
+                        with: .linearGradient(
+                            Gradient(colors: [PacingWatchTheme.purple, PacingWatchTheme.main500]),
+                            startPoint: .zero,
+                            endPoint: CGPoint(x: size.width, y: size.height)
+                        ),
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                    )
+                }
+                .frame(height: 92)
+                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .accessibilityLabel("러닝 경로")
+            } else {
+                Text("러닝 경로가 없어요")
+                    .font(.caption2)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 76)
+                    .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+        }
     }
 }
 
