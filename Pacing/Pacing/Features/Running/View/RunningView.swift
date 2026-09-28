@@ -290,7 +290,8 @@ struct RunningView: View {
             // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
             if let cd = viewModel.countdown {
                 ZStack {
-                    Color.black.opacity(0.30)
+                    Rectangle()
+                        .fill(Color.black.opacity(0.55))
                         .ignoresSafeArea()
                     Text("\(cd)")
                         .font(.system(size: 160, weight: .black))
