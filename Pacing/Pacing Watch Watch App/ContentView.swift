@@ -488,15 +488,13 @@ private struct WatchRecentRunRouteView: View {
                         style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
                     )
                 }
-                .frame(height: 92)
-                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .frame(height: 76)
                 .accessibilityLabel("러닝 경로")
             } else {
                 Text("러닝 경로가 없어요")
                     .font(.caption2)
                     .foregroundStyle(PacingWatchTheme.textSecondary)
                     .frame(maxWidth: .infinity, minHeight: 76)
-                    .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
     }
