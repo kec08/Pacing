@@ -67,6 +67,7 @@ struct RunningView: View {
     @State private var myProfileImageBase64: String?
     @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
     @State private var listenSheetDetent: PresentationDetent = .medium
+    @State private var countdownScale: CGFloat = 1
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -289,13 +290,14 @@ struct RunningView: View {
             // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
             if let cd = viewModel.countdown {
                 ZStack {
-                    Color.black.opacity(0.85)
+                    Color.black
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .ignoresSafeArea()
                     Text("\(cd)")
-                        .font(.system(size: 160, weight: .black))
+                        .font(.system(size: 172, weight: .black))
                         .foregroundStyle(Color.main500)
-                        .transition(.scale(scale: 1.4).combined(with: .opacity))
                         .id(cd)
+                        .scaleEffect(countdownScale)
                 }
                 .zIndex(20)
             }
@@ -315,6 +317,21 @@ struct RunningView: View {
             guard hasCenteredOnInitialLocation, !isProgrammaticMove else { return }
             mapZoomDistance = context.camera.distance
             isFollowingUser = false
+        }
+        .onChange(of: viewModel.countdown) { _, newValue in
+            guard newValue != nil else {
+                countdownScale = 1
+                return
+            }
+
+            countdownScale = 0.84
+            Task { @MainActor in
+                await Task.yield()
+                guard viewModel.countdown != nil else { return }
+                withAnimation(.easeOut(duration: 0.48)) {
+                    countdownScale = 1
+                }
+            }
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
@@ -591,13 +608,11 @@ struct RunningView: View {
     private func independentMetricButton(slot: Int) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.24)) {
-                let currentMetric = metricSlots[slot]
-                let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
-                    index == slot ? nil : metric
-                })
-                metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
-            }
+            let currentMetric = metricSlots[slot]
+            let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
+                index == slot ? nil : metric
+            })
+            metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
         } label: {
             VStack(spacing: 2) {
                 Text(metricValue(for: metricSlots[slot]))
@@ -605,13 +620,9 @@ struct RunningView: View {
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .id("value-\(metricSlots[slot])")
-                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 Text(metricLabel(for: metricSlots[slot]))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.textSecondary)
-                    .id("label-\(metricSlots[slot])")
-                    .transition(.opacity)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -839,19 +850,6 @@ struct RunningView: View {
     // paused: 이어서 / 종료 선택
     private var pausedControls: some View {
         HStack(spacing: 24) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showStopConfirm = false
-                viewModel.resume()
-            } label: {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
-                    .background(Color.main500)
-                    .clipShape(Circle())
-            }
-
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.2), lineWidth: 4)
@@ -875,6 +873,18 @@ struct RunningView: View {
                     .onEnded { _ in cancelStopHold() }
             )
 
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showStopConfirm = false
+                viewModel.resume()
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 80, height: 80)
+                    .background(Color.main500)
+                    .clipShape(Circle())
+            }
         }
     }
 

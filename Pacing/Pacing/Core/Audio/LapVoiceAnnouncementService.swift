@@ -33,12 +33,30 @@ struct LapVoiceAnnouncement: Equatable {
     }
 }
 
-protocol LapVoiceAnnouncing: AnyObject {
+enum RunningStateVoiceAnnouncement: Equatable {
+    case started
+    case paused
+    case resumed
+
+    var text: String {
+        switch self {
+        case .started:
+            "운동을 시작합니다."
+        case .paused:
+            "운동을 정지합니다."
+        case .resumed:
+            "운동을 재개합니다."
+        }
+    }
+}
+
+protocol RunningVoiceAnnouncing: AnyObject {
     func announce(_ announcement: LapVoiceAnnouncement)
+    func announce(_ announcement: RunningStateVoiceAnnouncement)
     func stop()
 }
 
-final class LapVoiceAnnouncementService: NSObject, LapVoiceAnnouncing {
+final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     private let synthesizer = AVSpeechSynthesizer()
 
     override init() {
@@ -47,9 +65,17 @@ final class LapVoiceAnnouncementService: NSObject, LapVoiceAnnouncing {
     }
 
     func announce(_ announcement: LapVoiceAnnouncement) {
+        speak(announcement.text)
+    }
+
+    func announce(_ announcement: RunningStateVoiceAnnouncement) {
+        speak(announcement.text)
+    }
+
+    private func speak(_ text: String) {
         configureAudioSessionForAnnouncement()
 
-        let utterance = AVSpeechUtterance(string: announcement.text)
+        let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredKoreanVoice()
         utterance.rate = 0.48
         utterance.pitchMultiplier = 1.0

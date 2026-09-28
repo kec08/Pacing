@@ -107,7 +107,7 @@ final class RunningViewModel: ObservableObject {
     private let heartRateRepository: HeartRateRepository
     private let cadenceRepository: CadenceRepository
     private let elevationRepository: ElevationRepository
-    private let lapVoiceAnnouncer: LapVoiceAnnouncing
+    private let voiceAnnouncer: RunningVoiceAnnouncing
     private var cadenceAccumulator = CadenceAccumulator()
     private var cadenceSegmentStartDate: Date?
     private var healthAuthorizationTask: Task<Bool, Never>?
@@ -118,13 +118,13 @@ final class RunningViewModel: ObservableObject {
         heartRateRepository: HeartRateRepository = HealthKitHeartRateRepository(),
         cadenceRepository: CadenceRepository = CoreMotionCadenceRepository(),
         elevationRepository: ElevationRepository = CoreMotionElevationRepository(),
-        lapVoiceAnnouncer: LapVoiceAnnouncing = LapVoiceAnnouncementService()
+        voiceAnnouncer: RunningVoiceAnnouncing = LapVoiceAnnouncementService()
     ) {
         self.locationManager = locationManager
         self.heartRateRepository = heartRateRepository
         self.cadenceRepository = cadenceRepository
         self.elevationRepository = elevationRepository
-        self.lapVoiceAnnouncer = lapVoiceAnnouncer
+        self.voiceAnnouncer = voiceAnnouncer
         locationManager.startMonitoringCurrentLocation()
 
         locationManager.$recentRecordedLocations
@@ -239,6 +239,7 @@ final class RunningViewModel: ObservableObject {
         healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
+        voiceAnnouncer.announce(.started)
         if launchWatch {
             Task { @MainActor in
                 await PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
@@ -264,7 +265,8 @@ final class RunningViewModel: ObservableObject {
         )
         publishRunSnapshot(state: .paused, persist: true)
         timer?.cancel()
-        lapVoiceAnnouncer.stop()
+        voiceAnnouncer.stop()
+        voiceAnnouncer.announce(.paused)
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
@@ -278,6 +280,7 @@ final class RunningViewModel: ObservableObject {
         let resumedAt = Date()
         runningStartedAt = resumedAt
         state = .running
+        voiceAnnouncer.announce(.resumed)
         PhoneRunSyncPublisher.shared.send(
             PhoneRunCommand(action: .resume, sender: .phone, sessionID: sessionID)
         )
@@ -331,7 +334,7 @@ final class RunningViewModel: ObservableObject {
     func reset() {
         cancelCountdown()
         timer?.cancel()
-        lapVoiceAnnouncer.stop()
+        voiceAnnouncer.stop()
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
         locationManager.resetRoute()
@@ -710,6 +713,6 @@ final class RunningViewModel: ObservableObject {
             elapsedSeconds: elapsedSeconds,
             averagePaceMinutesPerKilometer: avgPace
         ) else { return }
-        lapVoiceAnnouncer.announce(announcement)
+        voiceAnnouncer.announce(announcement)
     }
 }
