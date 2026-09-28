@@ -294,7 +294,7 @@ struct RunningView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .ignoresSafeArea()
                     Text("\(cd)")
-                        .font(.system(size: 160, weight: .black))
+                        .font(.system(size: 172, weight: .black))
                         .foregroundStyle(Color.main500)
                         .id(cd)
                         .scaleEffect(countdownScale)
@@ -324,11 +324,11 @@ struct RunningView: View {
                 return
             }
 
-            countdownScale = 0.72
+            countdownScale = 0.90
             Task { @MainActor in
                 await Task.yield()
                 guard viewModel.countdown != nil else { return }
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.52)) {
+                withAnimation(.easeOut(duration: 0.48)) {
                     countdownScale = 1
                 }
             }
