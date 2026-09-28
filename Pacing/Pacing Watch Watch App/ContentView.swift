@@ -372,26 +372,20 @@ private struct WatchRecentRunRow: View {
     let run: PhoneRunHistoryItem
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(String(format: "%.2f", run.distanceKilometers))
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundStyle(PacingWatchTheme.textPrimary)
-                    Text("km")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PacingWatchTheme.textSecondary)
-                }
-                Text(WatchRunHistoryFormatter.date.string(from: run.startedAt))
-                    .font(.caption2)
+        VStack(spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(String(format: "%.2f", run.distanceKilometers))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(PacingWatchTheme.textPrimary)
+                Text("KM")
+                    .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(PacingWatchTheme.textSecondary)
             }
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
+            Text(WatchRunHistoryFormatter.date.string(from: run.startedAt))
+                .font(.system(size: 9))
                 .foregroundStyle(PacingWatchTheme.textSecondary)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity)
         .padding(10)
         .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityLabel("\(String(format: "%.2f", run.distanceKilometers)) 킬로미터, \(WatchRunHistoryFormatter.date.string(from: run.startedAt))")
@@ -407,10 +401,15 @@ private struct WatchRunHistoryDetailView: View {
                 Text("러닝 기록")
                     .font(.headline)
                     .foregroundStyle(PacingWatchTheme.textPrimary)
-                Text(String(format: "%.2f", run.distanceKilometers))
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
-                    .foregroundStyle(PacingWatchTheme.main500)
-                Text("km · \(WatchRunHistoryFormatter.date.string(from: run.startedAt))")
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(String(format: "%.2f", run.distanceKilometers))
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(PacingWatchTheme.main500)
+                    Text("KM")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PacingWatchTheme.textSecondary)
+                }
+                Text(WatchRunHistoryFormatter.date.string(from: run.startedAt))
                     .font(.caption)
                     .foregroundStyle(PacingWatchTheme.textSecondary)
 
@@ -444,9 +443,6 @@ private struct WatchRunHistoryDetailView: View {
                 .foregroundStyle(PacingWatchTheme.textPrimary)
         }
         .font(.caption)
-        .padding(.horizontal, 10)
-        .frame(height: 32)
-        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
