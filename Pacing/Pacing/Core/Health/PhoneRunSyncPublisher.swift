@@ -1,3 +1,4 @@
+import CoreLocation
 import Foundation
 import WatchConnectivity
 
@@ -46,6 +47,21 @@ final class PhoneRunSyncPublisher: NSObject {
         if session.isReachable { session.sendMessage(["phoneMusic": payload], replyHandler: nil) }
     }
 
+    func publishRunHistory(records: [RunRecord], calendar: Calendar = .current) {
+        let snapshot = makeRunHistorySnapshot(records: records, calendar: calendar)
+        guard let data = try? JSONEncoder().encode(snapshot),
+              let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return }
+
+        var context = session.applicationContext
+        context["phoneRunHistory"] = payload
+        if let contextData = try? JSONSerialization.data(withJSONObject: context),
+           contextData.count <= maximumMusicContextSize {
+            try? session.updateApplicationContext(context)
+        }
+        if session.isReachable { session.sendMessage(["phoneRunHistory": payload], replyHandler: nil) }
+    }
+
     private func musicPayload(for snapshot: PhoneMusicPlaybackSnapshot) -> [String: Any]? {
         for candidate in [snapshot, snapshot.removingRecentArtworkData(), snapshot.removingAllArtworkData()] {
             guard let data = try? JSONEncoder().encode(candidate),
@@ -55,6 +71,60 @@ final class PhoneRunSyncPublisher: NSObject {
             return payload
         }
         return nil
+    }
+
+    private func makeRunHistorySnapshot(
+        records: [RunRecord],
+        calendar: Calendar
+    ) -> PhoneRunHistorySnapshot {
+        let now = Date()
+        let validRecords = records
+            .filter(\.isPaceValid)
+            .filter { $0.startedAt <= now }
+            .sorted { $0.startedAt > $1.startedAt }
+
+        let currentMonthRecords = validRecords.filter {
+            calendar.isDate($0.startedAt, equalTo: now, toGranularity: .month)
+        }
+
+        return PhoneRunHistorySnapshot(
+            monthDistanceKilometers: currentMonthRecords.reduce(0) { $0 + $1.distance },
+            monthRunCount: currentMonthRecords.count,
+            recentRuns: validRecords.prefix(10).map { record in
+                PhoneRunHistoryItem(
+                    id: record.id,
+                    startedAt: record.startedAt,
+                    durationSeconds: record.duration,
+                    distanceKilometers: record.distance,
+                    averagePaceMinutesPerKilometer: record.displayPace,
+                    elevationGainMeters: record.elevationGainMeters,
+                    averageHeartRate: record.averageHeartRate,
+                    averageCadence: record.averageCadence,
+                    routePoints: compactRoutePoints(from: record.routeCoordinates)
+                )
+            },
+            updatedAt: now
+        )
+    }
+
+    private func compactRoutePoints(
+        from coordinates: [CLLocationCoordinate2D],
+        maximumPointCount: Int = 40
+    ) -> [PhoneRunHistoryRoutePoint] {
+        guard coordinates.count > maximumPointCount else {
+            return coordinates.map {
+                PhoneRunHistoryRoutePoint(latitude: $0.latitude, longitude: $0.longitude)
+            }
+        }
+
+        let lastIndex = coordinates.count - 1
+        return (0..<maximumPointCount).map { index in
+            let coordinateIndex = Int(
+                (Double(index) * Double(lastIndex) / Double(maximumPointCount - 1)).rounded()
+            )
+            let coordinate = coordinates[coordinateIndex]
+            return PhoneRunHistoryRoutePoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        }
     }
 }
 

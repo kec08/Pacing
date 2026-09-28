@@ -4,6 +4,7 @@
 //
 
 import Combine
+import Foundation
 import HealthKit
 import ImageIO
 import SwiftUI
@@ -304,30 +305,223 @@ private struct WatchListenTogetherTabView: View {
     }
 }
 
+@MainActor
+private final class WatchRunHistoryViewModel: ObservableObject {
+    @Published private(set) var snapshot = PhoneRunHistorySnapshot.empty
+
+    init(receiver: PhoneRunSyncReceiver = .shared) {
+        receiver.onRunHistorySnapshot = { [weak self] snapshot in
+            self?.snapshot = snapshot
+        }
+    }
+}
+
 private struct WatchActivityTabView: View {
+    @StateObject private var viewModel = WatchRunHistoryViewModel()
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 14) {
+                    WatchActivityMetric(
+                        value: String(format: "%.2f", viewModel.snapshot.monthDistanceKilometers),
+                        unit: "km",
+                        label: "이번 달",
+                        labelAboveValue: true
+                    )
+                    WatchActivityMetric(
+                        value: "\(viewModel.snapshot.monthRunCount)",
+                        unit: "회",
+                        label: "러닝 횟수"
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("최근 러닝")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PacingWatchTheme.textPrimary)
+
+                        if viewModel.snapshot.recentRuns.isEmpty {
+                            Text("아직 기록된 러닝이 없어요")
+                                .font(.caption2)
+                                .foregroundStyle(PacingWatchTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        } else {
+                            ForEach(viewModel.snapshot.recentRuns) { run in
+                                NavigationLink {
+                                    WatchRunHistoryDetailView(run: run)
+                                } label: {
+                                    WatchRecentRunRow(run: run)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 12)
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 30)
+            }
+        }
+    }
+}
+
+private struct WatchRecentRunRow: View {
+    let run: PhoneRunHistoryItem
+
+    var body: some View {
+        VStack(spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: 2) {
+                Text(String(format: "%.2f", run.distanceKilometers))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundStyle(PacingWatchTheme.textPrimary)
+                Text("KM")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            }
+            Text(WatchRunHistoryFormatter.date.string(from: run.startedAt))
+                .font(.system(size: 9))
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(10)
+        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityLabel("\(String(format: "%.2f", run.distanceKilometers)) 킬로미터, \(WatchRunHistoryFormatter.date.string(from: run.startedAt))")
+    }
+}
+
+private struct WatchRunHistoryDetailView: View {
+    let run: PhoneRunHistoryItem
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달", labelAboveValue: true)
-                WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
-
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("최근 러닝")
+            VStack(spacing: 12) {
+                WatchRecentRunRouteView(points: run.routePoints)
+                    .padding(.bottom, 8)
+                HStack(alignment: .firstTextBaseline, spacing: 3) {
+                    Text(String(format: "%.2f", run.distanceKilometers))
+                        .font(.system(size: 42, weight: .bold, design: .rounded))
+                        .foregroundStyle(PacingWatchTheme.main500)
+                    Text("KM")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(PacingWatchTheme.textPrimary)
-                    Text("아직 기록된 러닝이 없어요")
-                        .font(.caption2)
                         .foregroundStyle(PacingWatchTheme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
+                Text(WatchRunHistoryFormatter.date.string(from: run.startedAt))
+                    .font(.caption)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+
+                VStack(spacing: 8) {
+                    metricRow("시간", WatchRunHistoryFormatter.duration(run.durationSeconds))
+                    metricRow("평균 페이스", WatchRunHistoryFormatter.pace(run.averagePaceMinutesPerKilometer))
+                    if let elevationGainMeters = run.elevationGainMeters {
+                        metricRow("고도 상승", "\(Int(elevationGainMeters.rounded())) m")
+                    }
+                    if let averageHeartRate = run.averageHeartRate {
+                        metricRow("BPM", "\(Int(averageHeartRate.rounded()))")
+                    }
+                    if let averageCadence = run.averageCadence {
+                        metricRow("케이던스", "\(Int(averageCadence.rounded()))")
+                    }
+                }
             }
             .padding(.horizontal, 10)
-            .padding(.bottom, 30)
+            .padding(.bottom, 24)
         }
+    }
+
+    private func metricRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.semibold)
+                .foregroundStyle(PacingWatchTheme.textPrimary)
+        }
+        .font(.caption)
+    }
+}
+
+private struct WatchRecentRunRouteView: View {
+    let points: [PhoneRunHistoryRoutePoint]
+
+    var body: some View {
+        Group {
+            if points.count >= 2 {
+                Canvas { context, size in
+                    let latitudes = points.map(\.latitude)
+                    let longitudes = points.map(\.longitude)
+                    guard let minimumLatitude = latitudes.min(),
+                          let maximumLatitude = latitudes.max(),
+                          let minimumLongitude = longitudes.min(),
+                          let maximumLongitude = longitudes.max()
+                    else { return }
+
+                    let latitudeSpan = max(maximumLatitude - minimumLatitude, 0.000_01)
+                    let longitudeSpan = max(maximumLongitude - minimumLongitude, 0.000_01)
+                    let horizontalInset = size.width * 0.08
+                    let verticalInset = size.height * 0.12
+
+                    func position(for point: PhoneRunHistoryRoutePoint) -> CGPoint {
+                        let xRatio = (point.longitude - minimumLongitude) / longitudeSpan
+                        let yRatio = (point.latitude - minimumLatitude) / latitudeSpan
+                        return CGPoint(
+                            x: horizontalInset + CGFloat(xRatio) * (size.width - horizontalInset * 2),
+                            y: size.height - verticalInset - CGFloat(yRatio) * (size.height - verticalInset * 2)
+                        )
+                    }
+
+                    var path = Path()
+                    path.move(to: position(for: points[0]))
+                    for point in points.dropFirst() {
+                        path.addLine(to: position(for: point))
+                    }
+                    context.stroke(
+                        path,
+                        with: .linearGradient(
+                            Gradient(colors: [PacingWatchTheme.purple, PacingWatchTheme.main500]),
+                            startPoint: .zero,
+                            endPoint: CGPoint(x: size.width, y: size.height)
+                        ),
+                        style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                    )
+                }
+                .frame(height: 76)
+                .frame(maxWidth: 142)
+                .accessibilityLabel("러닝 경로")
+            } else {
+                Text("러닝 경로가 없어요")
+                    .font(.caption2)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+                    .frame(maxWidth: .infinity, minHeight: 76)
+            }
+        }
+    }
+}
+
+private enum WatchRunHistoryFormatter {
+    static let date: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일 EEEE"
+        return formatter
+    }()
+
+    static func duration(_ seconds: Int) -> String {
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainingSeconds = seconds % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds)
+            : String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    static func pace(_ minutesPerKilometer: Double) -> String {
+        guard minutesPerKilometer.isFinite, minutesPerKilometer > 0 else { return "--'--\"" }
+        let seconds = Int((minutesPerKilometer * 60).rounded())
+        return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
     }
 }
 

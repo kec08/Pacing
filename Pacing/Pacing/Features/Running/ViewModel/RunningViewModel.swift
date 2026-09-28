@@ -611,6 +611,9 @@ final class RunningViewModel: ObservableObject {
             averageCadence: averageCadence ?? self.averageCadence
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
+        if let records = try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100) {
+            PhoneRunSyncPublisher.shared.publishRunHistory(records: records)
+        }
 
         if let song = musicViewModel?.currentSongSnapshot() {
             try? await FirestoreService.shared.saveRecentSong(
