@@ -280,6 +280,7 @@ final class RunningViewModel: ObservableObject {
         let resumedAt = Date()
         runningStartedAt = resumedAt
         state = .running
+        voiceAnnouncer.announce(.resumed)
         PhoneRunSyncPublisher.shared.send(
             PhoneRunCommand(action: .resume, sender: .phone, sessionID: sessionID)
         )

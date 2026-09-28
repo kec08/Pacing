@@ -90,6 +90,7 @@ final class PacingTests: XCTestCase {
     func testRunningStateVoiceAnnouncementsUseExpectedKoreanMessages() {
         XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "운동을 시작합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "운동을 정지합니다.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
     }
 
     func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
