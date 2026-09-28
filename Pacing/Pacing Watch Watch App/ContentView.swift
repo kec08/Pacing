@@ -311,7 +311,8 @@ private struct WatchListenTogetherTabView: View {
 private final class WatchRunHistoryViewModel: ObservableObject {
     @Published private(set) var snapshot = PhoneRunHistorySnapshot.empty
 
-    init(receiver: PhoneRunSyncReceiver = .shared) {
+    init(receiver: PhoneRunSyncReceiver? = nil) {
+        let receiver = receiver ?? PhoneRunSyncReceiver.shared
         receiver.onRunHistorySnapshot = { [weak self] snapshot in
             self?.snapshot = snapshot
         }
@@ -424,8 +425,11 @@ private struct WatchRunHistoryDetailView: View {
                     if let averageHeartRate = run.averageHeartRate {
                         metricRow("BPM", "\(Int(averageHeartRate.rounded()))")
                     }
+                    if let calories = run.calories {
+                        metricRow("칼로리", "\(calories) kcal")
+                    }
                     if let averageCadence = run.averageCadence {
-                        metricRow("케이던스", "\(Int(averageCadence.rounded()))")
+                        metricRow("케이던스", "\(Int(averageCadence.rounded())) spm")
                     }
                 }
             }

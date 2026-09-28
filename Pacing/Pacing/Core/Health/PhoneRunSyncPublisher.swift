@@ -101,6 +101,7 @@ final class PhoneRunSyncPublisher: NSObject {
                     elevationGainMeters: record.elevationGainMeters,
                     averageHeartRate: record.averageHeartRate,
                     averageCadence: record.averageCadence,
+                    calories: estimatedCalories(for: record),
                     routePoints: compactRoutePoints(from: record.routeCoordinates)
                 )
             },
@@ -126,6 +127,12 @@ final class PhoneRunSyncPublisher: NSObject {
             let coordinate = coordinates[coordinateIndex]
             return PhoneRunHistoryRoutePoint(latitude: coordinate.latitude, longitude: coordinate.longitude)
         }
+    }
+
+    private func estimatedCalories(for record: RunRecord) -> Int {
+        let storedWeight = UserDefaults.standard.integer(forKey: "weight")
+        let weight = storedWeight > 0 ? Double(storedWeight) : 60.0
+        return Int((weight * record.distance * 1.036).rounded())
     }
 }
 

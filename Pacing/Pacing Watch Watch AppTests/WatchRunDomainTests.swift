@@ -43,6 +43,7 @@ final class WatchRunDomainTests: XCTestCase {
             elevationGainMeters: 42,
             averageHeartRate: 155,
             averageCadence: 168,
+            calories: 322,
             routePoints: [PhoneRunHistoryRoutePoint(latitude: 37.5, longitude: 127.0)]
         )
         let snapshot = PhoneRunHistorySnapshot(
@@ -59,6 +60,7 @@ final class WatchRunDomainTests: XCTestCase {
 
         XCTAssertEqual(decoded, snapshot)
         XCTAssertEqual(decoded.recentRuns.first?.distanceKilometers, 5.2)
+        XCTAssertEqual(decoded.recentRuns.first?.calories, 322)
     }
 
     func testSessionUnavailableDoesNotExposePreparationFailureMessage() {
