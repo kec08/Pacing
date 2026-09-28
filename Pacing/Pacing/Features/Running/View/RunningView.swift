@@ -67,6 +67,7 @@ struct RunningView: View {
     @State private var myProfileImageBase64: String?
     @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
     @State private var listenSheetDetent: PresentationDetent = .medium
+    @State private var countdownScale: CGFloat = 1
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -289,13 +290,13 @@ struct RunningView: View {
             // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
             if let cd = viewModel.countdown {
                 ZStack {
-                    Color.black.opacity(0.85)
+                    Color.black.opacity(0.12)
                         .ignoresSafeArea()
                     Text("\(cd)")
                         .font(.system(size: 160, weight: .black))
                         .foregroundStyle(Color.main500)
-                        .transition(.scale(scale: 1.4).combined(with: .opacity))
                         .id(cd)
+                        .scaleEffect(countdownScale)
                 }
                 .zIndex(20)
             }
@@ -315,6 +316,21 @@ struct RunningView: View {
             guard hasCenteredOnInitialLocation, !isProgrammaticMove else { return }
             mapZoomDistance = context.camera.distance
             isFollowingUser = false
+        }
+        .onChange(of: viewModel.countdown) { _, newValue in
+            guard newValue != nil else {
+                countdownScale = 1
+                return
+            }
+
+            countdownScale = 0.72
+            Task { @MainActor in
+                await Task.yield()
+                guard viewModel.countdown != nil else { return }
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.52)) {
+                    countdownScale = 1
+                }
+            }
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
