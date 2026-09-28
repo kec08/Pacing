@@ -14,9 +14,15 @@ final class PhoneRunSyncReceiver: NSObject {
             if let latestMusicSnapshot { onMusicSnapshot?(latestMusicSnapshot) }
         }
     }
+    var onRunHistorySnapshot: ((PhoneRunHistorySnapshot) -> Void)? {
+        didSet {
+            if let latestRunHistorySnapshot { onRunHistorySnapshot?(latestRunHistorySnapshot) }
+        }
+    }
     private let session = WCSession.default
     private var latestSnapshot: PhoneRunSnapshot?
     private var latestMusicSnapshot: WatchMusicPlaybackSnapshot?
+    private var latestRunHistorySnapshot: PhoneRunHistorySnapshot?
 
     private override init() {
         super.init()
@@ -47,6 +53,19 @@ final class PhoneRunSyncReceiver: NSObject {
            let command = try? JSONDecoder().decode(PhoneRunCommand.self, from: data) {
             DispatchQueue.main.async { [weak self] in
                 self?.onCommand?(command)
+            }
+        }
+
+        if let payload = container["phoneRunHistory"] as? [String: Any],
+           JSONSerialization.isValidJSONObject(payload),
+           let data = try? JSONSerialization.data(withJSONObject: payload),
+           let snapshot = try? JSONDecoder().decode(PhoneRunHistorySnapshot.self, from: data) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      snapshot.updatedAt > (self.latestRunHistorySnapshot?.updatedAt ?? .distantPast)
+                else { return }
+                self.latestRunHistorySnapshot = snapshot
+                self.onRunHistorySnapshot?(snapshot)
             }
         }
 

@@ -4,6 +4,7 @@
 //
 
 import Combine
+import Foundation
 import HealthKit
 import ImageIO
 import SwiftUI
@@ -304,30 +305,172 @@ private struct WatchListenTogetherTabView: View {
     }
 }
 
+@MainActor
+private final class WatchRunHistoryViewModel: ObservableObject {
+    @Published private(set) var snapshot = PhoneRunHistorySnapshot.empty
+
+    init(receiver: PhoneRunSyncReceiver = .shared) {
+        receiver.onRunHistorySnapshot = { [weak self] snapshot in
+            self?.snapshot = snapshot
+        }
+    }
+}
+
 private struct WatchActivityTabView: View {
+    @StateObject private var viewModel = WatchRunHistoryViewModel()
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 14) {
+                    WatchActivityMetric(
+                        value: String(format: "%.2f", viewModel.snapshot.monthDistanceKilometers),
+                        unit: "km",
+                        label: "이번 달",
+                        labelAboveValue: true
+                    )
+                    WatchActivityMetric(
+                        value: "\(viewModel.snapshot.monthRunCount)",
+                        unit: "회",
+                        label: "러닝 횟수"
+                    )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("최근 러닝")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(PacingWatchTheme.textPrimary)
+
+                        if viewModel.snapshot.recentRuns.isEmpty {
+                            Text("아직 기록된 러닝이 없어요")
+                                .font(.caption2)
+                                .foregroundStyle(PacingWatchTheme.textSecondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(10)
+                                .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        } else {
+                            ForEach(viewModel.snapshot.recentRuns) { run in
+                                NavigationLink {
+                                    WatchRunHistoryDetailView(run: run)
+                                } label: {
+                                    WatchRecentRunRow(run: run)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 12)
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 30)
+            }
+        }
+    }
+}
+
+private struct WatchRecentRunRow: View {
+    let run: PhoneRunHistoryItem
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(String(format: "%.2f", run.distanceKilometers))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(PacingWatchTheme.textPrimary)
+                    Text("km")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(PacingWatchTheme.textSecondary)
+                }
+                Text(WatchRunHistoryFormatter.date.string(from: run.startedAt))
+                    .font(.caption2)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityLabel("\(String(format: "%.2f", run.distanceKilometers)) 킬로미터, \(WatchRunHistoryFormatter.date.string(from: run.startedAt))")
+    }
+}
+
+private struct WatchRunHistoryDetailView: View {
+    let run: PhoneRunHistoryItem
+
     var body: some View {
         ScrollView {
-            VStack(spacing: 14) {
-                WatchActivityMetric(value: "0.0", unit: "km", label: "이번 달", labelAboveValue: true)
-                WatchActivityMetric(value: "0", unit: "회", label: "러닝 횟수")
+            VStack(spacing: 12) {
+                Text("러닝 기록")
+                    .font(.headline)
+                    .foregroundStyle(PacingWatchTheme.textPrimary)
+                Text(String(format: "%.2f", run.distanceKilometers))
+                    .font(.system(size: 42, weight: .bold, design: .rounded))
+                    .foregroundStyle(PacingWatchTheme.main500)
+                Text("km · \(WatchRunHistoryFormatter.date.string(from: run.startedAt))")
+                    .font(.caption)
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("최근 러닝")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(PacingWatchTheme.textPrimary)
-                    Text("아직 기록된 러닝이 없어요")
-                        .font(.caption2)
-                        .foregroundStyle(PacingWatchTheme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(10)
-                        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                VStack(spacing: 8) {
+                    metricRow("시간", WatchRunHistoryFormatter.duration(run.durationSeconds))
+                    metricRow("평균 페이스", WatchRunHistoryFormatter.pace(run.averagePaceMinutesPerKilometer))
+                    if let elevationGainMeters = run.elevationGainMeters {
+                        metricRow("고도 상승", "\(Int(elevationGainMeters.rounded())) m")
+                    }
+                    if let averageHeartRate = run.averageHeartRate {
+                        metricRow("BPM", "\(Int(averageHeartRate.rounded()))")
+                    }
+                    if let averageCadence = run.averageCadence {
+                        metricRow("케이던스", "\(Int(averageCadence.rounded()))")
+                    }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 12)
             }
             .padding(.horizontal, 10)
-            .padding(.bottom, 30)
+            .padding(.bottom, 24)
         }
+        .navigationTitle("최근 러닝")
+    }
+
+    private func metricRow(_ title: String, _ value: String) -> some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+            Spacer()
+            Text(value)
+                .fontWeight(.semibold)
+                .foregroundStyle(PacingWatchTheme.textPrimary)
+        }
+        .font(.caption)
+        .padding(.horizontal, 10)
+        .frame(height: 32)
+        .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+}
+
+private enum WatchRunHistoryFormatter {
+    static let date: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일 EEEE"
+        return formatter
+    }()
+
+    static func duration(_ seconds: Int) -> String {
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        let remainingSeconds = seconds % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds)
+            : String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    static func pace(_ minutesPerKilometer: Double) -> String {
+        guard minutesPerKilometer.isFinite, minutesPerKilometer > 0 else { return "--'--\"" }
+        let seconds = Int((minutesPerKilometer * 60).rounded())
+        return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
     }
 }
 

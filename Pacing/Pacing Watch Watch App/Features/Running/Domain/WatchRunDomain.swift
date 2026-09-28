@@ -38,7 +38,7 @@ enum WatchRunError: Error, Equatable {
         case .locationAuthorizationRequired:
             "정확한 거리와 페이스를 위해 위치 권한이 필요해요."
         case .sessionUnavailable:
-            "운동 세션을 준비할 수 없어요."
+            ""
         case .sessionStartFailed:
             "러닝을 시작하지 못했어요. 잠시 후 다시 시도해 주세요."
         case .sessionEndFailed:

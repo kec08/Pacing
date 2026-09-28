@@ -32,4 +32,35 @@ final class WatchRunDomainTests: XCTestCase {
         XCTAssertEqual(metrics.formattedDistance, "1.23")
         XCTAssertEqual(metrics.formattedPace, "5'21\"")
     }
+
+    func testRunHistorySnapshotKeepsMonthlySummaryAndRecentRunDetails() throws {
+        let run = PhoneRunHistoryItem(
+            id: "run-1",
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            durationSeconds: 1_800,
+            distanceKilometers: 5.2,
+            averagePaceMinutesPerKilometer: 5.77,
+            elevationGainMeters: 42,
+            averageHeartRate: 155,
+            averageCadence: 168
+        )
+        let snapshot = PhoneRunHistorySnapshot(
+            monthDistanceKilometers: 12.7,
+            monthRunCount: 3,
+            recentRuns: [run],
+            updatedAt: Date(timeIntervalSince1970: 2_000)
+        )
+
+        let decoded = try JSONDecoder().decode(
+            PhoneRunHistorySnapshot.self,
+            from: JSONEncoder().encode(snapshot)
+        )
+
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(decoded.recentRuns.first?.distanceKilometers, 5.2)
+    }
+
+    func testSessionUnavailableDoesNotExposePreparationFailureMessage() {
+        XCTAssertEqual(WatchRunError.sessionUnavailable.userMessage, "")
+    }
 }
