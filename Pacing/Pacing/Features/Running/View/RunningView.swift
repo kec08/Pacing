@@ -839,19 +839,6 @@ struct RunningView: View {
     // paused: 이어서 / 종료 선택
     private var pausedControls: some View {
         HStack(spacing: 24) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showStopConfirm = false
-                viewModel.resume()
-            } label: {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 26, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
-                    .background(Color.main500)
-                    .clipShape(Circle())
-            }
-
             ZStack {
                 Circle()
                     .stroke(Color.white.opacity(0.2), lineWidth: 4)
@@ -875,6 +862,18 @@ struct RunningView: View {
                     .onEnded { _ in cancelStopHold() }
             )
 
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showStopConfirm = false
+                viewModel.resume()
+            } label: {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 80, height: 80)
+                    .background(Color.main500)
+                    .clipShape(Circle())
+            }
         }
     }
 

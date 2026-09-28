@@ -36,7 +36,6 @@ struct LapVoiceAnnouncement: Equatable {
 enum RunningStateVoiceAnnouncement: Equatable {
     case started
     case paused
-    case resumed
 
     var text: String {
         switch self {
@@ -44,8 +43,6 @@ enum RunningStateVoiceAnnouncement: Equatable {
             "운동을 시작합니다."
         case .paused:
             "운동을 정지합니다."
-        case .resumed:
-            "운동을 재개합니다."
         }
     }
 }
