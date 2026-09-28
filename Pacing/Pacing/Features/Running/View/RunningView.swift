@@ -324,7 +324,7 @@ struct RunningView: View {
                 return
             }
 
-            countdownScale = 0.90
+            countdownScale = 0.84
             Task { @MainActor in
                 await Task.yield()
                 guard viewModel.countdown != nil else { return }
