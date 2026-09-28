@@ -428,9 +428,7 @@ private struct WatchRunHistoryDetailView: View {
                     if let calories = run.calories {
                         metricRow("칼로리", "\(calories) kcal")
                     }
-                    if let averageCadence = run.averageCadence {
-                        metricRow("케이던스", "\(Int(averageCadence.rounded())) spm")
-                    }
+                    metricRow("케이던스", formattedCadence)
                 }
             }
             .padding(.horizontal, 10)
@@ -448,6 +446,14 @@ private struct WatchRunHistoryDetailView: View {
                 .foregroundStyle(PacingWatchTheme.textPrimary)
         }
         .font(.caption)
+    }
+
+    private var formattedCadence: String {
+        guard let averageCadence = run.averageCadence,
+              averageCadence.isFinite,
+              averageCadence > 0
+        else { return "--" }
+        return "\(Int(averageCadence.rounded()))"
     }
 }
 
