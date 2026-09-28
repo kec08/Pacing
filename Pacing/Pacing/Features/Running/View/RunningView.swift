@@ -591,13 +591,11 @@ struct RunningView: View {
     private func independentMetricButton(slot: Int) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.24)) {
-                let currentMetric = metricSlots[slot]
-                let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
-                    index == slot ? nil : metric
-                })
-                metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
-            }
+            let currentMetric = metricSlots[slot]
+            let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
+                index == slot ? nil : metric
+            })
+            metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
         } label: {
             VStack(spacing: 2) {
                 Text(metricValue(for: metricSlots[slot]))
@@ -605,13 +603,9 @@ struct RunningView: View {
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .id("value-\(metricSlots[slot])")
-                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 Text(metricLabel(for: metricSlots[slot]))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.textSecondary)
-                    .id("label-\(metricSlots[slot])")
-                    .transition(.opacity)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
