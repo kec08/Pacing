@@ -66,7 +66,10 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationStateSyncTask: Task<Void, Never>?
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
     private var watchArtworkImagesByURL: [String: UIImage] = [:]
+    private var watchArtworkDataCache: [WatchArtworkCacheKey: Data] = [:]
     private var downloadingWatchArtworkURLs = Set<String>()
+    private var failedWatchArtworkRetryDates: [String: Date] = [:]
+    private var unresolvedSongArtworkRetryDates: [String: Date] = [:]
     private var queuedWatchPlaybackState: Bool?
     private var isApplyingWatchPlaybackState = false
 
@@ -557,17 +560,21 @@ final class RunningMusicViewModel: ObservableObject {
     /// 긴 플레이리스트에서도 네트워크 요청과 메모리 사용량이 급증하지 않는다.
     func loadArtworkURLIfNeeded(for song: Song) async {
         let songID = "\(song.id)"
-        guard artworkURL(for: song) == nil,
+        guard !isRemoteArtworkURL(artworkURL(for: song)),
               queueArtworkURLsBySongID[songID] == nil,
+              unresolvedSongArtworkRetryDates[songID, default: .distantPast] <= Date(),
               !resolvingSongArtworkIDs.contains(songID)
         else { return }
 
         resolvingSongArtworkIDs.insert(songID)
         let resolvedArtworkURLs = await musicService.resolvedArtworkURLs(for: [song])
         resolvingSongArtworkIDs.remove(songID)
-        guard queueSongs.contains(where: { "\($0.id)" == songID }),
-              let resolvedArtworkURL = resolvedArtworkURLs[songID]
-        else { return }
+        guard queueSongs.contains(where: { "\($0.id)" == songID }) else { return }
+        guard let resolvedArtworkURL = resolvedArtworkURLs[songID] else {
+            unresolvedSongArtworkRetryDates[songID] = Date().addingTimeInterval(60)
+            return
+        }
+        unresolvedSongArtworkRetryDates.removeValue(forKey: songID)
         queueArtworkURLsBySongID[songID] = resolvedArtworkURL
     }
 
@@ -961,19 +968,39 @@ final class RunningMusicViewModel: ObservableObject {
         }
     }
 
-    private enum WatchArtworkPresentation { case current, recent }
+    private enum WatchArtworkPresentation: Hashable { case current, recent }
+
+    private struct WatchArtworkCacheKey: Hashable {
+        let songID: String
+        let artworkURL: String
+        let presentation: WatchArtworkPresentation
+    }
 
     private func watchArtworkData(for snapshot: PlayerSongSnapshot, presentation: WatchArtworkPresentation) -> Data? {
+        let cacheKey = WatchArtworkCacheKey(
+            songID: snapshot.songStoreID.isEmpty ? "\(snapshot.title)|\(snapshot.artistName)" : snapshot.songStoreID,
+            artworkURL: snapshot.artworkURL ?? "",
+            presentation: presentation
+        )
+        if let cachedData = watchArtworkDataCache[cacheKey] {
+            return cachedData
+        }
+
         if let artwork = snapshot.artwork ?? snapshot.artworkURL.flatMap({ watchArtworkImagesByURL[$0] }) {
-            return presentation == .current
+            let encodedData = presentation == .current
                 ? WatchMusicArtworkEncoder.encodeCurrentArtwork(artwork)
                 : WatchMusicArtworkEncoder.encodeRecentArtwork(artwork)
+            if let encodedData {
+                watchArtworkDataCache[cacheKey] = encodedData
+            }
+            return encodedData
         }
 
         guard let urlString = snapshot.artworkURL,
               let url = URL(string: urlString),
               ["http", "https"].contains(url.scheme?.lowercased() ?? "")
         else { return nil }
+        guard failedWatchArtworkRetryDates[urlString, default: .distantPast] <= Date() else { return nil }
         guard downloadingWatchArtworkURLs.insert(urlString).inserted else { return nil }
 
         Task { [weak self] in
@@ -983,9 +1010,15 @@ final class RunningMusicViewModel: ObservableObject {
                   let response = response as? HTTPURLResponse,
                   200 ..< 300 ~= response.statusCode,
                   let image = UIImage(data: data)
-            else { return }
+            else {
+                // 실패한 URL을 폴링마다 즉시 다시 요청하지 않는다. 네트워크가
+                // 일시적으로 불안정해도 iPhone 재생 전환 UI가 밀리지 않게 한다.
+                self.failedWatchArtworkRetryDates[urlString] = Date().addingTimeInterval(60)
+                return
+            }
 
             self.watchArtworkImagesByURL[urlString] = image
+            self.failedWatchArtworkRetryDates.removeValue(forKey: urlString)
             self.syncCurrentState()
         }
         return nil
