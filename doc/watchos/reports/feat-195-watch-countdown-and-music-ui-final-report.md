@@ -3,6 +3,7 @@
 > **완료일**: 2026-09-29  
 > **관련 이슈**: [#195](https://github.com/kec08/Pacing/issues/195)  
 > **브랜치**: `feat/195-watch-countdown-recent-music-ui`
+> **PR**: [#196](https://github.com/kec08/Pacing/pull/196)
 
 ## 구현 요약
 
