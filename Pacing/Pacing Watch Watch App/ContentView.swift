@@ -142,7 +142,7 @@ final class WatchAppViewModel: ObservableObject {
                     break
                 }
 
-                isRunSummaryPresented = false
+                isRunSummaryPresented = state == .ended
                 isRunExperiencePresented = state.isActive
                 isRunPaused = state == .paused
                 isRunTabLocked = false
@@ -150,11 +150,7 @@ final class WatchAppViewModel: ObservableObject {
                 switch state {
                 case .countdown:
                     isRunTabLocked = true
-                case .ended:
-                    // 기본 홈의 러닝 탭도 같은 ViewModel을 사용한다. 종료 상태를
-                    // 남겨두면 앱을 다시 열었을 때 종료 화면이 홈에 재표시된다.
-                    runningViewModel.reset()
-                case .idle, .starting, .running, .paused, .ending, .failed:
+                case .idle, .starting, .running, .paused, .ending, .ended, .failed:
                     break
                 }
             }

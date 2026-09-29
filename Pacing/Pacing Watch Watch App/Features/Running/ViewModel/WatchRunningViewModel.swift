@@ -150,12 +150,11 @@ final class WatchRunningViewModel: ObservableObject {
             // Watch 앱을 다시 열면 WatchConnectivity가 마지막 applicationContext를
             // 재전달한다. 유휴 상태의 종료 스냅샷은 이전 러닝이므로 홈 화면을 유지한다.
             guard state.isActive else { return false }
+            updateMetrics(from: snapshot)
             if state == .running || state == .paused {
                 // 종료 명령이 유실돼도 종료 스냅샷만으로 Watch 운동 세션을 정리한다.
                 end(sendCommand: false)
             }
-            dismissedPhoneEndAt = snapshot.sentAt
-            reset()
             return true
         }
     }
@@ -168,11 +167,10 @@ final class WatchRunningViewModel: ObservableObject {
             : nil
     }
 
-    /// iPhone 종료는 Watch HealthKit 종료 완료를 기다리지 않고 즉시 홈으로 복귀한다.
+    /// iPhone 종료도 Watch의 종료 요약을 유지한다. 사용자가 요약의 완료를 탭할 때만 홈으로 복귀한다.
     private func finishFromPhone() {
         guard state == .running || state == .paused else { return }
         end(sendCommand: false)
-        reset()
     }
 
     private func startWorkoutAfterCountdown() {
@@ -252,7 +250,7 @@ final class WatchRunningViewModel: ObservableObject {
         }
 
         if usesPreviewMetrics {
-            reset()
+            completeRun()
             return
         }
 
@@ -260,13 +258,23 @@ final class WatchRunningViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await workoutRepository.end()
-                self.reset()
+                self.completeRun()
             } catch let error as WatchRunError {
                 state = .failed(error)
             } catch {
                 state = .failed(.sessionEndFailed)
             }
         }
+    }
+
+    private func completeRun() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        timer?.cancel()
+        startedAt = nil
+        elapsedBeforeCurrentSegment = metrics.elapsed
+        locationRepository.reset()
+        state = .ended
     }
 
     func reset() {
