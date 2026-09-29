@@ -4,6 +4,7 @@ import WatchKit
 struct WatchRunningTabView: View {
     @ObservedObject var viewModel: WatchRunningViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var countdownScale: CGFloat = 1
 
     var body: some View {
         Group {
@@ -142,9 +143,30 @@ struct WatchRunningTabView: View {
             .foregroundStyle(PacingWatchTheme.main500)
             .monospacedDigit()
             .accessibilityLabel("러닝 시작까지 \(value)초")
+            .id(value)
+            .scaleEffect(countdownScale)
             .transition(reduceMotion ? .identity : .scale.combined(with: .opacity))
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .offset(y: -12)
+            .onAppear { animateCountdown() }
+            .onChange(of: value) { _, _ in
+                animateCountdown()
+            }
+    }
+
+    private func animateCountdown() {
+        guard !reduceMotion else {
+            countdownScale = 1
+            return
+        }
+
+        countdownScale = 0.78
+        Task { @MainActor in
+            await Task.yield()
+            withAnimation(.easeOut(duration: 0.48)) {
+                countdownScale = 1
+            }
+        }
     }
 
     private var primaryValue: String {
