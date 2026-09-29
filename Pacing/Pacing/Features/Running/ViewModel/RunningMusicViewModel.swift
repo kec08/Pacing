@@ -850,7 +850,9 @@ final class RunningMusicViewModel: ObservableObject {
                 artworkURL: current.artworkURL,
                 artworkData: includesArtwork ? watchArtworkData(for: current, presentation: .current) : nil,
                 isPlaying: isPlaying,
-                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: false) },
+                // 러닝 시작 전 첫 음악 탭도 최근 재생 목록을 사용한다. 목록용으로
+                // 축소한 JPEG를 함께 보내 Watch가 MusicKit 전용 URL 없이도 커버를 표시한다.
+                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) },
                 playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork)
             )
         )

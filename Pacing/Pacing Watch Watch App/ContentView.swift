@@ -129,6 +129,17 @@ final class WatchAppViewModel: ObservableObject {
             .sink { [weak self] state in
                 guard let self else { return }
 
+                // 경험 화면을 먼저 표시하면 기본값인 controls 탭이 한 프레임 보일 수 있다.
+                // 표시 여부를 바꾸기 전에 목적 탭을 확정해 시작 버튼의 깜빡임을 막는다.
+                switch state {
+                case .countdown, .running:
+                    selectedRunTab = .dashboard
+                case .paused:
+                    selectedRunTab = .controls
+                case .idle, .starting, .ending, .ended, .failed:
+                    break
+                }
+
                 isRunSummaryPresented = false
                 isRunExperiencePresented = state.isActive
                 isRunPaused = state == .paused
@@ -136,17 +147,12 @@ final class WatchAppViewModel: ObservableObject {
 
                 switch state {
                 case .countdown:
-                    selectedRunTab = .dashboard
                     isRunTabLocked = true
-                case .running:
-                    selectedRunTab = .dashboard
-                case .paused:
-                    selectedRunTab = .controls
                 case .ended:
                     // 기본 홈의 러닝 탭도 같은 ViewModel을 사용한다. 종료 상태를
                     // 남겨두면 앱을 다시 열었을 때 종료 화면이 홈에 재표시된다.
                     runningViewModel.reset()
-                case .idle, .starting, .ending, .failed:
+                case .idle, .starting, .running, .paused, .ending, .failed:
                     break
                 }
             }
