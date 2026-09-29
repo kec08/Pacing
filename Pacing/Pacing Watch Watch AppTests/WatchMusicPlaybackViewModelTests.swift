@@ -148,7 +148,13 @@ private final class MusicPlaybackRepositorySpy: WatchMusicPlaybackRepository {
 
     private(set) var sentPlaybackStates: [Bool?] = []
 
-    func send(_ command: WatchMusicPlaybackCommand, songID: String?, isPlaying: Bool?) {
+    func send(
+        _ command: WatchMusicPlaybackCommand,
+        songID: String?,
+        isPlaying: Bool?,
+        title: String?,
+        artist: String?
+    ) {
         sentCommands.append(command)
         sentSongIDs.append(songID)
         sentPlaybackStates.append(isPlaying)

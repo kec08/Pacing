@@ -253,22 +253,21 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
         let expectedPlaybackState = !snapshot.isPlaying
         awaitingPlaybackState = expectedPlaybackState
         snapshot = snapshot.updatingPlaybackState(to: expectedPlaybackState)
-        repository.send(.setPlaybackState, songID: nil, isPlaying: expectedPlaybackState)
+        repository.send(.setPlaybackState, songID: nil, isPlaying: expectedPlaybackState, title: nil, artist: nil)
     }
     func previous() {
         awaitingTrack = moveCurrentTrack(by: -1)
-        repository.send(.previous, songID: nil, isPlaying: nil)
+        repository.send(.previous, songID: nil, isPlaying: nil, title: nil, artist: nil)
     }
 
     func next() {
         awaitingTrack = moveCurrentTrack(by: 1)
-        repository.send(.next, songID: nil, isPlaying: nil)
+        repository.send(.next, songID: nil, isPlaying: nil, title: nil, artist: nil)
     }
 
     func play(_ track: WatchMusicTrack) {
         awaitingTrack = track
-        snapshot = snapshot.updatingCurrentTrack(to: track)
-        repository.send(.play, songID: track.id, isPlaying: nil)
+        repository.send(.play, songID: track.id, isPlaying: nil, title: track.title, artist: track.artist)
     }
 
     @discardableResult

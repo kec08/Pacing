@@ -73,7 +73,7 @@ final class RunningMusicViewModel: ObservableObject {
     init() {
         observePlaybackState()
         startPlaybackClock()
-        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID, isPlaying in
+        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID, isPlaying, title, artist in
             guard let self else { return }
             Task { @MainActor in
                 switch command {
@@ -84,10 +84,7 @@ final class RunningMusicViewModel: ObservableObject {
                 case .previous: await self.skipToPrevious()
                 case .next: await self.skipToNext()
                 case .play:
-                    guard let songID,
-                          let index = self.queueSongs.firstIndex(where: { "\($0.id)" == songID })
-                    else { return }
-                    await self.play(at: index, from: self.currentSongIndex)
+                    await self.playWatchRequestedSong(id: songID, title: title, artist: artist)
                 }
             }
         }
@@ -233,6 +230,33 @@ final class RunningMusicViewModel: ObservableObject {
         try? await applicationPlayer.prepareToPlay()
         try? await applicationPlayer.play()
         syncCurrentState()
+    }
+
+    private func playWatchRequestedSong(id: String?, title: String?, artist: String?) async {
+        if let index = queueSongs.firstIndex(where: { song in
+            (id.map { "\(song.id)" == $0 } ?? false)
+                || (title.map {
+                    song.title.caseInsensitiveCompare($0) == .orderedSame
+                        && song.artistName.caseInsensitiveCompare(artist ?? "") == .orderedSame
+                } ?? false)
+        }) {
+            await play(at: index, from: currentSongIndex)
+            return
+        }
+
+        var resolvedSong: Song?
+        if let id, !id.isEmpty {
+            resolvedSong = await musicService.resolveCatalogSong(id: MusicItemID(id))
+        }
+        if resolvedSong == nil {
+            resolvedSong = await musicService.resolveCatalogSong(title: title ?? "", artist: artist ?? "")
+        }
+        guard let resolvedSong else { return }
+
+        queueSongs = [resolvedSong]
+        currentPlaylistName = "최근 재생"
+        currentSongIndex = 0
+        await play(at: 0)
     }
 
     // MARK: - 재생 시간
@@ -487,7 +511,7 @@ final class RunningMusicViewModel: ObservableObject {
         artist: String
     ) {
         let songID = "\(song.id)"
-        guard artworkURL(for: song) == nil,
+        guard !isRemoteArtworkURL(artworkURL(for: song) ?? ""),
               resolvingListenSessionArtworkSongID != songID
         else { return }
 
@@ -894,7 +918,7 @@ final class RunningMusicViewModel: ObservableObject {
     /// 큐 엔트리가 Artwork를 비워서 보내는 경우에도 Watch가 URL을 받을 수 있다.
     private func resolveVisibleWatchPlaylistArtworkIfNeeded() {
         let visibleSongs = queueSongs.enumerated().compactMap { index, song in
-            abs(index - currentSongIndex) <= 4 && artworkURL(for: song) == nil ? song : nil
+            abs(index - currentSongIndex) <= 4 && !isRemoteArtworkURL(artworkURL(for: song) ?? "") ? song : nil
         }
         guard !visibleSongs.isEmpty else { return }
 

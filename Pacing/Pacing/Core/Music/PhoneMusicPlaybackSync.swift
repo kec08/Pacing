@@ -87,7 +87,7 @@ enum WatchMusicArtworkEncoder {
 
 final class PhoneMusicCommandReceiver {
     static let shared = PhoneMusicCommandReceiver()
-    var onCommand: ((PhoneMusicPlaybackCommand, String?, Bool?) -> Void)?
+    var onCommand: ((PhoneMusicPlaybackCommand, String?, Bool?, String?, String?) -> Void)?
     var onRefreshRequested: (() -> Void)?
 
     func consume(_ container: [String: Any]) {
@@ -102,6 +102,8 @@ final class PhoneMusicCommandReceiver {
         else { return }
         let songID = payload["songID"] as? String
         let isPlaying = payload["isPlaying"] as? Bool
-        DispatchQueue.main.async { [weak self] in self?.onCommand?(command, songID, isPlaying) }
+        let title = payload["title"] as? String
+        let artist = payload["artist"] as? String
+        DispatchQueue.main.async { [weak self] in self?.onCommand?(command, songID, isPlaying, title, artist) }
     }
 }
