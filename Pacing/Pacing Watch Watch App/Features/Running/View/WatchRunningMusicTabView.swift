@@ -105,6 +105,7 @@ struct WatchRunningMusicTabView: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\(track.title), \(track.artist) 재생")
+                    .onAppear { viewModel.requestArtworkIfNeeded(for: track) }
                 }
             }
             .padding(.vertical, 0)
@@ -234,6 +235,9 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var awaitingPlaybackState: Bool?
     private var awaitingTrack: WatchMusicTrack?
+    private var pendingArtworkTrackIDs = Set<String>()
+    private var requestedArtworkTrackIDs = Set<String>()
+    private var artworkRequestTask: Task<Void, Never>?
 
     init(repository: (any WatchMusicPlaybackRepository)? = nil) {
         let repository = repository ?? PhoneMusicPlaybackRepository.shared
@@ -247,6 +251,24 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
     }
 
     func refresh() { repository.refresh() }
+
+    func requestArtworkIfNeeded(for track: WatchMusicTrack) {
+        guard track.artworkData == nil,
+              !hasRemoteArtworkURL(track.artworkURL),
+              requestedArtworkTrackIDs.insert(track.id).inserted
+        else { return }
+
+        pendingArtworkTrackIDs.insert(track.id)
+        guard artworkRequestTask == nil else { return }
+        artworkRequestTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            guard let self, !Task.isCancelled else { return }
+            let songIDs = Array(self.pendingArtworkTrackIDs.prefix(12))
+            self.pendingArtworkTrackIDs.subtract(songIDs)
+            self.artworkRequestTask = nil
+            self.repository.requestArtwork(for: songIDs)
+        }
+    }
     func togglePlayback() {
         // iPhone의 실제 재생 상태는 뒤이어 수신되는 스냅샷으로 확정한다.
         // 다만 Watch 조작에는 즉시 반응해 버튼이 늦게 바뀌지 않게 한다.
@@ -295,6 +317,13 @@ final class WatchMusicPlaybackViewModel: ObservableObject {
             self.awaitingTrack = nil
         }
         snapshot = incoming
+    }
+
+    private func hasRemoteArtworkURL(_ value: String?) -> Bool {
+        guard let value,
+              let url = URL(string: value)
+        else { return false }
+        return ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 }
 

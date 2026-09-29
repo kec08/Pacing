@@ -91,10 +91,20 @@ final class PhoneMusicCommandReceiver {
     static let shared = PhoneMusicCommandReceiver()
     var onCommand: ((PhoneMusicPlaybackCommand, String?, Bool?, String?, String?) -> Void)?
     var onRefreshRequested: (() -> Void)?
+    var onPlaylistArtworkRequested: (([String]) -> Void)?
 
     func consume(_ container: [String: Any]) {
         if container["watchMusicRefresh"] as? Bool == true {
             DispatchQueue.main.async { [weak self] in self?.onRefreshRequested?() }
+            return
+        }
+
+        if let songIDs = container["watchMusicArtworkIDs"] as? [String] {
+            // Watch의 LazyVStack이 화면에 보이는 행만 묶어서 요청한다.
+            // 비정상적인 큰 메시지는 iPhone의 카탈로그 조회 부하를 막기 위해 제한한다.
+            let uniqueSongIDs = Array(Set(songIDs.filter { !$0.isEmpty }).prefix(12))
+            guard !uniqueSongIDs.isEmpty else { return }
+            DispatchQueue.main.async { [weak self] in self?.onPlaylistArtworkRequested?(uniqueSongIDs) }
             return
         }
 

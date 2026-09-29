@@ -85,6 +85,7 @@ Apple Watch에서 러닝 시작 시 3·2·1 카운트다운은 표시되지만, 
 - 러닝 플레이리스트의 38pt 앨범 커버는 320px 원본 URL과 48px·1.5KB JPEG 썸네일을 사용한다. 여러 곡의 커버가 함께 전송될 때도 WatchConnectivity 크기 한도 안에서 현재 곡 주변 이미지를 유지한다.
 - MusicKit이 반환하는 `musicKit://` artwork URL보다 iPhone이 해석·캐시한 HTTPS URL을 우선한다. Watch가 직접 접근할 수 없는 URL 때문에 러닝 플레이리스트 커버가 누락되던 경로를 제거한다.
 - 목록 썸네일은 64px·2.2KB로 조정해 Watch 38pt 셀의 선명도를 보완한다. 현재 곡 주변만 캐시·전송하는 정책은 유지한다.
+- Watch의 러닝 플레이리스트는 화면에 노출된 행의 곡 ID를 최대 12개씩 iPhone에 요청한다. iPhone은 해당 곡의 HTTPS artwork URL만 순차 보강하므로, 스크롤로 확인하는 전체 목록에 커버를 제공하면서도 모든 JPEG를 한 번에 전송하지 않는다.
 
 ---
 

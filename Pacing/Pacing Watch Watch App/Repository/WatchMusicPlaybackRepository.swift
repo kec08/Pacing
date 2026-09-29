@@ -43,6 +43,7 @@ enum WatchMusicPlaybackCommand: String, Codable {
 protocol WatchMusicPlaybackRepository: AnyObject {
     var snapshot: AnyPublisher<WatchMusicPlaybackSnapshot, Never> { get }
     func refresh()
+    func requestArtwork(for songIDs: [String])
     func send(_ command: WatchMusicPlaybackCommand, songID: String?, isPlaying: Bool?, title: String?, artist: String?)
 }
 
@@ -69,6 +70,11 @@ final class PhoneMusicPlaybackRepository: NSObject, WatchMusicPlaybackRepository
     func refresh() {
         guard session.isReachable else { return }
         session.sendMessage(["watchMusicRefresh": true], replyHandler: nil)
+    }
+
+    func requestArtwork(for songIDs: [String]) {
+        guard session.isReachable, !songIDs.isEmpty else { return }
+        session.sendMessage(["watchMusicArtworkIDs": songIDs], replyHandler: nil)
     }
 
     func send(

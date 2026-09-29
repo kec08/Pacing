@@ -146,6 +146,8 @@ private final class MusicPlaybackRepositorySpy: WatchMusicPlaybackRepository {
 
     func refresh() {}
 
+    func requestArtwork(for songIDs: [String]) {}
+
     private(set) var sentPlaybackStates: [Bool?] = []
 
     func send(

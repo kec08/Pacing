@@ -97,6 +97,9 @@ final class RunningMusicViewModel: ObservableObject {
         PhoneMusicCommandReceiver.shared.onRefreshRequested = { [weak self] in
             self?.syncCurrentState(forceWatchSnapshot: true)
         }
+        PhoneMusicCommandReceiver.shared.onPlaylistArtworkRequested = { [weak self] songIDs in
+            self?.resolveWatchPlaylistArtwork(for: songIDs)
+        }
     }
 
     deinit {
@@ -585,6 +588,25 @@ final class RunningMusicViewModel: ObservableObject {
         unresolvedSongArtworkRetryDates.removeValue(forKey: songID)
         queueArtworkURLsBySongID[songID] = resolvedArtworkURL
         watchArtworkRevision &+= 1
+    }
+
+    /// Watch는 목록에 실제로 나타난 곡만 묶어서 요청한다. 전체 플레이리스트의
+    /// artwork data를 매번 보내지 않아도, 스크롤한 모든 행에 HTTPS 커버 URL을
+    /// 점진적으로 제공할 수 있다.
+    private func resolveWatchPlaylistArtwork(for songIDs: [String]) {
+        let songs = songIDs.compactMap { songID in
+            queueSongs.first { "\($0.id)" == songID }
+        }
+        guard !songs.isEmpty else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            for song in songs {
+                await self.loadArtworkURLIfNeeded(for: song)
+            }
+            guard !Task.isCancelled else { return }
+            self.syncCurrentState(forceWatchSnapshot: true)
+        }
     }
 
     func artworkURL(for playlist: Playlist) -> String? {
