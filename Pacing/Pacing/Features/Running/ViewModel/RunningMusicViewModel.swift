@@ -552,12 +552,16 @@ final class RunningMusicViewModel: ObservableObject {
     func artworkURL(for song: Song?) -> String? {
         guard let song else { return nil }
 
-        if let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString,
-           !artworkURL.isEmpty {
-            return artworkURL
+        let songID = "\(song.id)"
+        let musicKitArtworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString
+        // MusicKit의 artwork URL은 `musicKit://`인 경우가 있어 Watch가 직접
+        // 내려받을 수 없다. 이미 해석한 HTTPS URL이 있으면 이를 우선해야
+        // 러닝 중 플레이리스트 행에도 커버 URL과 축소 JPEG가 전달된다.
+        if let cachedArtworkURL = queueArtworkURLsBySongID[songID],
+           isRemoteArtworkURL(cachedArtworkURL) {
+            return cachedArtworkURL
         }
-
-        return queueArtworkURLsBySongID["\(song.id)"]
+        return musicKitArtworkURL ?? queueArtworkURLsBySongID[songID]
     }
 
     /// 목록에 실제로 보이는 곡만 커버를 보강한다. 전체 곡을 한 번에 검색하지 않아

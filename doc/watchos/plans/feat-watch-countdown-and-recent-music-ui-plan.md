@@ -83,6 +83,7 @@ Apple Watch에서 러닝 시작 시 3·2·1 카운트다운은 표시되지만, 
 - `musicKit://` URL을 가진 곡은 HTTP(S) URL 보강 경로를 사용한다. 이는 최근 재생/러닝 플레이리스트의 커버 표시 보완과 함께 적용한다.
 - 곡 전환 중 MusicKit이 발행하는 연속 상태 알림은 iPhone UI에 즉시 반영하되, Watch용 전체 음악 스냅샷 조립은 150ms 동안 합쳐 한 번만 수행한다. 폴링은 알림 누락 보정 용도로만 1초 간격으로 유지한다.
 - 러닝 플레이리스트의 38pt 앨범 커버는 320px 원본 URL과 48px·1.5KB JPEG 썸네일을 사용한다. 여러 곡의 커버가 함께 전송될 때도 WatchConnectivity 크기 한도 안에서 현재 곡 주변 이미지를 유지한다.
+- MusicKit이 반환하는 `musicKit://` artwork URL보다 iPhone이 해석·캐시한 HTTPS URL을 우선한다. Watch가 직접 접근할 수 없는 URL 때문에 러닝 플레이리스트 커버가 누락되던 경로를 제거한다.
 
 ---
 
