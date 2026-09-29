@@ -860,12 +860,28 @@ final class RunningMusicViewModel: ObservableObject {
 
     private func makeWatchTrack(_ snapshot: PlayerSongSnapshot, includesArtwork: Bool) -> PhoneMusicTrack {
         PhoneMusicTrack(
-            id: snapshot.songStoreID,
+            // 시스템 플레이어의 playbackStoreID/queue entry ID는 queueSongs의 Song.ID와
+            // 다를 수 있다. 최근 재생 행도 플레이리스트와 같은 Song.ID를 보내야
+            // Watch의 재생 명령이 iPhone 큐 항목을 찾아 실제 재생할 수 있다.
+            id: watchPlayableSongID(for: snapshot),
             title: snapshot.title,
             artist: snapshot.artistName,
             artworkURL: snapshot.artworkURL,
             artworkData: includesArtwork ? watchArtworkData(for: snapshot, presentation: .recent) : nil
         )
+    }
+
+    private func watchPlayableSongID(for snapshot: PlayerSongSnapshot) -> String {
+        if let song = queueSongs.first(where: { "\($0.id)" == snapshot.songStoreID }) {
+            return "\(song.id)"
+        }
+        if let song = queueSongs.first(where: {
+            $0.title.caseInsensitiveCompare(snapshot.title) == .orderedSame
+                && $0.artistName.caseInsensitiveCompare(snapshot.artistName) == .orderedSame
+        }) {
+            return "\(song.id)"
+        }
+        return snapshot.songStoreID
     }
 
     private func isSameTrack(_ lhs: PlayerSongSnapshot, _ rhs: PlayerSongSnapshot) -> Bool {

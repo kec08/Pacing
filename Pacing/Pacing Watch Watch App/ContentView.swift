@@ -240,6 +240,12 @@ private struct WatchMusicTabView: View {
                                     Text(track.artist).font(.system(size: 9)).foregroundStyle(PacingWatchTheme.textSecondary).lineLimit(1)
                                 }
                                 Spacer(minLength: 0)
+                                if isCurrentTrack(track) {
+                                    Image(systemName: "speaker.wave.2.fill")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(PacingWatchTheme.main500)
+                                        .accessibilityHidden(true)
+                                }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(7)
@@ -256,6 +262,9 @@ private struct WatchMusicTabView: View {
         .onAppear { viewModel.refresh() }
     }
 
+    private func isCurrentTrack(_ track: WatchMusicTrack) -> Bool {
+        track.title == viewModel.snapshot.title && track.artist == viewModel.snapshot.artist
+    }
 }
 
 private struct WatchMusicArtwork: View {
