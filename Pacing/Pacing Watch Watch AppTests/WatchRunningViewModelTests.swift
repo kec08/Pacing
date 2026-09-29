@@ -51,7 +51,7 @@ final class WatchRunningViewModelTests: XCTestCase {
         XCTAssertEqual(viewModel.state, .idle)
     }
 
-    func testEndedPhoneSnapshotReturnsAnActiveRunToIdle() {
+    func testEndedPhoneSnapshotShowsSummaryForAnActiveRun() {
         let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
         let startedAt = Date(timeIntervalSince1970: 900)
         viewModel.applyPhoneSnapshot(
@@ -74,10 +74,11 @@ final class WatchRunningViewModelTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(viewModel.state, .idle)
+        XCTAssertEqual(viewModel.state, .ended)
+        XCTAssertEqual(viewModel.metrics.formattedDistance, "1.00")
     }
 
-    func testPhoneFinishCommandReturnsAnActiveRunToIdleImmediately() {
+    func testPhoneFinishCommandShowsSummaryForAnActiveRun() {
         let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
         viewModel.applyPhoneSnapshot(
             PhoneRunSnapshot(
@@ -97,6 +98,6 @@ final class WatchRunningViewModelTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(viewModel.state, .idle)
+        XCTAssertEqual(viewModel.state, .ended)
     }
 }
