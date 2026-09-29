@@ -64,16 +64,22 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
     private var applicationStateSyncTask: Task<Void, Never>?
+    private var watchMusicSnapshotTask: Task<Void, Never>?
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
     private var watchArtworkImagesByURL: [String: UIImage] = [:]
+    private var watchArtworkDataCache: [WatchArtworkCacheKey: Data] = [:]
     private var downloadingWatchArtworkURLs = Set<String>()
+    private var failedWatchArtworkRetryDates: [String: Date] = [:]
+    private var unresolvedSongArtworkRetryDates: [String: Date] = [:]
+    private var watchArtworkRevision = 0
+    private var lastScheduledWatchMusicState: WatchMusicSnapshotState?
     private var queuedWatchPlaybackState: Bool?
     private var isApplyingWatchPlaybackState = false
 
     init() {
         observePlaybackState()
         startPlaybackClock()
-        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID, isPlaying in
+        PhoneMusicCommandReceiver.shared.onCommand = { [weak self] command, songID, isPlaying, title, artist in
             guard let self else { return }
             Task { @MainActor in
                 switch command {
@@ -84,15 +90,15 @@ final class RunningMusicViewModel: ObservableObject {
                 case .previous: await self.skipToPrevious()
                 case .next: await self.skipToNext()
                 case .play:
-                    guard let songID,
-                          let index = self.queueSongs.firstIndex(where: { "\($0.id)" == songID })
-                    else { return }
-                    await self.play(at: index, from: self.currentSongIndex)
+                    await self.playWatchRequestedSong(id: songID, title: title, artist: artist)
                 }
             }
         }
         PhoneMusicCommandReceiver.shared.onRefreshRequested = { [weak self] in
-            self?.syncCurrentState()
+            self?.syncCurrentState(forceWatchSnapshot: true)
+        }
+        PhoneMusicCommandReceiver.shared.onPlaylistArtworkRequested = { [weak self] songIDs in
+            self?.resolveWatchPlaylistArtwork(for: songIDs)
         }
     }
 
@@ -101,6 +107,7 @@ final class RunningMusicViewModel: ObservableObject {
         seekSyncTask?.cancel()
         applicationSongResolutionTasks.values.forEach { $0.cancel() }
         applicationStateSyncTask?.cancel()
+        watchMusicSnapshotTask?.cancel()
         listenSessionArtworkResolutionTask?.cancel()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
@@ -206,9 +213,9 @@ final class RunningMusicViewModel: ObservableObject {
                 artwork: nil
             )
             displayPlaybackTime = 0
-            // Watch에는 무거운 아트워크 인코딩을 기다리지 않고 곡 정보를 먼저 보낸다.
-            // 실제 재생 엔트리 전환 뒤에는 syncCurrentState()가 전체 상태를 보강한다.
-            publishWatchMusicSnapshot(currentOverride: nowPlayingSnapshot, includesArtwork: false)
+            // 곡 전환 중에는 MusicKit이 여러 상태 알림을 발행한다. Watch 동기화는
+            // 짧게 합쳐서 한 번만 만들고, iPhone 전환 애니메이션을 우선한다.
+            scheduleWatchMusicSnapshot(force: true)
 
             do {
                 if index > previousIndex {
@@ -233,6 +240,33 @@ final class RunningMusicViewModel: ObservableObject {
         try? await applicationPlayer.prepareToPlay()
         try? await applicationPlayer.play()
         syncCurrentState()
+    }
+
+    private func playWatchRequestedSong(id: String?, title: String?, artist: String?) async {
+        if let index = queueSongs.firstIndex(where: { song in
+            (id.map { "\(song.id)" == $0 } ?? false)
+                || (title.map {
+                    song.title.caseInsensitiveCompare($0) == .orderedSame
+                        && song.artistName.caseInsensitiveCompare(artist ?? "") == .orderedSame
+                } ?? false)
+        }) {
+            await play(at: index, from: currentSongIndex)
+            return
+        }
+
+        var resolvedSong: Song?
+        if let id, !id.isEmpty {
+            resolvedSong = await musicService.resolveCatalogSong(id: MusicItemID(id))
+        }
+        if resolvedSong == nil {
+            resolvedSong = await musicService.resolveCatalogSong(title: title ?? "", artist: artist ?? "")
+        }
+        guard let resolvedSong else { return }
+
+        queueSongs = [resolvedSong]
+        currentPlaylistName = "최근 재생"
+        currentSongIndex = 0
+        await play(at: 0)
     }
 
     // MARK: - 재생 시간
@@ -487,7 +521,7 @@ final class RunningMusicViewModel: ObservableObject {
         artist: String
     ) {
         let songID = "\(song.id)"
-        guard artworkURL(for: song) == nil,
+        guard !isRemoteArtworkURL(artworkURL(for: song) ?? ""),
               resolvingListenSessionArtworkSongID != songID
         else { return }
 
@@ -521,30 +555,58 @@ final class RunningMusicViewModel: ObservableObject {
     func artworkURL(for song: Song?) -> String? {
         guard let song else { return nil }
 
-        if let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString,
-           !artworkURL.isEmpty {
-            return artworkURL
+        let songID = "\(song.id)"
+        let musicKitArtworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString
+        // MusicKit의 artwork URL은 `musicKit://`인 경우가 있어 Watch가 직접
+        // 내려받을 수 없다. 이미 해석한 HTTPS URL이 있으면 이를 우선해야
+        // 러닝 중 플레이리스트 행에도 커버 URL과 축소 JPEG가 전달된다.
+        if let cachedArtworkURL = queueArtworkURLsBySongID[songID],
+           isRemoteArtworkURL(cachedArtworkURL) {
+            return cachedArtworkURL
         }
-
-        return queueArtworkURLsBySongID["\(song.id)"]
+        return musicKitArtworkURL ?? queueArtworkURLsBySongID[songID]
     }
 
     /// 목록에 실제로 보이는 곡만 커버를 보강한다. 전체 곡을 한 번에 검색하지 않아
     /// 긴 플레이리스트에서도 네트워크 요청과 메모리 사용량이 급증하지 않는다.
     func loadArtworkURLIfNeeded(for song: Song) async {
         let songID = "\(song.id)"
-        guard artworkURL(for: song) == nil,
+        guard !isRemoteArtworkURL(artworkURL(for: song)),
               queueArtworkURLsBySongID[songID] == nil,
+              unresolvedSongArtworkRetryDates[songID, default: .distantPast] <= Date(),
               !resolvingSongArtworkIDs.contains(songID)
         else { return }
 
         resolvingSongArtworkIDs.insert(songID)
         let resolvedArtworkURLs = await musicService.resolvedArtworkURLs(for: [song])
         resolvingSongArtworkIDs.remove(songID)
-        guard queueSongs.contains(where: { "\($0.id)" == songID }),
-              let resolvedArtworkURL = resolvedArtworkURLs[songID]
-        else { return }
+        guard queueSongs.contains(where: { "\($0.id)" == songID }) else { return }
+        guard let resolvedArtworkURL = resolvedArtworkURLs[songID] else {
+            unresolvedSongArtworkRetryDates[songID] = Date().addingTimeInterval(60)
+            return
+        }
+        unresolvedSongArtworkRetryDates.removeValue(forKey: songID)
         queueArtworkURLsBySongID[songID] = resolvedArtworkURL
+        watchArtworkRevision &+= 1
+    }
+
+    /// Watch는 목록에 실제로 나타난 곡만 묶어서 요청한다. 전체 플레이리스트의
+    /// artwork data를 매번 보내지 않아도, 스크롤한 모든 행에 HTTPS 커버 URL을
+    /// 점진적으로 제공할 수 있다.
+    private func resolveWatchPlaylistArtwork(for songIDs: [String]) {
+        let songs = songIDs.compactMap { songID in
+            queueSongs.first { "\($0.id)" == songID }
+        }
+        guard !songs.isEmpty else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            for song in songs {
+                await self.loadArtworkURLIfNeeded(for: song)
+            }
+            guard !Task.isCancelled else { return }
+            self.syncCurrentState(forceWatchSnapshot: true)
+        }
     }
 
     func artworkURL(for playlist: Playlist) -> String? {
@@ -715,8 +777,8 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     // MARK: - 현재 상태 동기화
-    func syncCurrentState() {
-        defer { publishWatchMusicSnapshot() }
+    func syncCurrentState(forceWatchSnapshot: Bool = false) {
+        defer { scheduleWatchMusicSnapshot(force: forceWatchSnapshot) }
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let entryKey = applicationEntryKey(for: entry)
@@ -827,12 +889,41 @@ final class RunningMusicViewModel: ObservableObject {
         }
     }
 
-    private func publishWatchMusicSnapshot(
-        currentOverride: PlayerSongSnapshot? = nil,
-        includesArtwork: Bool = true
-    ) {
+    private struct WatchMusicSnapshotState: Equatable {
+        let currentTrack: PlayerSongSnapshot?
+        let isPlaying: Bool
+        let currentSongIndex: Int
+        let queueCount: Int
+        let playlistName: String?
+        let artworkRevision: Int
+    }
+
+    /// iPhone 재생 UI는 상태 알림을 즉시 처리하고, Watch 전송만 짧게 합친다.
+    /// MusicKit의 큐/재생 상태 알림이 연속으로 도착해도 전체 목록과 artwork data를
+    /// 한 번만 조립하도록 분리해 곡 넘김 시 메인 스레드 작업량을 제한한다.
+    private func scheduleWatchMusicSnapshot(force: Bool = false) {
+        let state = WatchMusicSnapshotState(
+            currentTrack: currentSongSnapshot(),
+            isPlaying: isPlaying,
+            currentSongIndex: currentSongIndex,
+            queueCount: queueSongs.count,
+            playlistName: currentPlaylistName,
+            artworkRevision: watchArtworkRevision
+        )
+        guard force || state != lastScheduledWatchMusicState else { return }
+        lastScheduledWatchMusicState = state
+        watchMusicSnapshotTask?.cancel()
+        watchMusicSnapshotTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            self?.publishWatchMusicSnapshot()
+        }
+    }
+
+    private func publishWatchMusicSnapshot() {
+        let includesArtwork = true
         resolveVisibleWatchPlaylistArtworkIfNeeded()
-        guard let current = currentOverride ?? currentSongSnapshot() else {
+        guard let current = currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
                 PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) }, playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork))
             )
@@ -850,7 +941,9 @@ final class RunningMusicViewModel: ObservableObject {
                 artworkURL: current.artworkURL,
                 artworkData: includesArtwork ? watchArtworkData(for: current, presentation: .current) : nil,
                 isPlaying: isPlaying,
-                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: false) },
+                // 러닝 시작 전 첫 음악 탭도 최근 재생 목록을 사용한다. 목록용으로
+                // 축소한 JPEG를 함께 보내 Watch가 MusicKit 전용 URL 없이도 커버를 표시한다.
+                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) },
                 playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork)
             )
         )
@@ -858,12 +951,28 @@ final class RunningMusicViewModel: ObservableObject {
 
     private func makeWatchTrack(_ snapshot: PlayerSongSnapshot, includesArtwork: Bool) -> PhoneMusicTrack {
         PhoneMusicTrack(
-            id: snapshot.songStoreID,
+            // 시스템 플레이어의 playbackStoreID/queue entry ID는 queueSongs의 Song.ID와
+            // 다를 수 있다. 최근 재생 행도 플레이리스트와 같은 Song.ID를 보내야
+            // Watch의 재생 명령이 iPhone 큐 항목을 찾아 실제 재생할 수 있다.
+            id: watchPlayableSongID(for: snapshot),
             title: snapshot.title,
             artist: snapshot.artistName,
             artworkURL: snapshot.artworkURL,
             artworkData: includesArtwork ? watchArtworkData(for: snapshot, presentation: .recent) : nil
         )
+    }
+
+    private func watchPlayableSongID(for snapshot: PlayerSongSnapshot) -> String {
+        if let song = queueSongs.first(where: { "\($0.id)" == snapshot.songStoreID }) {
+            return "\(song.id)"
+        }
+        if let song = queueSongs.first(where: {
+            $0.title.caseInsensitiveCompare(snapshot.title) == .orderedSame
+                && $0.artistName.caseInsensitiveCompare(snapshot.artistName) == .orderedSame
+        }) {
+            return "\(song.id)"
+        }
+        return snapshot.songStoreID
     }
 
     private func isSameTrack(_ lhs: PlayerSongSnapshot, _ rhs: PlayerSongSnapshot) -> Bool {
@@ -876,7 +985,7 @@ final class RunningMusicViewModel: ObservableObject {
     /// 큐 엔트리가 Artwork를 비워서 보내는 경우에도 Watch가 URL을 받을 수 있다.
     private func resolveVisibleWatchPlaylistArtworkIfNeeded() {
         let visibleSongs = queueSongs.enumerated().compactMap { index, song in
-            abs(index - currentSongIndex) <= 4 && artworkURL(for: song) == nil ? song : nil
+            abs(index - currentSongIndex) <= 4 && !isRemoteArtworkURL(artworkURL(for: song) ?? "") ? song : nil
         }
         guard !visibleSongs.isEmpty else { return }
 
@@ -919,19 +1028,39 @@ final class RunningMusicViewModel: ObservableObject {
         }
     }
 
-    private enum WatchArtworkPresentation { case current, recent }
+    private enum WatchArtworkPresentation: Hashable { case current, recent }
+
+    private struct WatchArtworkCacheKey: Hashable {
+        let songID: String
+        let artworkURL: String
+        let presentation: WatchArtworkPresentation
+    }
 
     private func watchArtworkData(for snapshot: PlayerSongSnapshot, presentation: WatchArtworkPresentation) -> Data? {
+        let cacheKey = WatchArtworkCacheKey(
+            songID: snapshot.songStoreID.isEmpty ? "\(snapshot.title)|\(snapshot.artistName)" : snapshot.songStoreID,
+            artworkURL: snapshot.artworkURL ?? "",
+            presentation: presentation
+        )
+        if let cachedData = watchArtworkDataCache[cacheKey] {
+            return cachedData
+        }
+
         if let artwork = snapshot.artwork ?? snapshot.artworkURL.flatMap({ watchArtworkImagesByURL[$0] }) {
-            return presentation == .current
+            let encodedData = presentation == .current
                 ? WatchMusicArtworkEncoder.encodeCurrentArtwork(artwork)
                 : WatchMusicArtworkEncoder.encodeRecentArtwork(artwork)
+            if let encodedData {
+                watchArtworkDataCache[cacheKey] = encodedData
+            }
+            return encodedData
         }
 
         guard let urlString = snapshot.artworkURL,
               let url = URL(string: urlString),
               ["http", "https"].contains(url.scheme?.lowercased() ?? "")
         else { return nil }
+        guard failedWatchArtworkRetryDates[urlString, default: .distantPast] <= Date() else { return nil }
         guard downloadingWatchArtworkURLs.insert(urlString).inserted else { return nil }
 
         Task { [weak self] in
@@ -941,9 +1070,16 @@ final class RunningMusicViewModel: ObservableObject {
                   let response = response as? HTTPURLResponse,
                   200 ..< 300 ~= response.statusCode,
                   let image = UIImage(data: data)
-            else { return }
+            else {
+                // 실패한 URL을 폴링마다 즉시 다시 요청하지 않는다. 네트워크가
+                // 일시적으로 불안정해도 iPhone 재생 전환 UI가 밀리지 않게 한다.
+                self.failedWatchArtworkRetryDates[urlString] = Date().addingTimeInterval(60)
+                return
+            }
 
             self.watchArtworkImagesByURL[urlString] = image
+            self.failedWatchArtworkRetryDates.removeValue(forKey: urlString)
+            self.watchArtworkRevision &+= 1
             self.syncCurrentState()
         }
         return nil
@@ -1167,7 +1303,10 @@ final class RunningMusicViewModel: ObservableObject {
         notificationObservers.append(queueObserver)
         bindApplicationQueue()
 
-        applicationPlaybackPoller = Timer.publish(every: 0.5, on: .main, in: .common)
+        // 실제 곡 전환·재생 상태는 MusicKit 알림과 사용자 제어 직후 동기화한다.
+        // 이 타이머는 알림을 놓친 경우만 보정하므로 0.5초 간격으로 메인 스레드를
+        // 점유할 필요가 없다.
+        applicationPlaybackPoller = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.syncCurrentState() }
     }

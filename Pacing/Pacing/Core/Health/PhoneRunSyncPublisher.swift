@@ -7,6 +7,9 @@ final class PhoneRunSyncPublisher: NSObject {
     static let shared = PhoneRunSyncPublisher()
     private let session = WCSession.default
     private let maximumMusicContextSize = 58_000
+    /// `updatedAt`은 매 상태 확인마다 달라진다. 이를 그대로 기준으로 삼으면
+    /// 재생 중인 곡이 바뀌지 않아도 0.5초마다 큰 앨범 아트를 직렬화·전송한다.
+    private var lastPublishedMusicSnapshot: PhoneMusicPlaybackSnapshot?
 
     private override init() {
         super.init()
@@ -36,7 +39,10 @@ final class PhoneRunSyncPublisher: NSObject {
     }
 
     func publishMusic(_ snapshot: PhoneMusicPlaybackSnapshot) {
+        guard !hasSameMusicContent(snapshot, as: lastPublishedMusicSnapshot) else { return }
         guard let payload = musicPayload(for: snapshot) else { return }
+
+        lastPublishedMusicSnapshot = snapshot
 
         // 음악은 Watch가 늦게 연결돼도 최근 상태를 복구해야 하므로 application context에 보관합니다.
         var context = session.applicationContext
@@ -72,6 +78,20 @@ final class PhoneRunSyncPublisher: NSObject {
             return payload
         }
         return nil
+    }
+
+    private func hasSameMusicContent(
+        _ snapshot: PhoneMusicPlaybackSnapshot,
+        as previous: PhoneMusicPlaybackSnapshot?
+    ) -> Bool {
+        guard let previous else { return false }
+        return snapshot.title == previous.title
+            && snapshot.artist == previous.artist
+            && snapshot.artworkURL == previous.artworkURL
+            && snapshot.artworkData == previous.artworkData
+            && snapshot.isPlaying == previous.isPlaying
+            && snapshot.recentlyPlayed == previous.recentlyPlayed
+            && snapshot.playlistTracks == previous.playlistTracks
     }
 
     private func makeRunHistorySnapshot(

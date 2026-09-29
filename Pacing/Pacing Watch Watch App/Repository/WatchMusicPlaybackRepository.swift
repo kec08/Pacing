@@ -43,7 +43,8 @@ enum WatchMusicPlaybackCommand: String, Codable {
 protocol WatchMusicPlaybackRepository: AnyObject {
     var snapshot: AnyPublisher<WatchMusicPlaybackSnapshot, Never> { get }
     func refresh()
-    func send(_ command: WatchMusicPlaybackCommand, songID: String?, isPlaying: Bool?)
+    func requestArtwork(for songIDs: [String])
+    func send(_ command: WatchMusicPlaybackCommand, songID: String?, isPlaying: Bool?, title: String?, artist: String?)
 }
 
 /// Watch는 재생 엔진을 직접 소유하지 않고 iPhone의 MusicKit 상태를 구독합니다.
@@ -75,10 +76,23 @@ final class PhoneMusicPlaybackRepository: NSObject, WatchMusicPlaybackRepository
         }
     }
 
-    func send(_ command: WatchMusicPlaybackCommand, songID: String? = nil, isPlaying: Bool? = nil) {
+    func requestArtwork(for songIDs: [String]) {
+        guard session.isReachable, !songIDs.isEmpty else { return }
+        session.sendMessage(["watchMusicArtworkIDs": songIDs], replyHandler: nil)
+    }
+
+    func send(
+        _ command: WatchMusicPlaybackCommand,
+        songID: String? = nil,
+        isPlaying: Bool? = nil,
+        title: String? = nil,
+        artist: String? = nil
+    ) {
         var payload: [String: Any] = ["action": command.rawValue]
         if let songID { payload["songID"] = songID }
         if let isPlaying { payload["isPlaying"] = isPlaying }
+        if let title { payload["title"] = title }
+        if let artist { payload["artist"] = artist }
 
         if session.isReachable {
             session.sendMessage(["watchMusicCommand": payload], replyHandler: nil)

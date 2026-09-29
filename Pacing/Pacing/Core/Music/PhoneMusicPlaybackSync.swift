@@ -63,7 +63,9 @@ enum WatchMusicArtworkEncoder {
     }
 
     static func encodeRecentArtwork(_ image: UIImage) -> Data? {
-        encode(image, maximumPixelSize: 60, maximumByteCount: 2_500)
+        // Watch 러닝 플레이리스트 셀은 38pt다. Retina 화면의 선명도는 확보하되
+        // 현재 곡 주변의 여러 커버가 전송 한도 안에 남도록 상한을 제한한다.
+        encode(image, maximumPixelSize: 64, maximumByteCount: 2_200)
     }
 
     private static func encode(_ image: UIImage, maximumPixelSize: CGFloat, maximumByteCount: Int) -> Data? {
@@ -87,12 +89,22 @@ enum WatchMusicArtworkEncoder {
 
 final class PhoneMusicCommandReceiver {
     static let shared = PhoneMusicCommandReceiver()
-    var onCommand: ((PhoneMusicPlaybackCommand, String?, Bool?) -> Void)?
+    var onCommand: ((PhoneMusicPlaybackCommand, String?, Bool?, String?, String?) -> Void)?
     var onRefreshRequested: (() -> Void)?
+    var onPlaylistArtworkRequested: (([String]) -> Void)?
 
     func consume(_ container: [String: Any]) {
         if container["watchMusicRefresh"] as? Bool == true {
             DispatchQueue.main.async { [weak self] in self?.onRefreshRequested?() }
+            return
+        }
+
+        if let songIDs = container["watchMusicArtworkIDs"] as? [String] {
+            // Watch의 LazyVStack이 화면에 보이는 행만 묶어서 요청한다.
+            // 비정상적인 큰 메시지는 iPhone의 카탈로그 조회 부하를 막기 위해 제한한다.
+            let uniqueSongIDs = Array(Set(songIDs.filter { !$0.isEmpty }).prefix(12))
+            guard !uniqueSongIDs.isEmpty else { return }
+            DispatchQueue.main.async { [weak self] in self?.onPlaylistArtworkRequested?(uniqueSongIDs) }
             return
         }
 
@@ -102,6 +114,8 @@ final class PhoneMusicCommandReceiver {
         else { return }
         let songID = payload["songID"] as? String
         let isPlaying = payload["isPlaying"] as? Bool
-        DispatchQueue.main.async { [weak self] in self?.onCommand?(command, songID, isPlaying) }
+        let title = payload["title"] as? String
+        let artist = payload["artist"] as? String
+        DispatchQueue.main.async { [weak self] in self?.onCommand?(command, songID, isPlaying, title, artist) }
     }
 }
