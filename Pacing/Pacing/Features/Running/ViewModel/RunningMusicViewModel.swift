@@ -64,12 +64,15 @@ final class RunningMusicViewModel: ObservableObject {
     private var applicationStateObserver: AnyCancellable?
     private var applicationPlaybackPoller: AnyCancellable?
     private var applicationStateSyncTask: Task<Void, Never>?
+    private var watchMusicSnapshotTask: Task<Void, Never>?
     private var recentlyPlayedSnapshots: [PlayerSongSnapshot] = []
     private var watchArtworkImagesByURL: [String: UIImage] = [:]
     private var watchArtworkDataCache: [WatchArtworkCacheKey: Data] = [:]
     private var downloadingWatchArtworkURLs = Set<String>()
     private var failedWatchArtworkRetryDates: [String: Date] = [:]
     private var unresolvedSongArtworkRetryDates: [String: Date] = [:]
+    private var watchArtworkRevision = 0
+    private var lastScheduledWatchMusicState: WatchMusicSnapshotState?
     private var queuedWatchPlaybackState: Bool?
     private var isApplyingWatchPlaybackState = false
 
@@ -92,7 +95,7 @@ final class RunningMusicViewModel: ObservableObject {
             }
         }
         PhoneMusicCommandReceiver.shared.onRefreshRequested = { [weak self] in
-            self?.syncCurrentState()
+            self?.syncCurrentState(forceWatchSnapshot: true)
         }
     }
 
@@ -101,6 +104,7 @@ final class RunningMusicViewModel: ObservableObject {
         seekSyncTask?.cancel()
         applicationSongResolutionTasks.values.forEach { $0.cancel() }
         applicationStateSyncTask?.cancel()
+        watchMusicSnapshotTask?.cancel()
         listenSessionArtworkResolutionTask?.cancel()
         notificationObservers.forEach { NotificationCenter.default.removeObserver($0) }
         player.endGeneratingPlaybackNotifications()
@@ -206,9 +210,9 @@ final class RunningMusicViewModel: ObservableObject {
                 artwork: nil
             )
             displayPlaybackTime = 0
-            // Watch에는 무거운 아트워크 인코딩을 기다리지 않고 곡 정보를 먼저 보낸다.
-            // 실제 재생 엔트리 전환 뒤에는 syncCurrentState()가 전체 상태를 보강한다.
-            publishWatchMusicSnapshot(currentOverride: nowPlayingSnapshot, includesArtwork: false)
+            // 곡 전환 중에는 MusicKit이 여러 상태 알림을 발행한다. Watch 동기화는
+            // 짧게 합쳐서 한 번만 만들고, iPhone 전환 애니메이션을 우선한다.
+            scheduleWatchMusicSnapshot(force: true)
 
             do {
                 if index > previousIndex {
@@ -576,6 +580,7 @@ final class RunningMusicViewModel: ObservableObject {
         }
         unresolvedSongArtworkRetryDates.removeValue(forKey: songID)
         queueArtworkURLsBySongID[songID] = resolvedArtworkURL
+        watchArtworkRevision &+= 1
     }
 
     func artworkURL(for playlist: Playlist) -> String? {
@@ -746,8 +751,8 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     // MARK: - 현재 상태 동기화
-    func syncCurrentState() {
-        defer { publishWatchMusicSnapshot() }
+    func syncCurrentState(forceWatchSnapshot: Bool = false) {
+        defer { scheduleWatchMusicSnapshot(force: forceWatchSnapshot) }
         if isUsingApplicationPlayer,
            let entry = applicationPlayer.queue.currentEntry {
             let entryKey = applicationEntryKey(for: entry)
@@ -858,12 +863,41 @@ final class RunningMusicViewModel: ObservableObject {
         }
     }
 
-    private func publishWatchMusicSnapshot(
-        currentOverride: PlayerSongSnapshot? = nil,
-        includesArtwork: Bool = true
-    ) {
+    private struct WatchMusicSnapshotState: Equatable {
+        let currentTrack: PlayerSongSnapshot?
+        let isPlaying: Bool
+        let currentSongIndex: Int
+        let queueCount: Int
+        let playlistName: String?
+        let artworkRevision: Int
+    }
+
+    /// iPhone 재생 UI는 상태 알림을 즉시 처리하고, Watch 전송만 짧게 합친다.
+    /// MusicKit의 큐/재생 상태 알림이 연속으로 도착해도 전체 목록과 artwork data를
+    /// 한 번만 조립하도록 분리해 곡 넘김 시 메인 스레드 작업량을 제한한다.
+    private func scheduleWatchMusicSnapshot(force: Bool = false) {
+        let state = WatchMusicSnapshotState(
+            currentTrack: currentSongSnapshot(),
+            isPlaying: isPlaying,
+            currentSongIndex: currentSongIndex,
+            queueCount: queueSongs.count,
+            playlistName: currentPlaylistName,
+            artworkRevision: watchArtworkRevision
+        )
+        guard force || state != lastScheduledWatchMusicState else { return }
+        lastScheduledWatchMusicState = state
+        watchMusicSnapshotTask?.cancel()
+        watchMusicSnapshotTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled else { return }
+            self?.publishWatchMusicSnapshot()
+        }
+    }
+
+    private func publishWatchMusicSnapshot() {
+        let includesArtwork = true
         resolveVisibleWatchPlaylistArtworkIfNeeded()
-        guard let current = currentOverride ?? currentSongSnapshot() else {
+        guard let current = currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
                 PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) }, playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork))
             )
@@ -1019,6 +1053,7 @@ final class RunningMusicViewModel: ObservableObject {
 
             self.watchArtworkImagesByURL[urlString] = image
             self.failedWatchArtworkRetryDates.removeValue(forKey: urlString)
+            self.watchArtworkRevision &+= 1
             self.syncCurrentState()
         }
         return nil
@@ -1242,7 +1277,10 @@ final class RunningMusicViewModel: ObservableObject {
         notificationObservers.append(queueObserver)
         bindApplicationQueue()
 
-        applicationPlaybackPoller = Timer.publish(every: 0.5, on: .main, in: .common)
+        // 실제 곡 전환·재생 상태는 MusicKit 알림과 사용자 제어 직후 동기화한다.
+        // 이 타이머는 알림을 놓친 경우만 보정하므로 0.5초 간격으로 메인 스레드를
+        // 점유할 필요가 없다.
+        applicationPlaybackPoller = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
             .sink { [weak self] _ in self?.syncCurrentState() }
     }
