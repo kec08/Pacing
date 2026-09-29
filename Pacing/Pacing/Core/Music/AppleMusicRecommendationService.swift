@@ -494,7 +494,11 @@ final class AppleMusicRecommendationService {
         for song in songs {
             let songID = "\(song.id)"
 
-            if let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 900, height: 900) {
+            // 러닝 중 Watch 플레이리스트 썸네일을 보강하는 호출 경로다.
+            // 38pt 목록에 900px 원본을 내려받으면 iPhone이 재생 전환 중 이미지
+            // 디코딩·축소에 시간을 쓰게 되므로, Watch와 iPhone 캐시에 충분한
+            // 320px URL만 사용한다.
+            if let artworkURL = Self.remoteArtworkURL(from: song.artwork, width: 320, height: 320) {
                 artworkURLsBySongID[songID] = artworkURL
                 continue
             }
@@ -503,7 +507,7 @@ final class AppleMusicRecommendationService {
                 title: song.title,
                 artist: song.artistName
             ),
-            let artworkURL = Self.remoteArtworkURL(from: matchedSong.artwork, width: 900, height: 900)
+            let artworkURL = Self.remoteArtworkURL(from: matchedSong.artwork, width: 320, height: 320)
             else {
                 continue
             }

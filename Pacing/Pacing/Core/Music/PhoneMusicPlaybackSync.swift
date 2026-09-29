@@ -63,7 +63,9 @@ enum WatchMusicArtworkEncoder {
     }
 
     static func encodeRecentArtwork(_ image: UIImage) -> Data? {
-        encode(image, maximumPixelSize: 60, maximumByteCount: 2_500)
+        // Watch 러닝 플레이리스트 셀은 38pt다. 전송 크기를 줄여야 현재 곡
+        // 주변의 여러 커버가 application context에 함께 남는다.
+        encode(image, maximumPixelSize: 48, maximumByteCount: 1_500)
     }
 
     private static func encode(_ image: UIImage, maximumPixelSize: CGFloat, maximumByteCount: Int) -> Data? {
