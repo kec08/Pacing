@@ -206,11 +206,13 @@ final class WatchRunningViewModel: ObservableObject {
             elapsedBeforeCurrentSegment = metrics.elapsed
             startedAt = nil
             timer?.cancel()
+            // HealthKit pause 처리보다 먼저 화면 상태를 확정한다. HealthKit 호출이
+            // 완료될 때까지 대시보드 메트릭이 다시 보이는 전환 지연을 막는다.
+            state = .paused
             if !usesPreviewMetrics {
                 workoutRepository.pause()
                 locationRepository.pauseTracking()
             }
-            state = .paused
             if sendCommand {
                 WatchRunCommandPublisher.shared.send(
                     PhoneRunCommand(action: .pause, sender: .watch, sessionID: sessionID)

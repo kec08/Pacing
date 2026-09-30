@@ -130,29 +130,7 @@ final class WatchAppViewModel: ObservableObject {
         runningViewModel.$state
             .sink { [weak self] state in
                 guard let self else { return }
-
-                // 경험 화면을 먼저 표시하면 기본값인 controls 탭이 한 프레임 보일 수 있다.
-                // 표시 여부를 바꾸기 전에 목적 탭을 확정해 시작 버튼의 깜빡임을 막는다.
-                switch state {
-                case .countdown, .running:
-                    selectedRunTab = .dashboard
-                case .paused:
-                    selectedRunTab = .controls
-                case .idle, .starting, .ending, .ended, .failed:
-                    break
-                }
-
-                isRunSummaryPresented = state == .ended
-                isRunExperiencePresented = state.isActive
-                isRunPaused = state == .paused
-                isRunTabLocked = false
-
-                switch state {
-                case .countdown:
-                    isRunTabLocked = true
-                case .idle, .starting, .running, .paused, .ending, .ended, .failed:
-                    break
-                }
+                applyRunState(state)
             }
             .store(in: &cancellables)
 
@@ -167,6 +145,34 @@ final class WatchAppViewModel: ObservableObject {
         if let configuration = WatchWorkoutLaunchStore.shared.takePendingConfiguration() {
             selectedTab = .running
             runningViewModel.startFromPhone(configuration: configuration)
+        }
+    }
+
+    private func applyRunState(_ state: WatchRunState) {
+        // paused 전환에서는 dashboard 탭 제거와 controls 선택을 같은 무애니메이션
+        // 트랜잭션으로 반영한다. 페이지 전환의 중간 프레임이 현재 페이스 화면을
+        // 다시 노출시키는 것을 방지한다.
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+
+        withTransaction(transaction) {
+            switch state {
+            case .countdown, .running:
+                selectedRunTab = .dashboard
+            case .paused:
+                selectedRunTab = .controls
+            case .idle, .starting, .ending, .ended, .failed:
+                break
+            }
+
+            isRunSummaryPresented = state == .ended
+            isRunExperiencePresented = state.isActive
+            isRunPaused = state == .paused
+            if case .countdown = state {
+                isRunTabLocked = true
+            } else {
+                isRunTabLocked = false
+            }
         }
     }
 }
