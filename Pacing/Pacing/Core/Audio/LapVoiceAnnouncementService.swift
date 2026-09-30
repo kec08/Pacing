@@ -52,9 +52,55 @@ enum RunningStateVoiceAnnouncement: Equatable {
     }
 }
 
+struct RunCompletionVoiceAnnouncement: Equatable {
+    let distanceKilometers: Double
+    let elapsedSeconds: Int
+    let averagePaceMinutesPerKilometer: Double
+
+    init?(
+        distanceKilometers: Double,
+        elapsedSeconds: Int,
+        averagePaceMinutesPerKilometer: Double
+    ) {
+        guard distanceKilometers.isFinite,
+              distanceKilometers >= 0,
+              elapsedSeconds >= 0,
+              averagePaceMinutesPerKilometer.isFinite,
+              averagePaceMinutesPerKilometer >= 0
+        else { return nil }
+
+        self.distanceKilometers = distanceKilometers
+        self.elapsedSeconds = elapsedSeconds
+        self.averagePaceMinutesPerKilometer = averagePaceMinutesPerKilometer
+    }
+
+    var text: String {
+        let elapsedHours = elapsedSeconds / 3_600
+        let elapsedMinutes = (elapsedSeconds % 3_600) / 60
+        let elapsedRemainingSeconds = elapsedSeconds % 60
+        let elapsedText: String
+        if elapsedHours > 0 {
+            elapsedText = "\(elapsedHours)시간 \(elapsedMinutes)분 \(elapsedRemainingSeconds)초"
+        } else {
+            elapsedText = "\(elapsedMinutes)분 \(elapsedRemainingSeconds)초"
+        }
+
+        let paceText: String
+        if averagePaceMinutesPerKilometer > 0 {
+            let paceSeconds = Int((averagePaceMinutesPerKilometer * 60).rounded())
+            paceText = "평균 페이스 \(paceSeconds / 60)분 \(paceSeconds % 60)초"
+        } else {
+            paceText = "평균 페이스 정보 없음"
+        }
+
+        return "운동을 완료했습니다. 총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터. 총 시간 \(elapsedText). \(paceText)."
+    }
+}
+
 protocol RunningVoiceAnnouncing: AnyObject {
     func announce(_ announcement: LapVoiceAnnouncement)
     func announce(_ announcement: RunningStateVoiceAnnouncement)
+    func announce(_ announcement: RunCompletionVoiceAnnouncement)
     func stop()
 }
 
@@ -88,6 +134,10 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     func announce(_ announcement: RunningStateVoiceAnnouncement) {
+        speak(announcement.text)
+    }
+
+    func announce(_ announcement: RunCompletionVoiceAnnouncement) {
         speak(announcement.text)
     }
 

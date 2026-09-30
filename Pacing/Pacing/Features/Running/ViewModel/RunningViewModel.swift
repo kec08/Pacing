@@ -296,6 +296,11 @@ final class RunningViewModel: ObservableObject {
     }
 
     func stop(sendCommand: Bool = true) async {
+        // iPhone 버튼과 Watch 종료 명령이 거의 동시에 도착할 수 있다. 첫 종료가
+        // 상태를 finished로 확정한 뒤에는 후속 요청을 무시해 요약·음성 안내가
+        // 중복되지 않게 한다.
+        guard state == .running || state == .paused else { return }
+
         syncElapsedSeconds()
         completePendingLapsIfNeeded()
         let endedAt = Date()
@@ -307,6 +312,7 @@ final class RunningViewModel: ObservableObject {
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
         state = .finished
+        announceRunCompletion()
         if sendCommand {
             PhoneRunSyncPublisher.shared.send(
                 PhoneRunCommand(action: .finish, sender: .phone, sessionID: sessionID)
@@ -716,6 +722,19 @@ final class RunningViewModel: ObservableObject {
             elapsedSeconds: elapsedSeconds,
             averagePaceMinutesPerKilometer: avgPace
         ) else { return }
+        voiceAnnouncer.announce(announcement)
+    }
+
+    private func announceRunCompletion() {
+        guard let announcement = RunCompletionVoiceAnnouncement(
+            distanceKilometers: distance,
+            elapsedSeconds: elapsedSeconds,
+            averagePaceMinutesPerKilometer: overallAveragePace
+        ) else { return }
+
+        // 마지막 킬로미터 안내가 진행 중인 경우 종료 요약으로 교체해, 완료 수치를
+        // 한 번만 명확하게 들려준다.
+        voiceAnnouncer.stop()
         voiceAnnouncer.announce(announcement)
     }
 }
