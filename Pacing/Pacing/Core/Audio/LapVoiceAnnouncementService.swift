@@ -1,5 +1,7 @@
 import AVFoundation
 import Foundation
+import MediaPlayer
+import MusicKit
 
 struct LapVoiceAnnouncement: Equatable {
     let kilometer: Int
@@ -57,6 +59,11 @@ protocol RunningVoiceAnnouncing: AnyObject {
 }
 
 final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
+    private enum PausedMusicPlayer {
+        case application
+        case system
+    }
+
     private struct AudioSessionConfiguration {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode
@@ -65,8 +72,11 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private let synthesizer = AVSpeechSynthesizer()
+    private let applicationMusicPlayer = ApplicationMusicPlayer.shared
+    private let systemMusicPlayer = MPMusicPlayerController.systemMusicPlayer
     private var announcementSessionConfiguration: AudioSessionConfiguration?
     private var pendingUtteranceIDs = Set<ObjectIdentifier>()
+    private var pausedMusicPlayer: PausedMusicPlayer?
 
     override init() {
         super.init()
@@ -82,6 +92,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private func speak(_ text: String) {
+        pauseMusicForAnnouncementIfNeeded()
         configureAudioSessionForAnnouncement()
 
         let utterance = AVSpeechUtterance(string: text)
@@ -115,7 +126,6 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 mode: .voicePrompt,
                 policy: .default,
                 options: [
-                    .duckOthers,
                     .allowBluetoothHFP,
                     .allowBluetoothA2DP
                 ]
@@ -137,19 +147,51 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private func restoreAudioSessionAfterAnnouncement() {
-        guard pendingUtteranceIDs.isEmpty,
-              let configuration = announcementSessionConfiguration
-        else { return }
+        guard pendingUtteranceIDs.isEmpty else { return }
 
         // MusicKit은 앱의 공유 오디오 세션을 사용한다. 음성 안내 뒤 세션 전체를
         // 비활성화하면 재생 중인 곡까지 멈출 수 있으므로, 안내 전 구성만 복원한다.
-        try? AVAudioSession.sharedInstance().setCategory(
-            configuration.category,
-            mode: configuration.mode,
-            policy: configuration.policy,
-            options: configuration.options
-        )
-        announcementSessionConfiguration = nil
+        if let configuration = announcementSessionConfiguration {
+            try? AVAudioSession.sharedInstance().setCategory(
+                configuration.category,
+                mode: configuration.mode,
+                policy: configuration.policy,
+                options: configuration.options
+            )
+            announcementSessionConfiguration = nil
+        }
+        resumeMusicAfterAnnouncementIfNeeded()
+    }
+
+    private func pauseMusicForAnnouncementIfNeeded() {
+        guard pausedMusicPlayer == nil else { return }
+
+        if applicationMusicPlayer.state.playbackStatus == .playing {
+            applicationMusicPlayer.pause()
+            pausedMusicPlayer = .application
+        } else if systemMusicPlayer.playbackState == .playing {
+            systemMusicPlayer.pause()
+            pausedMusicPlayer = .system
+        }
+    }
+
+    private func resumeMusicAfterAnnouncementIfNeeded() {
+        guard let pausedMusicPlayer else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self,
+                  self.pendingUtteranceIDs.isEmpty,
+                  self.pausedMusicPlayer != nil
+            else { return }
+
+            self.pausedMusicPlayer = nil
+            switch pausedMusicPlayer {
+            case .application:
+                try? await self.applicationMusicPlayer.play()
+            case .system:
+                self.systemMusicPlayer.play()
+            }
+        }
     }
 }
 
