@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BCAF0393305B882100B0BFB3 /* Pacing Watch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		BC5791DF2FED131F006C925A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791DE2FED131F006C925A /* FirebaseAuth */; };
 		BC5791E12FED131F006C925A /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791E02FED131F006C925A /* FirebaseDatabase */; };
 		BC5791E32FED131F006C925A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791E22FED131F006C925A /* FirebaseFirestore */; };
+		BC5793802FF26808006C925A /* FirebaseMessaging in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793812FF26808006C925A /* FirebaseMessaging */; };
 		BC57936C2FF2415D006C925A /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BC57936B2FF2415D006C925A /* GoogleSignIn */; };
 		BC57936E2FF2415D006C925A /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = BC57936D2FF2415D006C925A /* GoogleSignInSwift */; };
 		BC5793732FF2672C006C925A /* KakaoSDKAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793722FF2672C006C925A /* KakaoSDKAuth */; };
@@ -18,30 +18,10 @@
 		BC5793772FF2672C006C925A /* KakaoSDKUser in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793762FF2672C006C925A /* KakaoSDKUser */; };
 		BC5793792FF26808006C925A /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = BC5793782FF26808006C925A /* FirebaseFunctions */; };
 		BC57937C2FF2CC58006C925A /* NaverThirdPartyLogin in Frameworks */ = {isa = PBXBuildFile; productRef = BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */; };
+		BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = BCAF0393305B882100B0BFB3 /* Pacing Watch Watch App.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
-/* Begin PBXCopyFilesBuildPhase section */
-		BCAF0401305B882200B0BFB3 /* Embed Watch Content */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = Watch;
-			dstSubfolderSpec = 1;
-			files = (
-				BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */,
-			);
-			name = "Embed Watch Content";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXContainerItemProxy section */
-		BCAF0402305B882200B0BFB3 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = BC5790122FEC4AEF006C925A /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = BCAF0392305B882100B0BFB3;
-			remoteInfo = "Pacing Watch Watch App";
-		};
 		BC5790282FEC4AF0006C925A /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = BC5790122FEC4AEF006C925A /* Project object */;
@@ -70,7 +50,28 @@
 			remoteGlobalIDString = BCAF0392305B882100B0BFB3;
 			remoteInfo = "Pacing Watch Watch App";
 		};
+		BCAF0402305B882200B0BFB3 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BC5790122FEC4AEF006C925A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BCAF0392305B882100B0BFB3;
+			remoteInfo = "Pacing Watch Watch App";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		BCAF0401305B882200B0BFB3 /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Watch;
+			dstSubfolderSpec = 1;
+			files = (
+				BCAF0400305B882200B0BFB3 /* Pacing Watch Watch App.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		BC57901A2FEC4AEF006C925A /* Pacing.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pacing.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -140,6 +141,7 @@
 				BC5793772FF2672C006C925A /* KakaoSDKUser in Frameworks */,
 				BC5791DF2FED131F006C925A /* FirebaseAuth in Frameworks */,
 				BC5791E32FED131F006C925A /* FirebaseFirestore in Frameworks */,
+				BC5793802FF26808006C925A /* FirebaseMessaging in Frameworks */,
 				BC57937C2FF2CC58006C925A /* NaverThirdPartyLogin in Frameworks */,
 				BC5793732FF2672C006C925A /* KakaoSDKAuth in Frameworks */,
 			);
@@ -240,6 +242,7 @@
 				BC5793742FF2672C006C925A /* KakaoSDKCommon */,
 				BC5793762FF2672C006C925A /* KakaoSDKUser */,
 				BC5793782FF26808006C925A /* FirebaseFunctions */,
+				BC5793812FF26808006C925A /* FirebaseMessaging */,
 				BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */,
 			);
 			productName = Pacing;
@@ -516,11 +519,6 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
-		BCAF0403305B882200B0BFB3 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = BCAF0392305B882100B0BFB3 /* Pacing Watch Watch App */;
-			targetProxy = BCAF0402305B882200B0BFB3 /* PBXContainerItemProxy */;
-		};
 		BC5790292FEC4AF0006C925A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = BC5790192FEC4AEF006C925A /* Pacing */;
@@ -540,6 +538,11 @@
 			isa = PBXTargetDependency;
 			target = BCAF0392305B882100B0BFB3 /* Pacing Watch Watch App */;
 			targetProxy = BCAF03AA305B882200B0BFB3 /* PBXContainerItemProxy */;
+		};
+		BCAF0403305B882200B0BFB3 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BCAF0392305B882100B0BFB3 /* Pacing Watch Watch App */;
+			targetProxy = BCAF0402305B882200B0BFB3 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1145,6 +1148,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BC5791DD2FED131F006C925A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFunctions;
+		};
+		BC5793812FF26808006C925A /* FirebaseMessaging */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BC5791DD2FED131F006C925A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseMessaging;
 		};
 		BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */ = {
 			isa = XCSwiftPackageProductDependency;

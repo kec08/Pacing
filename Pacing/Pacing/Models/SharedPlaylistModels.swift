@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 
 struct SharedPlaylistSummary: Identifiable, Equatable {
     let id: String

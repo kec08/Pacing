@@ -14,6 +14,7 @@ private enum MainTab: Hashable {
 }
 
 struct MainTabView: View {
+    @EnvironmentObject private var appState: AppState
     @StateObject private var locationManager = LocationManager.shared
     @State private var selection: MainTab = .home
     @State private var didStartBroadcast = false
@@ -55,6 +56,10 @@ struct MainTabView: View {
         .tint(Color.main500)
         .onAppear {
             startPresenceBroadcast()
+            NotificationService.shared.synchronizeCurrentToken()
+        }
+        .task {
+            await NotificationService.shared.activateForCurrentUser()
         }
         .onReceive(locationManager.$currentLocation.compactMap { $0 }) { location in
             refreshPresenceBroadcast(with: location.coordinate)
@@ -63,6 +68,14 @@ struct MainTabView: View {
             guard newSelection == .running else { return }
             locationManager.requestPermission()
             locationManager.startMonitoringCurrentLocation()
+        }
+        .onChange(of: appState.notificationDestination) { _, destination in
+            switch destination {
+            case .friends: selection = .friends
+            case .running: selection = .running
+            case nil: break
+            }
+            appState.notificationDestination = nil
         }
         .onDisappear {
             stopPresenceBroadcast()

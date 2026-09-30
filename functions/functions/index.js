@@ -1,15 +1,108 @@
 const { setGlobalOptions } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onValueCreated } = require("firebase-functions/v2/database");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
 
 setGlobalOptions({ maxInstances: 10, region: "asia-northeast3" });
 
-admin.initializeApp();
+admin.initializeApp({
+  // Functions 런타임에서는 프로젝트 설정이 자동 주입되지만, 로컬 트리거 로딩과
+  // Emulator 검증에서도 같은 Realtime Database 인스턴스를 식별할 수 있어야 한다.
+  databaseURL: process.env.FIREBASE_DATABASE_URL || "https://pacing-a8639-default-rtdb.firebaseio.com",
+});
 
 const firestore = admin.firestore();
 const realtimeDatabase = admin.database();
+
+const messaging = admin.messaging();
+
+async function deviceTokensFor(uid) {
+  const snapshot = await firestore.collection("users").doc(uid).collection("notificationDevices").get();
+  return snapshot.docs.map((document) => ({ id: document.id, token: document.get("token") })).filter(({ token }) => typeof token === "string" && token);
+}
+
+async function sendNotification(uid, { title, body, data }) {
+  const devices = await deviceTokensFor(uid);
+  for (let index = 0; index < devices.length; index += 500) {
+    const chunk = devices.slice(index, index + 500);
+    const response = await messaging.sendEachForMulticast({
+      tokens: chunk.map((device) => device.token),
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)])),
+      apns: { payload: { aps: { sound: "default" } } },
+    });
+    await Promise.all(response.responses.map((result, offset) => {
+      const code = result.error?.code;
+      if (code !== "messaging/registration-token-not-registered" && code !== "messaging/invalid-registration-token") return undefined;
+      return firestore.collection("users").doc(uid).collection("notificationDevices").doc(chunk[offset].id).delete();
+    }));
+  }
+}
+
+exports.notifyFriendRequest = onDocumentCreated("friendRequests/{requestID}", async (event) => {
+  const request = event.data?.data();
+  if (!request || request.status !== "pending" || !request.fromUID || !request.toUID) return;
+  const sender = await firestore.collection("users").doc(request.fromUID).get();
+  await sendNotification(request.toUID, {
+    title: "새로운 친구 요청",
+    body: `${sender.get("nickname") || "러너"}님이 친구 요청을 보냈어요.`,
+    data: { type: "friendRequest", requestID: event.params.requestID, senderUID: request.fromUID },
+  });
+});
+
+// Realtime Database 기본 인스턴스는 us-central1에 있으므로 이벤트 트리거도
+// 같은 리전에 둔다. Functions의 기본 리전(asia-northeast3)을 사용하면 생성
+// 이벤트를 수신하지 못한다.
+exports.notifyFriendRunStarted = onValueCreated({
+  ref: "/activeRunners/{uid}",
+  instance: "pacing-a8639-default-rtdb",
+  region: "us-central1",
+}, async (event) => {
+  const runner = event.data?.val();
+  const uid = event.params.uid;
+  if (!runner || !uid) return;
+  const [profile, friends] = await Promise.all([
+    firestore.collection("users").doc(uid).get(),
+    firestore.collection("users").doc(uid).collection("friends").get(),
+  ]);
+  await Promise.all(friends.docs.map((friend) => sendNotification(friend.id, {
+    title: "친구가 러닝을 시작했어요",
+    body: `${profile.get("nickname") || runner.nickname || "친구"}님과 같이 달려볼까요?`,
+    data: { type: "friendRunStarted", senderUID: uid },
+  })));
+});
+
+exports.resetInactivityReminder = onDocumentCreated("users/{uid}/runHistory/{recordID}", async (event) => {
+  await firestore.collection("users").doc(event.params.uid)
+    .collection("notificationPreferences").doc("default")
+    .set({ lastInactivityMilestoneDays: 0, lastInactivityReminderAt: admin.firestore.FieldValue.delete() }, { merge: true });
+});
+
+exports.sendEveningRunReminders = onSchedule({ schedule: "0 20 * * *", timeZone: "Asia/Seoul" }, async () => {
+  const now = admin.firestore.Timestamp.now();
+  const users = await firestore.collection("users").get();
+  await Promise.all(users.docs.map(async (user) => {
+    const [history, preference] = await Promise.all([
+      user.ref.collection("runHistory").orderBy("startedAt", "desc").limit(1).get(),
+      user.ref.collection("notificationPreferences").doc("default").get(),
+    ]);
+    const lastRun = history.docs[0]?.get("startedAt");
+    const idleDays = lastRun?.toDate ? Math.floor((now.toDate() - lastRun.toDate()) / 86_400_000) : 0;
+    const lastMilestone = preference.get("lastInactivityMilestoneDays") || 0;
+    const milestones = [3, 7, 14];
+    const milestone = milestones.find((day) => idleDays >= day && day > lastMilestone) || (idleDays >= 21 && idleDays - lastMilestone >= 7 ? idleDays : 0);
+    if (milestone) {
+      await sendNotification(user.id, { title: "잠시 쉬었다면, 오늘은 가볍게 다시 달려볼까요?", body: "가벼운 러닝으로 다시 페이스를 찾아봐요.", data: { type: "inactivityReminder" } });
+      await preference.ref.set({ lastInactivityReminderAt: now, lastInactivityMilestoneDays: milestone }, { merge: true });
+      return;
+    }
+    await sendNotification(user.id, { title: "오늘도 페이싱과 달려볼까요?", body: "좋아하는 노래와 함께 오늘 하루를 기분 좋게 마무리해요.", data: { type: "dailyReminder" } });
+  }));
+});
 
 function profileVisibilityAllows(profile, viewerUID, friendUIDs) {
   if (!profile || profile.id === viewerUID) return true;

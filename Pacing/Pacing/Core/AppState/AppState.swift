@@ -11,6 +11,11 @@ final class AppState: ObservableObject {
     }
     // 로그인 직후 프로필 복원 중 → 스플래쉬 유지 (ProfileSetupView 깜빡임 방지)
     @Published var isAuthLoading: Bool = false
+    @Published var notificationDestination: NotificationDestination?
+
+    func routeNotification(_ userInfo: [AnyHashable: Any]) {
+        notificationDestination = NotificationRouter.destination(from: userInfo)
+    }
 
     init() {
         appearance = AppAppearance(rawValue: UserDefaults.standard.string(forKey: AppAppearance.storageKey) ?? "") ?? .light
