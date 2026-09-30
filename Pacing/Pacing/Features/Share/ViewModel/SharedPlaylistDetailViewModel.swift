@@ -524,6 +524,17 @@ final class SharedPlaylistDetailViewModel: ObservableObject {
         }
     }
 
+    var sharedPlaylistOwner: FriendUser? {
+        guard case .shared = source, !summary.ownerUID.isEmpty else { return nil }
+        return FriendUser(
+            id: summary.ownerUID,
+            nickname: summary.ownerNickname,
+            profileImageBase64: nil,
+            statusText: "최근 활동 없음",
+            source: .friend
+        )
+    }
+
     var isAlbumSource: Bool {
         if case .album = source {
             return true

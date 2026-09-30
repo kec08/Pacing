@@ -408,6 +408,30 @@ exports.acceptFriendRequest = onCall(async (request) => {
   }
 });
 
+/** Creates or reopens one directional friend request on the server. */
+exports.sendFriendRequest = onCall(async (request) => {
+  const fromUID = request.auth?.uid;
+  const toUID = request.data?.toUID;
+  if (!fromUID) throw new HttpsError("unauthenticated", "로그인한 사용자만 친구 요청을 보낼 수 있어요.");
+  if (!toUID || typeof toUID !== "string" || toUID === fromUID) {
+    throw new HttpsError("invalid-argument", "올바른 친구가 필요해요.");
+  }
+
+  const requestRef = firestore.collection("friendRequests").doc(`${fromUID}_${toUID}`);
+  await firestore.runTransaction(async (transaction) => {
+    const [target, existing] = await transaction.getAll(firestore.collection("users").doc(toUID), requestRef);
+    if (!target.exists) throw new HttpsError("not-found", "친구를 찾을 수 없어요.");
+    if (existing.exists && existing.get("status") === "pending") return;
+    transaction.set(requestRef, {
+      fromUID,
+      toUID,
+      status: "pending",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+  return { requested: true };
+});
+
 exports.naverLogin = onCall(async (request) => {
   logger.info("naverLogin called");
 
