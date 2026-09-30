@@ -57,7 +57,16 @@ protocol RunningVoiceAnnouncing: AnyObject {
 }
 
 final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
+    private struct AudioSessionConfiguration {
+        let category: AVAudioSession.Category
+        let mode: AVAudioSession.Mode
+        let policy: AVAudioSession.RouteSharingPolicy
+        let options: AVAudioSession.CategoryOptions
+    }
+
     private let synthesizer = AVSpeechSynthesizer()
+    private var announcementSessionConfiguration: AudioSessionConfiguration?
+    private var pendingUtteranceIDs = Set<ObjectIdentifier>()
 
     override init() {
         super.init()
@@ -80,29 +89,39 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         utterance.rate = 0.48
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
+        pendingUtteranceIDs.insert(ObjectIdentifier(utterance))
         synthesizer.speak(utterance)
     }
 
     func stop() {
         synthesizer.stopSpeaking(at: .immediate)
-        deactivateAudioSessionIfNeeded()
+        pendingUtteranceIDs.removeAll()
+        restoreAudioSessionAfterAnnouncement()
     }
 
     private func configureAudioSessionForAnnouncement() {
+        guard announcementSessionConfiguration == nil else { return }
+
         let session = AVAudioSession.sharedInstance()
         do {
+            let previousConfiguration = AudioSessionConfiguration(
+                category: session.category,
+                mode: session.mode,
+                policy: session.routeSharingPolicy,
+                options: session.categoryOptions
+            )
             try session.setCategory(
                 .playback,
                 mode: .voicePrompt,
-                policy: .longFormAudio,
+                policy: .default,
                 options: [
                     .duckOthers,
-                    .interruptSpokenAudioAndMixWithOthers,
                     .allowBluetoothHFP,
                     .allowBluetoothA2DP
                 ]
             )
             try session.setActive(true)
+            announcementSessionConfiguration = previousConfiguration
         } catch {
             // 음성 안내 실패가 러닝 측정을 중단시키지 않도록 오디오 세션 오류는 무시합니다.
         }
@@ -117,12 +136,20 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         } ?? AVSpeechSynthesisVoice(language: "ko-KR")
     }
 
-    private func deactivateAudioSessionIfNeeded() {
-        guard !synthesizer.isSpeaking else { return }
-        try? AVAudioSession.sharedInstance().setActive(
-            false,
-            options: .notifyOthersOnDeactivation
+    private func restoreAudioSessionAfterAnnouncement() {
+        guard pendingUtteranceIDs.isEmpty,
+              let configuration = announcementSessionConfiguration
+        else { return }
+
+        // MusicKit은 앱의 공유 오디오 세션을 사용한다. 음성 안내 뒤 세션 전체를
+        // 비활성화하면 재생 중인 곡까지 멈출 수 있으므로, 안내 전 구성만 복원한다.
+        try? AVAudioSession.sharedInstance().setCategory(
+            configuration.category,
+            mode: configuration.mode,
+            policy: configuration.policy,
+            options: configuration.options
         )
+        announcementSessionConfiguration = nil
     }
 }
 
@@ -131,13 +158,15 @@ extension LapVoiceAnnouncementService: AVSpeechSynthesizerDelegate {
         _ synthesizer: AVSpeechSynthesizer,
         didFinish utterance: AVSpeechUtterance
     ) {
-        deactivateAudioSessionIfNeeded()
+        pendingUtteranceIDs.remove(ObjectIdentifier(utterance))
+        restoreAudioSessionAfterAnnouncement()
     }
 
     func speechSynthesizer(
         _ synthesizer: AVSpeechSynthesizer,
         didCancel utterance: AVSpeechUtterance
     ) {
-        deactivateAudioSessionIfNeeded()
+        pendingUtteranceIDs.remove(ObjectIdentifier(utterance))
+        restoreAudioSessionAfterAnnouncement()
     }
 }
