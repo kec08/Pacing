@@ -2,7 +2,7 @@
 
 > **완료일**: 2026-09-30
 > **관련 이슈**: [#203](https://github.com/kec08/Pacing/issues/203)
-> **PR**: 생성 예정
+> **PR**: [#204](https://github.com/kec08/Pacing/pull/204)
 > **브랜치**: `feat/203-firebase-push-notifications`
 
 ---
