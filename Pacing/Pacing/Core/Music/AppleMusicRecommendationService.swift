@@ -318,13 +318,30 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.notAuthorized
         }
 
+        // 최근 기록에는 앨범 외에 플레이리스트·스테이션도 함께 섞여 온다.
+        // 첫 페이지의 항목만 앨범으로 필터링하면 최근에 플레이리스트를 들은 경우
+        // 이전에 재생한 앨범이 있어도 빈 목록이 될 수 있어, 목표 개수까지 페이지를 순회한다.
+        let pageSize = 10
         var request = MusicRecentlyPlayedRequest<RecentlyPlayedMusicItem>()
-        request.limit = max(1, min(limit, 10))
+        request.limit = pageSize
 
-        let response = try await request.response()
-        let albums = response.items.compactMap { item -> Album? in
-            guard case let .album(album) = item else { return nil }
-            return album
+        var batch = try await request.response().items
+        var albums: [Album] = []
+
+        func appendAlbums(from items: MusicItemCollection<RecentlyPlayedMusicItem>) {
+            albums.append(contentsOf: items.compactMap { item -> Album? in
+                guard case let .album(album) = item else { return nil }
+                return album
+            })
+        }
+
+        appendAlbums(from: batch)
+
+        while albums.uniquedByID().count < limit,
+              batch.hasNextBatch,
+              let nextBatch = try await batch.nextBatch(limit: pageSize) {
+            batch = nextBatch
+            appendAlbums(from: batch)
         }
 
         return Array(albums.uniquedByID().prefix(limit))
