@@ -307,6 +307,7 @@ final class RunningViewModel: ObservableObject {
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
         state = .finished
+        announceRunCompletion()
         if sendCommand {
             PhoneRunSyncPublisher.shared.send(
                 PhoneRunCommand(action: .finish, sender: .phone, sessionID: sessionID)
@@ -716,6 +717,19 @@ final class RunningViewModel: ObservableObject {
             elapsedSeconds: elapsedSeconds,
             averagePaceMinutesPerKilometer: avgPace
         ) else { return }
+        voiceAnnouncer.announce(announcement)
+    }
+
+    private func announceRunCompletion() {
+        guard let announcement = RunCompletionVoiceAnnouncement(
+            distanceKilometers: distance,
+            elapsedSeconds: elapsedSeconds,
+            averagePaceMinutesPerKilometer: overallAveragePace
+        ) else { return }
+
+        // 마지막 킬로미터 안내가 진행 중인 경우 종료 요약으로 교체해, 완료 수치를
+        // 한 번만 명확하게 들려준다.
+        voiceAnnouncer.stop()
         voiceAnnouncer.announce(announcement)
     }
 }

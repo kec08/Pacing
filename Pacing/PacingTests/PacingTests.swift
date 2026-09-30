@@ -93,6 +93,36 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
     }
 
+    func testRunCompletionVoiceAnnouncementIncludesDistanceTimeAndAveragePace() {
+        let announcement = RunCompletionVoiceAnnouncement(
+            distanceKilometers: 3.25,
+            elapsedSeconds: 3_905,
+            averagePaceMinutesPerKilometer: 5.5
+        )
+
+        XCTAssertEqual(
+            announcement?.text,
+            "운동을 완료했습니다. 총 거리 3.25킬로미터. 총 시간 1시간 5분 5초. 평균 페이스 5분 30초."
+        )
+    }
+
+    func testRunCompletionVoiceAnnouncementAllowsMissingPaceButRejectsInvalidMetrics() {
+        let noPaceAnnouncement = RunCompletionVoiceAnnouncement(
+            distanceKilometers: 0,
+            elapsedSeconds: 0,
+            averagePaceMinutesPerKilometer: 0
+        )
+        XCTAssertEqual(
+            noPaceAnnouncement?.text,
+            "운동을 완료했습니다. 총 거리 0.00킬로미터. 총 시간 0분 0초. 평균 페이스 정보 없음."
+        )
+        XCTAssertNil(RunCompletionVoiceAnnouncement(
+            distanceKilometers: -.infinity,
+            elapsedSeconds: 100,
+            averagePaceMinutesPerKilometer: 5
+        ))
+    }
+
     func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
