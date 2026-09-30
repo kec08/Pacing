@@ -296,6 +296,11 @@ final class RunningViewModel: ObservableObject {
     }
 
     func stop(sendCommand: Bool = true) async {
+        // iPhone 버튼과 Watch 종료 명령이 거의 동시에 도착할 수 있다. 첫 종료가
+        // 상태를 finished로 확정한 뒤에는 후속 요청을 무시해 요약·음성 안내가
+        // 중복되지 않게 한다.
+        guard state == .running || state == .paused else { return }
+
         syncElapsedSeconds()
         completePendingLapsIfNeeded()
         let endedAt = Date()
