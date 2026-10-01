@@ -76,6 +76,26 @@ exports.notifyFriendRunStarted = onValueCreated({
   })));
 });
 
+// 같이 듣기 요청은 수신자별 inbox 경로에 새 항목이 생길 때만 알린다.
+// listenSessions의 재생 위치 갱신을 구독하면 매초 중복 푸시가 발생할 수 있으므로
+// 세션 원본이 아닌 incomingRequests 생성 이벤트를 트리거로 사용한다.
+exports.notifyListenTogetherRequest = onValueCreated({
+  ref: "/incomingRequests/{recipientUID}/{sessionID}",
+  instance: "pacing-a8639-default-rtdb",
+  region: "us-central1",
+}, async (event) => {
+  const request = event.data?.val();
+  const recipientUID = event.params.recipientUID;
+  const sessionID = event.params.sessionID;
+  if (!request || !recipientUID || !sessionID || request.status !== "pending" || !request.guestUID) return;
+
+  await sendNotification(recipientUID, {
+    title: "같이 듣기 요청",
+    body: `${request.guestNickname || "친구"}님이 같이 듣기를 요청했어요.`,
+    data: { type: "listenTogetherRequest", sessionID, senderUID: request.guestUID },
+  });
+});
+
 exports.resetInactivityReminder = onDocumentCreated("users/{uid}/runHistory/{recordID}", async (event) => {
   await firestore.collection("users").doc(event.params.uid)
     .collection("notificationPreferences").doc("default")

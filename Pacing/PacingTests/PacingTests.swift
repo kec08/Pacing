@@ -11,6 +11,17 @@ import CoreLocation
 import MapKit
 
 final class PacingTests: XCTestCase {
+    func testListenTogetherRequestNotificationRoutesToRunning() {
+        XCTAssertEqual(
+            NotificationRouter.destination(from: ["type": "listenTogetherRequest"]),
+            .running
+        )
+    }
+
+    func testUnknownNotificationDoesNotRoute() {
+        XCTAssertNil(NotificationRouter.destination(from: ["type": "unknown"]))
+    }
+
     func testInitialRunningMapCameraUsesTheSameDistanceAsMyLocationButton() {
         XCTAssertEqual(
             RunningMapCameraPolicy.initialCameraDistance(locationFocusDistance: 1_000),
