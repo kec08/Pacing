@@ -97,92 +97,6 @@ final class ApplicationPlaybackContext: ObservableObject {
     }
 }
 
-struct RecentAlbumDisplayItem: Identifiable {
-    let id: String
-    let title: String
-    let artistName: String
-    let artworkURL: String?
-    let artworkData: Data?
-    let catalogAlbum: Album?
-
-    init(album: Album) {
-        id = "catalog_\(album.id)"
-        title = album.title
-        artistName = album.artistName
-        artworkURL = album.artwork?.url(width: 900, height: 900)?.absoluteString
-        artworkData = nil
-        catalogAlbum = album
-    }
-
-    init(localAlbum: LocalRecentAlbum) {
-        id = localAlbum.id
-        title = localAlbum.title
-        artistName = localAlbum.artistName
-        artworkURL = nil
-        artworkData = localAlbum.artworkData
-        catalogAlbum = nil
-    }
-}
-
-struct LocalRecentAlbum: Codable, Identifiable {
-    let id: String
-    let title: String
-    let artistName: String
-    let artworkData: Data?
-}
-
-@MainActor
-final class RecentAlbumHistoryStore: ObservableObject {
-    static let shared = RecentAlbumHistoryStore()
-
-    @Published private(set) var albums: [LocalRecentAlbum]
-
-    private let storageKey = "recentAlbumHistory.v1"
-    private let maximumCount = 8
-
-    private init() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let storedAlbums = try? JSONDecoder().decode([LocalRecentAlbum].self, from: data)
-        else {
-            albums = []
-            return
-        }
-        albums = Array(storedAlbums.prefix(maximumCount))
-    }
-
-    func record(albumTitle: String?, artistName: String?, artwork: UIImage?) {
-        let title = albumTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard !title.isEmpty else { return }
-
-        let artist = artistName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Apple Music"
-        let id = "local_\(normalizedIDComponent(title))_\(normalizedIDComponent(artist))"
-        guard albums.first?.id != id else { return }
-
-        let artworkData = artwork?.jpegData(compressionQuality: 0.7)
-        let album = LocalRecentAlbum(
-            id: id,
-            title: title,
-            artistName: artist,
-            artworkData: artworkData
-        )
-        albums.removeAll { $0.id == id }
-        albums.insert(album, at: 0)
-        albums = Array(albums.prefix(maximumCount))
-        persist()
-    }
-
-    private func persist() {
-        guard let data = try? JSONEncoder().encode(albums) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
-    }
-
-    private func normalizedIDComponent(_ value: String) -> String {
-        value
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
-            .replacingOccurrences(of: " ", with: "")
-    }
-}
-
 @MainActor
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
@@ -404,103 +318,16 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.notAuthorized
         }
 
-        let albumLimit = max(1, limit)
-        // 최근 기록에는 앨범 외에 플레이리스트·스테이션도 함께 섞여 온다.
-        // 첫 페이지의 항목만 앨범으로 필터링하면 최근에 플레이리스트를 들은 경우
-        // 이전에 재생한 앨범이 있어도 빈 목록이 될 수 있어, 목표 개수까지 페이지를 순회한다.
-        let pageSize = 10
         var request = MusicRecentlyPlayedRequest<RecentlyPlayedMusicItem>()
-        request.limit = pageSize
+        request.limit = max(1, min(limit, 10))
 
-        var albums: [Album] = []
-
-        func appendAlbums(from items: MusicItemCollection<RecentlyPlayedMusicItem>) {
-            albums.append(contentsOf: items.compactMap { item -> Album? in
-                guard case let .album(album) = item else { return nil }
-                return album
-            })
+        let response = try await request.response()
+        let albums = response.items.compactMap { item -> Album? in
+            guard case let .album(album) = item else { return nil }
+            return album
         }
 
-        // 최근 재생 API 자체가 실패해도 현재 재생 중인 앨범 fallback은 계속 시도한다.
-        if var batch = try? await request.response().items {
-            appendAlbums(from: batch)
-
-            while albums.uniquedByID().count < albumLimit,
-                  batch.hasNextBatch,
-                  let nextBatch = try? await batch.nextBatch(limit: pageSize) {
-                batch = nextBatch
-                appendAlbums(from: batch)
-            }
-        }
-
-        let containerAlbums = albums.uniquedByID()
-        guard containerAlbums.count < albumLimit else {
-            return Array(containerAlbums.prefix(albumLimit))
-        }
-
-        // 컨테이너 응답은 앨범·플레이리스트·스테이션만 반환할 수 있다. 실제로는
-        // 곡 단위 재생 이력만 존재하는 계정도 있어, Song 요청으로 앨범 관계를 보완한다.
-        var songRequest = MusicRecentlyPlayedRequest<Song>()
-        songRequest.limit = pageSize
-        if let songResponse = try? await songRequest.response() {
-            for song in songResponse.items {
-                guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
-                      let album = resolvedSong.albums?.first
-                else {
-                    continue
-                }
-                albums.append(album)
-
-                if albums.uniquedByID().count >= albumLimit {
-                    break
-                }
-            }
-        }
-
-        if albums.uniquedByID().count < albumLimit {
-            albums.append(contentsOf: await fetchCurrentPlaybackAlbums())
-        }
-
-        return Array(albums.uniquedByID().prefix(albumLimit))
-    }
-
-    /// Apple Music의 최근 재생 API는 기기의 듣기 기록 설정·동기화 상태에 따라 빈 배열을
-    /// 반환할 수 있다. 이 경우 음악 탭에서 이미 재생 중인 곡의 앨범을 카탈로그에서 찾아
-    /// 즉시 표시해, 현재 사용자가 듣고 있는 앨범까지 빈 상태로 처리하지 않는다.
-    private func fetchCurrentPlaybackAlbums() async -> [Album] {
-        var candidates: [(title: String, artist: String)] = []
-
-        if let currentSong = playbackContext.currentSong {
-            if let resolvedSong = try? await currentSong.with([.albums], preferredSource: .catalog),
-               let album = resolvedSong.albums?.first {
-                return [album]
-            }
-            candidates.append((currentSong.title, currentSong.artistName))
-        }
-
-        if let entry = player.queue.currentEntry {
-            candidates.append((entry.title, entry.subtitle ?? ""))
-        }
-
-        let systemItem = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
-        if let title = systemItem?.title {
-            candidates.append((title, systemItem?.artist ?? ""))
-        }
-
-        for candidate in candidates {
-            guard let song = try? await searchCatalogSong(
-                title: candidate.title,
-                artist: candidate.artist
-            ),
-            let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
-            let album = resolvedSong.albums?.first
-            else {
-                continue
-            }
-            return [album]
-        }
-
-        return []
+        return Array(albums.uniquedByID().prefix(limit))
     }
 
     func loadTracks(for playlist: Playlist) async throws -> [SharedPlaylistTrack] {
