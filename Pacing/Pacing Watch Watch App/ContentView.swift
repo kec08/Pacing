@@ -356,11 +356,11 @@ private struct WatchListenTogetherTabView: View {
     }
 
     private func activeSession(_ snapshot: WatchListenTogetherSnapshot) -> some View {
-        TimelineView(.periodic(from: .now, by: 1)) { _ in
+        TimelineView(.periodic(from: .now, by: 1)) { context in
             ScrollView {
                 VStack(alignment: .leading, spacing: 9) {
                     Text("같이 듣기 중")
-                        .font(.system(size: 14, weight: .heavy))
+                        .font(.system(size: 15, weight: .heavy))
                         .foregroundStyle(PacingWatchTheme.magenta)
 
                     HStack(spacing: 9) {
@@ -380,19 +380,21 @@ private struct WatchListenTogetherTabView: View {
                     ForEach(snapshot.participants) { participant in
                         WatchListenTogetherParticipantRow(
                             participant: participant,
-                            elapsedText: elapsedText(startedAt: snapshot.startedAt)
+                            elapsedText: elapsedText(startedAt: snapshot.startedAt, now: context.date)
                         )
                     }
                 }
-                .padding(.top, 1)
+                .padding(.top, -4)
+                // 하단 페이지 점과 마지막 참여자 행이 겹치지 않도록 스크롤 끝 여백을 둡니다.
+                .padding(.bottom, 18)
             }
         }
         .accessibilityElement(children: .contain)
     }
 
-    private func elapsedText(startedAt: Date?) -> String {
+    private func elapsedText(startedAt: Date?, now: Date) -> String {
         guard let startedAt else { return "함께 듣는 중" }
-        let seconds = max(0, Int(Date().timeIntervalSince(startedAt)))
+        let seconds = max(0, Int(now.timeIntervalSince(startedAt)))
         if seconds < 60 { return "\(seconds)초 함께 들음" }
         return "\(seconds / 60)분 함께 들음"
     }
@@ -412,7 +414,7 @@ private struct WatchListenTogetherParticipantRow: View {
                         .lineLimit(1)
                     Text(participant.role)
                         .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(PacingWatchTheme.magenta)
+                        .foregroundStyle(participant.role == "호스트" ? PacingWatchTheme.main500 : PacingWatchTheme.magenta)
                 }
                 Text(elapsedText)
                     .font(.system(size: 9))
