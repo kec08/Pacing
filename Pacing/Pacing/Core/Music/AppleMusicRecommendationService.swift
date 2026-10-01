@@ -324,8 +324,8 @@ final class AppleMusicRecommendationService {
         containerRequest.limit = pageSize
 
         var albums: [Album] = []
-        let containerResponse = try await containerRequest.response()
-        var containerItems = containerResponse.items
+        var firstRequestError: Error?
+        var didReceiveResponse = false
 
         func appendContainerAlbums(_ items: MusicItemCollection<RecentlyPlayedMusicItem>) {
             albums.append(contentsOf: items.compactMap { item -> Album? in
@@ -334,36 +334,53 @@ final class AppleMusicRecommendationService {
             })
         }
 
-        appendContainerAlbums(containerItems)
-
-        // 최근 컨테이너에는 플레이리스트·스테이션도 섞인다. 앨범이 뒤에 있는 경우도
-        // 놓치지 않도록 필요한 만큼 페이지를 이어서 확인한다.
-        while albums.uniquedByID().count < albumLimit,
-              containerItems.hasNextBatch,
-              let nextBatch = try? await containerItems.nextBatch(limit: pageSize) {
-            containerItems = nextBatch
+        do {
+            let containerResponse = try await containerRequest.response()
+            didReceiveResponse = true
+            var containerItems = containerResponse.items
             appendContainerAlbums(containerItems)
+
+            // 최근 컨테이너에는 플레이리스트·스테이션도 섞인다. 앨범이 뒤에 있는 경우도
+            // 놓치지 않도록 필요한 만큼 페이지를 이어서 확인한다.
+            while albums.uniquedByID().count < albumLimit,
+                  containerItems.hasNextBatch,
+                  let nextBatch = try? await containerItems.nextBatch(limit: pageSize) {
+                containerItems = nextBatch
+                appendContainerAlbums(containerItems)
+            }
+        } catch {
+            firstRequestError = error
         }
 
         // 일반적인 곡 재생은 컨테이너 응답에 앨범으로 나타나지 않을 수 있다. Song 이력의
-        // albums 관계를 명시적으로 로드해 같은 최근 앨범 목록으로 합친다.
+        // albums 관계를 명시적으로 로드해 같은 최근 앨범 목록으로 합친다. 이 보완 요청이
+        // 실패해도 컨테이너 요청에서 받은 앨범은 버리지 않는다.
         if albums.uniquedByID().count < albumLimit {
-            var songRequest = MusicRecentlyPlayedRequest<Song>()
-            songRequest.limit = pageSize
-            let songResponse = try await songRequest.response()
+            do {
+                var songRequest = MusicRecentlyPlayedRequest<Song>()
+                songRequest.limit = pageSize
+                let songResponse = try await songRequest.response()
+                didReceiveResponse = true
 
-            for song in songResponse.items {
-                guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
-                      let album = resolvedSong.albums?.first
-                else {
-                    continue
-                }
+                for song in songResponse.items {
+                    guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
+                          let album = resolvedSong.albums?.first
+                    else {
+                        continue
+                    }
 
-                albums.append(album)
-                if albums.uniquedByID().count >= albumLimit {
-                    break
+                    albums.append(album)
+                    if albums.uniquedByID().count >= albumLimit {
+                        break
+                    }
                 }
+            } catch {
+                firstRequestError = firstRequestError ?? error
             }
+        }
+
+        if !didReceiveResponse, let firstRequestError {
+            throw firstRequestError
         }
 
         return Array(albums.uniquedByID().prefix(albumLimit))
