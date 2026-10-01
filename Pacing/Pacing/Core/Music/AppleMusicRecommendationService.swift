@@ -326,7 +326,6 @@ final class AppleMusicRecommendationService {
         var request = MusicRecentlyPlayedRequest<RecentlyPlayedMusicItem>()
         request.limit = pageSize
 
-        var batch = try await request.response().items
         var albums: [Album] = []
 
         func appendAlbums(from items: MusicItemCollection<RecentlyPlayedMusicItem>) {
@@ -336,13 +335,16 @@ final class AppleMusicRecommendationService {
             })
         }
 
-        appendAlbums(from: batch)
-
-        while albums.uniquedByID().count < albumLimit,
-              batch.hasNextBatch,
-              let nextBatch = try await batch.nextBatch(limit: pageSize) {
-            batch = nextBatch
+        // 최근 재생 API 자체가 실패해도 현재 재생 중인 앨범 fallback은 계속 시도한다.
+        if var batch = try? await request.response().items {
             appendAlbums(from: batch)
+
+            while albums.uniquedByID().count < albumLimit,
+                  batch.hasNextBatch,
+                  let nextBatch = try? await batch.nextBatch(limit: pageSize) {
+                batch = nextBatch
+                appendAlbums(from: batch)
+            }
         }
 
         let containerAlbums = albums.uniquedByID()
@@ -354,22 +356,65 @@ final class AppleMusicRecommendationService {
         // 곡 단위 재생 이력만 존재하는 계정도 있어, Song 요청으로 앨범 관계를 보완한다.
         var songRequest = MusicRecentlyPlayedRequest<Song>()
         songRequest.limit = pageSize
-        let songResponse = try await songRequest.response()
+        if let songResponse = try? await songRequest.response() {
+            for song in songResponse.items {
+                guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
+                      let album = resolvedSong.albums?.first
+                else {
+                    continue
+                }
+                albums.append(album)
 
-        for song in songResponse.items {
-            guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
-                  let album = resolvedSong.albums?.first
-            else {
-                continue
-            }
-            albums.append(album)
-
-            if albums.uniquedByID().count >= albumLimit {
-                break
+                if albums.uniquedByID().count >= albumLimit {
+                    break
+                }
             }
         }
 
+        if albums.uniquedByID().count < albumLimit {
+            albums.append(contentsOf: await fetchCurrentPlaybackAlbums())
+        }
+
         return Array(albums.uniquedByID().prefix(albumLimit))
+    }
+
+    /// Apple Music의 최근 재생 API는 기기의 듣기 기록 설정·동기화 상태에 따라 빈 배열을
+    /// 반환할 수 있다. 이 경우 음악 탭에서 이미 재생 중인 곡의 앨범을 카탈로그에서 찾아
+    /// 즉시 표시해, 현재 사용자가 듣고 있는 앨범까지 빈 상태로 처리하지 않는다.
+    private func fetchCurrentPlaybackAlbums() async -> [Album] {
+        var candidates: [(title: String, artist: String)] = []
+
+        if let currentSong = playbackContext.currentSong {
+            if let resolvedSong = try? await currentSong.with([.albums], preferredSource: .catalog),
+               let album = resolvedSong.albums?.first {
+                return [album]
+            }
+            candidates.append((currentSong.title, currentSong.artistName))
+        }
+
+        if let entry = player.queue.currentEntry {
+            candidates.append((entry.title, entry.subtitle ?? ""))
+        }
+
+        let systemItem = MPMusicPlayerController.systemMusicPlayer.nowPlayingItem
+        if let title = systemItem?.title {
+            candidates.append((title, systemItem?.artist ?? ""))
+        }
+
+        for candidate in candidates {
+            guard let song = try? await searchCatalogSong(
+                title: candidate.title,
+                artist: candidate.artist
+            ),
+            let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
+            let album = resolvedSong.albums?.first
+            else {
+                continue
+            }
+            return [album]
+        }
+
+        return []
     }
 
     func loadTracks(for playlist: Playlist) async throws -> [SharedPlaylistTrack] {
