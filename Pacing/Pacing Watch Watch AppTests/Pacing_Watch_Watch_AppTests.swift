@@ -46,6 +46,7 @@ final class Pacing_Watch_Watch_AppTests: XCTestCase {
             artworkURL: "https://example.com/artwork.jpg",
             artworkData: artwork,
             startedAt: Date(timeIntervalSince1970: 100),
+            isCurrentUserHost: true,
             participants: [
                 WatchListenTogetherParticipant(id: "host", nickname: "은찬", role: "호스트", profileImageData: artwork),
                 WatchListenTogetherParticipant(id: "guest", nickname: "윤재", role: "게스트", profileImageData: nil)
@@ -60,6 +61,7 @@ final class Pacing_Watch_Watch_AppTests: XCTestCase {
         XCTAssertEqual(decoded, snapshot)
         XCTAssertEqual(decoded.participants.map(\.role), ["호스트", "게스트"])
         XCTAssertEqual(decoded.artworkData, artwork)
+        XCTAssertEqual(decoded.isCurrentUserHost, true)
     }
 
     func testInactiveListenTogetherSnapshotContainsNoStaleParticipants() {

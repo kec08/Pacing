@@ -108,6 +108,8 @@ struct PhoneListenTogetherSnapshot: Codable, Equatable {
     /// 앨범 아트는 Watch가 독립 네트워크에 있거나 URL이 만료된 경우에도 표시할 수 있도록 보조 데이터를 보관합니다.
     let artworkData: Data?
     let startedAt: Date?
+    /// 현재 Watch 사용자가 재생 제어 권한을 갖는지 나타냅니다.
+    let isCurrentUserHost: Bool?
     let participants: [PhoneListenTogetherParticipant]
 
     static let inactive = Self(
@@ -119,6 +121,7 @@ struct PhoneListenTogetherSnapshot: Codable, Equatable {
         artworkURL: nil,
         artworkData: nil,
         startedAt: nil,
+        isCurrentUserHost: nil,
         participants: []
     )
 
@@ -132,6 +135,7 @@ struct PhoneListenTogetherSnapshot: Codable, Equatable {
             artworkURL: artworkURL,
             artworkData: artworkData,
             startedAt: startedAt,
+            isCurrentUserHost: isCurrentUserHost,
             participants: participants.map {
                 PhoneListenTogetherParticipant(id: $0.id, nickname: $0.nickname, role: $0.role, profileImageData: nil)
             }

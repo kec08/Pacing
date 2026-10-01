@@ -12,7 +12,40 @@ final class ListenTogetherViewModel: ObservableObject {
     @Published var isHost: Bool = false
     @Published var sessionStartDate: Date? = nil
 
+    private var isVoiceAnnouncementActive = false
+    private weak var observedMusicViewModel: RunningMusicViewModel?
+    private var voiceAnnouncementObservers: [NSObjectProtocol] = []
+
     private var myUID: String { Auth.auth().currentUser?.uid ?? "" }
+
+    init() {
+        voiceAnnouncementObservers = [
+            NotificationCenter.default.addObserver(
+                forName: .runningVoiceAnnouncementDidStart,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.isVoiceAnnouncementActive = true
+            },
+            NotificationCenter.default.addObserver(
+                forName: .runningVoiceAnnouncementDidFinish,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.isVoiceAnnouncementActive = false
+                guard !self.isHost,
+                      let session = self.activeSession,
+                      let musicVM = self.observedMusicViewModel
+                else { return }
+                Task { await self.syncMusic(session: session, musicVM: musicVM) }
+            }
+        ]
+    }
+
+    deinit {
+        voiceAnnouncementObservers.forEach(NotificationCenter.default.removeObserver)
+    }
     private var myNickname: String { UserDefaults.standard.string(forKey: "nickname") ?? "러너" }
     private var lastIncomingRequestID: String?
     private var hostBroadcastTimer: AnyCancellable?
@@ -198,6 +231,7 @@ final class ListenTogetherViewModel: ObservableObject {
                 artworkURL: nil,
                 artworkData: nil,
                 startedAt: nil,
+                isCurrentUserHost: nil,
                 participants: []
             )
         }
@@ -211,6 +245,7 @@ final class ListenTogetherViewModel: ObservableObject {
             artworkURL: session.artworkURL.nonEmpty,
             artworkData: compactWatchArtworkData(from: session.artworkData),
             startedAt: sessionStartDate,
+            isCurrentUserHost: isHost,
             participants: [
                 participant(uid: session.hostUID, nickname: session.hostNickname, role: "호스트", imageBase64: session.hostProfileImageBase64),
                 participant(uid: session.guestUID, nickname: session.guestNickname, role: "게스트", imageBase64: session.guestProfileImageBase64)
@@ -295,6 +330,7 @@ final class ListenTogetherViewModel: ObservableObject {
 
     // MARK: - 세션 구독
     private func observeSession(sessionID: String, musicVM: RunningMusicViewModel) {
+        observedMusicViewModel = musicVM
         RealtimeDBService.shared.observeSession(sessionID: sessionID) { [weak self] session in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -313,7 +349,7 @@ final class ListenTogetherViewModel: ObservableObject {
                         self.activeSession = resolvedSession
                         // 곡·재생 상태뿐 아니라, 같은 이벤트에서 늦게 보강되는 앨범 커버도
                         // 게스트 큐 캐시에 반영해야 음악 시트가 placeholder에 머물지 않습니다.
-                        if self.shouldSyncMusic(
+                        if !self.isVoiceAnnouncementActive, self.shouldSyncMusic(
                             with: resolvedSession,
                             previousSession: previousSession,
                             musicVM: musicVM
@@ -326,7 +362,7 @@ final class ListenTogetherViewModel: ObservableObject {
                         // ApplicationMusicPlayer 세션은 syncMusic에서 재생 상태까지 반영한다.
                         // 시스템 플레이어를 다시 조작하면 게스트 큐가 매 위치 갱신마다
                         // 다른 곡으로 재구성될 수 있어 legacy 재생에서만 사용한다.
-                        if !musicVM.isUsingApplicationPlayer {
+                        if !self.isVoiceAnnouncementActive, !musicVM.isUsingApplicationPlayer {
                             let player = MPMusicPlayerController.systemMusicPlayer
                             if resolvedSession.isPlaying && player.playbackState != .playing {
                                 player.play()

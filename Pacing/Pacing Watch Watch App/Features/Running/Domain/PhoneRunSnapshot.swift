@@ -39,6 +39,7 @@ struct WatchListenTogetherSnapshot: Codable, Equatable {
     let artworkURL: String?
     let artworkData: Data?
     let startedAt: Date?
+    let isCurrentUserHost: Bool?
     let participants: [WatchListenTogetherParticipant]
 
     static let inactive = Self(
@@ -50,6 +51,7 @@ struct WatchListenTogetherSnapshot: Codable, Equatable {
         artworkURL: nil,
         artworkData: nil,
         startedAt: nil,
+        isCurrentUserHost: nil,
         participants: []
     )
 }

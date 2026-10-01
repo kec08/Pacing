@@ -12,6 +12,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var viewModel = WatchAppViewModel()
     @StateObject private var runningMusicPresentation = WatchRunningMusicPresentation()
+    @StateObject private var listenTogetherViewModel = WatchListenTogetherViewModel()
 
     var body: some View {
         ZStack {
@@ -25,20 +26,24 @@ struct ContentView: View {
                     if !viewModel.isRunPaused {
                         WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchRunTab.dashboard)
                     }
-                    WatchRunningMusicTabView(presentation: runningMusicPresentation).tag(WatchRunTab.music)
+                    if listenTogetherViewModel.isGuest {
+                        WatchListenTogetherTabView(viewModel: listenTogetherViewModel).tag(WatchRunTab.music)
+                    } else {
+                        WatchRunningMusicTabView(presentation: runningMusicPresentation).tag(WatchRunTab.music)
+                    }
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
                 .disabled(viewModel.isRunTabLocked)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .overlay(alignment: .bottom) {
                     WatchRunTabIndicator(
                         selectedTab: $viewModel.selectedRunTab,
                         tabs: viewModel.runTabs
                     )
-                        .offset(y: 20)
+                        .padding(.bottom, 2)
                         .disabled(viewModel.isRunTabLocked)
                 }
                 .overlay(alignment: .topLeading) {
-                    if viewModel.selectedRunTab == .music {
+                    if viewModel.selectedRunTab == .music, !listenTogetherViewModel.isGuest {
                         WatchRunningMusicPlaylistButton(presentation: runningMusicPresentation)
                             .offset(x: 6, y: -36)
                             .transaction { $0.animation = nil }
@@ -48,13 +53,13 @@ struct ContentView: View {
                 TabView(selection: $viewModel.selectedTab) {
                     WatchMusicTabView().tag(WatchTab.music)
                     WatchRunningTabView(viewModel: viewModel.runningViewModel).tag(WatchTab.running)
-                    WatchListenTogetherTabView().tag(WatchTab.listenTogether)
+                    WatchListenTogetherTabView(viewModel: listenTogetherViewModel).tag(WatchTab.listenTogether)
                     WatchActivityTabView().tag(WatchTab.activity)
                 }
                 .tabViewStyle(.page(indexDisplayMode: .never))
-                .safeAreaInset(edge: .bottom, spacing: 0) {
+                .overlay(alignment: .bottom) {
                     WatchTabIndicator(selectedTab: $viewModel.selectedTab)
-                        .offset(y: 12)
+                        .padding(.bottom, 2)
                 }
             }
         }
@@ -308,13 +313,17 @@ private struct WatchMusicArtwork: View {
 private final class WatchListenTogetherViewModel: ObservableObject {
     @Published private(set) var snapshot = WatchListenTogetherSnapshot.inactive
 
+    var isGuest: Bool {
+        snapshot.isActive && snapshot.isCurrentUserHost == false
+    }
+
     init(receiver: PhoneRunSyncReceiver = .shared) {
         receiver.onListenTogetherSnapshot = { [weak self] snapshot in self?.snapshot = snapshot }
     }
 }
 
 private struct WatchListenTogetherTabView: View {
-    @StateObject private var viewModel = WatchListenTogetherViewModel()
+    @ObservedObject var viewModel: WatchListenTogetherViewModel
 
     var body: some View {
         Group {
@@ -325,7 +334,6 @@ private struct WatchListenTogetherTabView: View {
             }
         }
         .padding(.horizontal, 10)
-        .padding(.bottom, 28)
     }
 
     private var inactiveSession: some View {
@@ -350,13 +358,13 @@ private struct WatchListenTogetherTabView: View {
     private func activeSession(_ snapshot: WatchListenTogetherSnapshot) -> some View {
         TimelineView(.periodic(from: .now, by: 1)) { _ in
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 9) {
                     Text("같이 듣기 중")
-                        .font(.caption2.weight(.bold))
+                        .font(.system(size: 14, weight: .heavy))
                         .foregroundStyle(PacingWatchTheme.magenta)
 
                     HStack(spacing: 9) {
-                        WatchListenTogetherArtwork(snapshot: snapshot, size: 58)
+                        WatchListenTogetherArtwork(snapshot: snapshot, size: 52)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(snapshot.title.isEmpty ? "재생 중인 음악" : snapshot.title)
                                 .font(.system(size: 13, weight: .bold))
@@ -369,9 +377,6 @@ private struct WatchListenTogetherTabView: View {
                         }
                         Spacer(minLength: 0)
                     }
-                    .padding(8)
-                    .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-
                     ForEach(snapshot.participants) { participant in
                         WatchListenTogetherParticipantRow(
                             participant: participant,
@@ -379,7 +384,7 @@ private struct WatchListenTogetherTabView: View {
                         )
                     }
                 }
-                .padding(.top, 5)
+                .padding(.top, 1)
             }
         }
         .accessibilityElement(children: .contain)
@@ -388,8 +393,8 @@ private struct WatchListenTogetherTabView: View {
     private func elapsedText(startedAt: Date?) -> String {
         guard let startedAt else { return "함께 듣는 중" }
         let seconds = max(0, Int(Date().timeIntervalSince(startedAt)))
-        if seconds < 60 { return "(seconds)초 함께 들음" }
-        return "(seconds / 60)분 함께 들음"
+        if seconds < 60 { return "\(seconds)초 함께 들음" }
+        return "\(seconds / 60)분 함께 들음"
     }
 }
 
