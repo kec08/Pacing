@@ -187,7 +187,7 @@ final class RunningMusicViewModel: ObservableObject {
         do {
             try await applicationPlayer.prepareToPlay()
             try await applicationPlayer.play()
-            musicService.recordRecentlyPlayedAlbum(for: loadedSongs[0])
+            await musicService.recordRecentlyPlayedAlbum(for: loadedSongs[0])
         } catch {
             return
         }
@@ -228,7 +228,7 @@ final class RunningMusicViewModel: ObservableObject {
                 } else {
                     try await applicationPlayer.skipToPreviousEntry()
                 }
-                musicService.recordRecentlyPlayedAlbum(for: targetSong)
+                await musicService.recordRecentlyPlayedAlbum(for: targetSong)
                 syncCurrentState()
                 return
             } catch {
@@ -246,7 +246,7 @@ final class RunningMusicViewModel: ObservableObject {
         do {
             try await applicationPlayer.prepareToPlay()
             try await applicationPlayer.play()
-            musicService.recordRecentlyPlayedAlbum(for: targetSong)
+            await musicService.recordRecentlyPlayedAlbum(for: targetSong)
         } catch {
             return
         }

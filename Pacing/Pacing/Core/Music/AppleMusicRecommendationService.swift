@@ -119,12 +119,12 @@ struct RecentAlbumDisplayItem: Identifiable {
         deduplicationKey = Self.makeDeduplicationKey(title: title, artistName: artistName)
     }
 
-    init(localAlbum: RecentAlbumHistoryStore.Entry) {
+    init(localAlbum: RecentAlbumHistoryStore.Entry, catalogAlbum: Album?) {
         id = localAlbum.id
-        title = localAlbum.title
-        artistName = localAlbum.artistName
-        artworkURL = localAlbum.artworkURL
-        catalogAlbum = nil
+        title = catalogAlbum?.title ?? localAlbum.title
+        artistName = catalogAlbum?.artistName ?? localAlbum.artistName
+        artworkURL = catalogAlbum?.artwork?.url(width: 900, height: 900)?.absoluteString ?? localAlbum.artworkURL
+        self.catalogAlbum = catalogAlbum
         deduplicationKey = Self.makeDeduplicationKey(title: title, artistName: artistName)
     }
 
@@ -144,6 +144,7 @@ final class RecentAlbumHistoryStore: ObservableObject {
         let title: String
         let artistName: String
         let artworkURL: String?
+        let catalogAlbumID: String?
     }
 
     static let shared = RecentAlbumHistoryStore()
@@ -163,14 +164,21 @@ final class RecentAlbumHistoryStore: ObservableObject {
         albums = Array(savedAlbums.prefix(maximumCount))
     }
 
-    func record(song: Song) {
-        let title = (song.albumTitle ?? song.title).trimmingCharacters(in: .whitespacesAndNewlines)
+    func record(song: Song, album: Album? = nil) {
+        let title = (album?.title ?? song.albumTitle ?? song.title).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else { return }
 
-        let artistName = song.artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let artistName = (album?.artistName ?? song.artistName).trimmingCharacters(in: .whitespacesAndNewlines)
         let id = "local_\(normalizedIDComponent(title))_\(normalizedIDComponent(artistName))"
-        let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString
-        let entry = Entry(id: id, title: title, artistName: artistName, artworkURL: artworkURL)
+        let artworkURL = album?.artwork?.url(width: 900, height: 900)?.absoluteString
+            ?? song.artwork?.url(width: 900, height: 900)?.absoluteString
+        let entry = Entry(
+            id: id,
+            title: title,
+            artistName: artistName,
+            artworkURL: artworkURL,
+            catalogAlbumID: album.map { "\($0.id)" }
+        )
 
         guard albums.first?.id != entry.id else { return }
         albums.removeAll { $0.id == entry.id }
@@ -550,8 +558,40 @@ final class AppleMusicRecommendationService {
         try? await searchCatalogSong(title: title, artist: artist)
     }
 
-    func recordRecentlyPlayedAlbum(for song: Song) {
+    func resolveCatalogAlbum(id: String) async -> Album? {
+        var request = MusicCatalogResourceRequest<Album>(matching: \.id, memberOf: [MusicItemID(id)])
+        request.limit = 1
+        return try? await request.response().items.first
+    }
+
+    func resolveCatalogAlbum(title: String, artist: String) async -> Album? {
+        var request = MusicCatalogSearchRequest(term: "\(title) \(artist)", types: [Album.self])
+        request.limit = 5
+        guard let albums = try? await request.response().albums else { return nil }
+
+        return albums.first(where: {
+            $0.title.caseInsensitiveCompare(title) == .orderedSame &&
+                $0.artistName.caseInsensitiveCompare(artist) == .orderedSame
+        }) ?? albums.first
+    }
+
+    func recordRecentlyPlayedAlbum(for song: Song) async {
+        // 즉시 카드에 반영하고, 뒤이어 카탈로그 앨범 정보를 보강한다.
         recentAlbumHistoryStore.record(song: song)
+
+        let album: Album?
+        if let loadedSong = try? await song.with([.albums], preferredSource: .catalog) {
+            album = loadedSong.albums?.first
+        } else {
+            album = await resolveCatalogAlbum(
+                title: song.albumTitle ?? song.title,
+                artist: song.artistName
+            )
+        }
+
+        if let album {
+            recentAlbumHistoryStore.record(song: song, album: album)
+        }
     }
 
     /// Apple Music 앱에서 시작된 시스템 플레이어 재생도 음악 탭 이력에 반영한다.
@@ -572,7 +612,7 @@ final class AppleMusicRecommendationService {
         }
 
         if let resolvedSong {
-            recordRecentlyPlayedAlbum(for: resolvedSong)
+            await recordRecentlyPlayedAlbum(for: resolvedSong)
         }
     }
 
@@ -635,7 +675,7 @@ final class AppleMusicRecommendationService {
         try await player.prepareToPlay()
         try await player.play()
         if let song = playbackContext.currentSong {
-            recordRecentlyPlayedAlbum(for: song)
+            await recordRecentlyPlayedAlbum(for: song)
         }
     }
 

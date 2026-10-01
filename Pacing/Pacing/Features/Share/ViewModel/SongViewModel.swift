@@ -8,6 +8,7 @@ final class SongViewModel: ObservableObject {
     @Published var friendSharedPlaylists: [SharedPlaylistSummary] = []
     @Published var recentlyPlayedAlbums: [Album] = []
     @Published var localRecentAlbums: [RecentAlbumHistoryStore.Entry] = []
+    @Published private var resolvedLocalRecentAlbums: [String: Album] = [:]
     @Published var recommendedPlaylists: [Playlist] = []
     @Published var recommendationArtworkURLs: [String: String] = [:]
     @Published var genreAlbumRows: [GenreAlbumRow] = []
@@ -29,6 +30,7 @@ final class SongViewModel: ObservableObject {
     private var activeFriendLoadID: UUID?
     private var friendArtworkEnrichmentTask: Task<Void, Never>?
     private var recentAlbumHistoryObserver: AnyCancellable?
+    private var recentAlbumResolutionTask: Task<Void, Never>?
     private var backgroundRecommendationRetryCount = 0
 
     init() {
@@ -36,17 +38,54 @@ final class SongViewModel: ObservableObject {
         recentAlbumHistoryObserver = recentAlbumHistoryStore.$albums
             .receive(on: RunLoop.main)
             .sink { [weak self] albums in
-                self?.localRecentAlbums = albums
+                guard let self else { return }
+                self.localRecentAlbums = albums
+                self.resolveLocalRecentAlbumsIfNeeded()
             }
     }
 
     var recentAlbumItems: [RecentAlbumDisplayItem] {
         let remoteItems = recentlyPlayedAlbums.map(RecentAlbumDisplayItem.init(album:))
-        let localItems = localRecentAlbums.map(RecentAlbumDisplayItem.init(localAlbum:))
+        let localItems = localRecentAlbums.map {
+            RecentAlbumDisplayItem(
+                localAlbum: $0,
+                catalogAlbum: resolvedLocalRecentAlbums[$0.id]
+            )
+        }
         var seenKeys = Set<String>()
 
         return (localItems + remoteItems).filter { item in
             seenKeys.insert(item.deduplicationKey).inserted
+        }
+    }
+
+    private func resolveLocalRecentAlbumsIfNeeded() {
+        recentAlbumResolutionTask?.cancel()
+        let unresolvedAlbums = localRecentAlbums.filter { resolvedLocalRecentAlbums[$0.id] == nil }
+        guard !unresolvedAlbums.isEmpty else { return }
+
+        recentAlbumResolutionTask = Task { [weak self, musicService] in
+            var resolvedAlbums: [String: Album] = [:]
+
+            for entry in unresolvedAlbums {
+                guard !Task.isCancelled else { return }
+                let album: Album?
+                if let catalogAlbumID = entry.catalogAlbumID {
+                    album = await musicService.resolveCatalogAlbum(id: catalogAlbumID)
+                } else {
+                    album = await musicService.resolveCatalogAlbum(
+                        title: entry.title,
+                        artist: entry.artistName
+                    )
+                }
+
+                if let album {
+                    resolvedAlbums[entry.id] = album
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+            self?.resolvedLocalRecentAlbums.merge(resolvedAlbums) { _, new in new }
         }
     }
 
