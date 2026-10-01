@@ -670,10 +670,24 @@ final class SongNowPlayingController: ObservableObject {
             return
         }
 
-        title = item.title ?? ""
-        artist = item.artist ?? "Apple Music"
+        let nextTitle = item.title ?? ""
+        let nextArtist = item.artist ?? "Apple Music"
+        let didTrackChange = title != nextTitle || artist != nextArtist
+        title = nextTitle
+        artist = nextArtist
         artwork = item.artwork?.image(at: CGSize(width: 220, height: 220))
         isPlaying = player.playbackState == .playing
+
+        if didTrackChange, isPlaying {
+            let storeID = item.playbackStoreID
+            Task {
+                await AppleMusicRecommendationService.shared.recordRecentlyPlayedAlbum(
+                    storeID: storeID,
+                    title: nextTitle,
+                    artist: nextArtist
+                )
+            }
+        }
     }
 }
 

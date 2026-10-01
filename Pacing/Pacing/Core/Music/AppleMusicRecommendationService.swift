@@ -172,6 +172,7 @@ final class RecentAlbumHistoryStore: ObservableObject {
         let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString
         let entry = Entry(id: id, title: title, artistName: artistName, artworkURL: artworkURL)
 
+        guard albums.first?.id != entry.id else { return }
         albums.removeAll { $0.id == entry.id }
         albums.insert(entry, at: 0)
         albums = Array(albums.prefix(maximumCount))
@@ -549,6 +550,32 @@ final class AppleMusicRecommendationService {
         try? await searchCatalogSong(title: title, artist: artist)
     }
 
+    func recordRecentlyPlayedAlbum(for song: Song) {
+        recentAlbumHistoryStore.record(song: song)
+    }
+
+    /// Apple Music 앱에서 시작된 시스템 플레이어 재생도 음악 탭 이력에 반영한다.
+    func recordRecentlyPlayedAlbum(
+        storeID: String?,
+        title: String,
+        artist: String
+    ) async {
+        let resolvedSong: Song?
+        if let storeID, !storeID.isEmpty {
+            if let song = await resolveCatalogSong(id: MusicItemID(storeID)) {
+                resolvedSong = song
+            } else {
+                resolvedSong = await resolveCatalogSong(title: title, artist: artist)
+            }
+        } else {
+            resolvedSong = await resolveCatalogSong(title: title, artist: artist)
+        }
+
+        if let resolvedSong {
+            recordRecentlyPlayedAlbum(for: resolvedSong)
+        }
+    }
+
     func play(sharedTracks: [SharedPlaylistTrack], title: String? = nil) async throws {
         let songs = try await resolveCatalogSongs(for: sharedTracks)
         guard !songs.isEmpty else {
@@ -608,7 +635,7 @@ final class AppleMusicRecommendationService {
         try await player.prepareToPlay()
         try await player.play()
         if let song = playbackContext.currentSong {
-            recentAlbumHistoryStore.record(song: song)
+            recordRecentlyPlayedAlbum(for: song)
         }
     }
 
