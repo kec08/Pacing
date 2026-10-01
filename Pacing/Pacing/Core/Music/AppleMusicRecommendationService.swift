@@ -85,8 +85,13 @@ final class ApplicationPlaybackContext: ObservableObject {
             $0.title.caseInsensitiveCompare(title) == .orderedSame
         })
         guard let index else { return }
+        let nextSong = songs[index]
+        let didChangeSong = currentSong?.id != nextSong.id
         currentIndex = index
-        currentSong = songs[index]
+        currentSong = nextSong
+        if didChangeSong {
+            RecentAlbumHistoryStore.shared.record(song: nextSong)
+        }
     }
 
     func move(by offset: Int) {
@@ -97,11 +102,109 @@ final class ApplicationPlaybackContext: ObservableObject {
     }
 }
 
+struct RecentAlbumDisplayItem: Identifiable {
+    let id: String
+    let title: String
+    let artistName: String
+    let artworkURL: String?
+    let catalogAlbum: Album?
+    let deduplicationKey: String
+
+    init(album: Album) {
+        id = "catalog_\(album.id)"
+        title = album.title
+        artistName = album.artistName
+        artworkURL = album.artwork?.url(width: 900, height: 900)?.absoluteString
+        catalogAlbum = album
+        deduplicationKey = Self.makeDeduplicationKey(title: title, artistName: artistName)
+    }
+
+    init(localAlbum: RecentAlbumHistoryStore.Entry, catalogAlbum: Album?) {
+        id = localAlbum.id
+        title = catalogAlbum?.title ?? localAlbum.title
+        artistName = catalogAlbum?.artistName ?? localAlbum.artistName
+        artworkURL = catalogAlbum?.artwork?.url(width: 900, height: 900)?.absoluteString ?? localAlbum.artworkURL
+        self.catalogAlbum = catalogAlbum
+        deduplicationKey = Self.makeDeduplicationKey(title: title, artistName: artistName)
+    }
+
+    private static func makeDeduplicationKey(title: String, artistName: String) -> String {
+        "\(title)|\(artistName)"
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+    }
+}
+
+/// ApplicationMusicPlayer 재생은 Apple Music의 최근 컨테이너 이력에 즉시 반영되지
+/// 않을 수 있어, 앱에서 실제 선택해 재생한 앨범을 별도 이력으로 유지한다.
+@MainActor
+final class RecentAlbumHistoryStore: ObservableObject {
+    struct Entry: Codable, Identifiable {
+        let id: String
+        let title: String
+        let artistName: String
+        let artworkURL: String?
+        let catalogAlbumID: String?
+    }
+
+    static let shared = RecentAlbumHistoryStore()
+
+    @Published private(set) var albums: [Entry]
+
+    private let storageKey = "recentAlbumHistory.v2"
+    private let maximumCount = 8
+
+    private init() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let savedAlbums = try? JSONDecoder().decode([Entry].self, from: data)
+        else {
+            albums = []
+            return
+        }
+        albums = Array(savedAlbums.prefix(maximumCount))
+    }
+
+    func record(song: Song, album: Album? = nil) {
+        let title = (album?.title ?? song.albumTitle ?? song.title).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+
+        let artistName = (album?.artistName ?? song.artistName).trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = "local_\(normalizedIDComponent(title))_\(normalizedIDComponent(artistName))"
+        let artworkURL = album?.artwork?.url(width: 900, height: 900)?.absoluteString
+            ?? song.artwork?.url(width: 900, height: 900)?.absoluteString
+        let entry = Entry(
+            id: id,
+            title: title,
+            artistName: artistName,
+            artworkURL: artworkURL,
+            catalogAlbumID: album.map { "\($0.id)" }
+        )
+
+        guard albums.first?.id != entry.id else { return }
+        albums.removeAll { $0.id == entry.id }
+        albums.insert(entry, at: 0)
+        albums = Array(albums.prefix(maximumCount))
+        persist()
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(albums) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    private func normalizedIDComponent(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+    }
+}
+
 @MainActor
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
 
     let playbackContext = ApplicationPlaybackContext.shared
+    let recentAlbumHistoryStore = RecentAlbumHistoryStore.shared
 
     private let player = ApplicationMusicPlayer.shared
     private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
@@ -318,16 +421,72 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.notAuthorized
         }
 
-        var request = MusicRecentlyPlayedRequest<RecentlyPlayedMusicItem>()
-        request.limit = max(1, min(limit, 10))
+        let albumLimit = max(1, limit)
+        let pageSize = 10
+        var containerRequest = MusicRecentlyPlayedRequest<RecentlyPlayedMusicItem>()
+        containerRequest.limit = pageSize
 
-        let response = try await request.response()
-        let albums = response.items.compactMap { item -> Album? in
-            guard case let .album(album) = item else { return nil }
-            return album
+        var albums: [Album] = []
+        var firstRequestError: Error?
+        var didReceiveResponse = false
+
+        func appendContainerAlbums(_ items: MusicItemCollection<RecentlyPlayedMusicItem>) {
+            albums.append(contentsOf: items.compactMap { item -> Album? in
+                guard case let .album(album) = item else { return nil }
+                return album
+            })
         }
 
-        return Array(albums.uniquedByID().prefix(limit))
+        do {
+            let containerResponse = try await containerRequest.response()
+            didReceiveResponse = true
+            var containerItems = containerResponse.items
+            appendContainerAlbums(containerItems)
+
+            // 최근 컨테이너에는 플레이리스트·스테이션도 섞인다. 앨범이 뒤에 있는 경우도
+            // 놓치지 않도록 필요한 만큼 페이지를 이어서 확인한다.
+            while albums.uniquedByID().count < albumLimit,
+                  containerItems.hasNextBatch,
+                  let nextBatch = try? await containerItems.nextBatch(limit: pageSize) {
+                containerItems = nextBatch
+                appendContainerAlbums(containerItems)
+            }
+        } catch {
+            firstRequestError = error
+        }
+
+        // 일반적인 곡 재생은 컨테이너 응답에 앨범으로 나타나지 않을 수 있다. Song 이력의
+        // albums 관계를 명시적으로 로드해 같은 최근 앨범 목록으로 합친다. 이 보완 요청이
+        // 실패해도 컨테이너 요청에서 받은 앨범은 버리지 않는다.
+        if albums.uniquedByID().count < albumLimit {
+            do {
+                var songRequest = MusicRecentlyPlayedRequest<Song>()
+                songRequest.limit = pageSize
+                let songResponse = try await songRequest.response()
+                didReceiveResponse = true
+
+                for song in songResponse.items {
+                    guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
+                          let album = resolvedSong.albums?.first
+                    else {
+                        continue
+                    }
+
+                    albums.append(album)
+                    if albums.uniquedByID().count >= albumLimit {
+                        break
+                    }
+                }
+            } catch {
+                firstRequestError = firstRequestError ?? error
+            }
+        }
+
+        if !didReceiveResponse, let firstRequestError {
+            throw firstRequestError
+        }
+
+        return Array(albums.uniquedByID().prefix(albumLimit))
     }
 
     func loadTracks(for playlist: Playlist) async throws -> [SharedPlaylistTrack] {
@@ -399,6 +558,64 @@ final class AppleMusicRecommendationService {
         try? await searchCatalogSong(title: title, artist: artist)
     }
 
+    func resolveCatalogAlbum(id: String) async -> Album? {
+        var request = MusicCatalogResourceRequest<Album>(matching: \.id, memberOf: [MusicItemID(id)])
+        request.limit = 1
+        return try? await request.response().items.first
+    }
+
+    func resolveCatalogAlbum(title: String, artist: String) async -> Album? {
+        var request = MusicCatalogSearchRequest(term: "\(title) \(artist)", types: [Album.self])
+        request.limit = 5
+        guard let albums = try? await request.response().albums else { return nil }
+
+        return albums.first(where: {
+            $0.title.caseInsensitiveCompare(title) == .orderedSame &&
+                $0.artistName.caseInsensitiveCompare(artist) == .orderedSame
+        }) ?? albums.first
+    }
+
+    func recordRecentlyPlayedAlbum(for song: Song) async {
+        // 즉시 카드에 반영하고, 뒤이어 카탈로그 앨범 정보를 보강한다.
+        recentAlbumHistoryStore.record(song: song)
+
+        let album: Album?
+        if let loadedSong = try? await song.with([.albums], preferredSource: .catalog) {
+            album = loadedSong.albums?.first
+        } else {
+            album = await resolveCatalogAlbum(
+                title: song.albumTitle ?? song.title,
+                artist: song.artistName
+            )
+        }
+
+        if let album {
+            recentAlbumHistoryStore.record(song: song, album: album)
+        }
+    }
+
+    /// Apple Music 앱에서 시작된 시스템 플레이어 재생도 음악 탭 이력에 반영한다.
+    func recordRecentlyPlayedAlbum(
+        storeID: String?,
+        title: String,
+        artist: String
+    ) async {
+        let resolvedSong: Song?
+        if let storeID, !storeID.isEmpty {
+            if let song = await resolveCatalogSong(id: MusicItemID(storeID)) {
+                resolvedSong = song
+            } else {
+                resolvedSong = await resolveCatalogSong(title: title, artist: artist)
+            }
+        } else {
+            resolvedSong = await resolveCatalogSong(title: title, artist: artist)
+        }
+
+        if let resolvedSong {
+            await recordRecentlyPlayedAlbum(for: resolvedSong)
+        }
+    }
+
     func play(sharedTracks: [SharedPlaylistTrack], title: String? = nil) async throws {
         let songs = try await resolveCatalogSongs(for: sharedTracks)
         guard !songs.isEmpty else {
@@ -457,6 +674,9 @@ final class AppleMusicRecommendationService {
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()
         try await player.play()
+        if let song = playbackContext.currentSong {
+            await recordRecentlyPlayedAlbum(for: song)
+        }
     }
 
     func prepareSharedTracksForPlayback(_ tracks: [SharedPlaylistTrack]) async -> [SharedPlaylistTrack] {

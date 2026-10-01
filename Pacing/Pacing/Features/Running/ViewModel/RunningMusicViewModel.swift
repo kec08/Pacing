@@ -184,8 +184,13 @@ final class RunningMusicViewModel: ObservableObject {
         musicService.playbackContext.configure(songs: loadedSongs, title: playlist.name)
         applicationPlayer.queue = .init(for: loadedSongs)
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
-        try? await applicationPlayer.prepareToPlay()
-        try? await applicationPlayer.play()
+        do {
+            try await applicationPlayer.prepareToPlay()
+            try await applicationPlayer.play()
+            await musicService.recordRecentlyPlayedAlbum(for: loadedSongs[0])
+        } catch {
+            return
+        }
         syncCurrentState()
     }
 
@@ -223,6 +228,7 @@ final class RunningMusicViewModel: ObservableObject {
                 } else {
                     try await applicationPlayer.skipToPreviousEntry()
                 }
+                await musicService.recordRecentlyPlayedAlbum(for: targetSong)
                 syncCurrentState()
                 return
             } catch {
@@ -237,8 +243,13 @@ final class RunningMusicViewModel: ObservableObject {
         musicService.playbackContext.configure(songs: queueSongs, startingAt: targetSong)
         applicationPlayer.queue = .init(for: queueSongs, startingAt: targetSong)
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: applicationPlayer)
-        try? await applicationPlayer.prepareToPlay()
-        try? await applicationPlayer.play()
+        do {
+            try await applicationPlayer.prepareToPlay()
+            try await applicationPlayer.play()
+            await musicService.recordRecentlyPlayedAlbum(for: targetSong)
+        } catch {
+            return
+        }
         syncCurrentState()
     }
 

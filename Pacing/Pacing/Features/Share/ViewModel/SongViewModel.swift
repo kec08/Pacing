@@ -7,6 +7,8 @@ import MusicKit
 final class SongViewModel: ObservableObject {
     @Published var friendSharedPlaylists: [SharedPlaylistSummary] = []
     @Published var recentlyPlayedAlbums: [Album] = []
+    @Published var localRecentAlbums: [RecentAlbumHistoryStore.Entry] = []
+    @Published private var resolvedLocalRecentAlbums: [String: Album] = [:]
     @Published var recommendedPlaylists: [Playlist] = []
     @Published var recommendationArtworkURLs: [String: String] = [:]
     @Published var genreAlbumRows: [GenreAlbumRow] = []
@@ -21,12 +23,71 @@ final class SongViewModel: ObservableObject {
 
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
+    private let recentAlbumHistoryStore = RecentAlbumHistoryStore.shared
     private let recommendationRetryDelays: [UInt64] = [600_000_000, 1_200_000_000]
     private let backgroundRecommendationRetryDelays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
     private var activeRecommendationLoadID: UUID?
     private var activeFriendLoadID: UUID?
     private var friendArtworkEnrichmentTask: Task<Void, Never>?
+    private var recentAlbumHistoryObserver: AnyCancellable?
+    private var recentAlbumResolutionTask: Task<Void, Never>?
     private var backgroundRecommendationRetryCount = 0
+
+    init() {
+        localRecentAlbums = recentAlbumHistoryStore.albums
+        recentAlbumHistoryObserver = recentAlbumHistoryStore.$albums
+            .receive(on: RunLoop.main)
+            .sink { [weak self] albums in
+                guard let self else { return }
+                self.localRecentAlbums = albums
+                self.resolveLocalRecentAlbumsIfNeeded()
+            }
+    }
+
+    var recentAlbumItems: [RecentAlbumDisplayItem] {
+        let remoteItems = recentlyPlayedAlbums.map(RecentAlbumDisplayItem.init(album:))
+        let localItems = localRecentAlbums.map {
+            RecentAlbumDisplayItem(
+                localAlbum: $0,
+                catalogAlbum: resolvedLocalRecentAlbums[$0.id]
+            )
+        }
+        var seenKeys = Set<String>()
+
+        return (localItems + remoteItems).filter { item in
+            seenKeys.insert(item.deduplicationKey).inserted
+        }
+    }
+
+    private func resolveLocalRecentAlbumsIfNeeded() {
+        recentAlbumResolutionTask?.cancel()
+        let unresolvedAlbums = localRecentAlbums.filter { resolvedLocalRecentAlbums[$0.id] == nil }
+        guard !unresolvedAlbums.isEmpty else { return }
+
+        recentAlbumResolutionTask = Task { [weak self, musicService] in
+            var resolvedAlbums: [String: Album] = [:]
+
+            for entry in unresolvedAlbums {
+                guard !Task.isCancelled else { return }
+                let album: Album?
+                if let catalogAlbumID = entry.catalogAlbumID {
+                    album = await musicService.resolveCatalogAlbum(id: catalogAlbumID)
+                } else {
+                    album = await musicService.resolveCatalogAlbum(
+                        title: entry.title,
+                        artist: entry.artistName
+                    )
+                }
+
+                if let album {
+                    resolvedAlbums[entry.id] = album
+                }
+            }
+
+            guard !Task.isCancelled else { return }
+            self?.resolvedLocalRecentAlbums.merge(resolvedAlbums) { _, new in new }
+        }
+    }
 
     func load() async {
         errorMessage = nil
@@ -37,6 +98,7 @@ final class SongViewModel: ObservableObject {
         musicAuthorizationStatus = await musicService.requestAuthorizationIfNeeded()
 
         async let recommendationsTask: Void = loadRecommendations()
+        async let recentAlbumsTask: Void = refreshRecentlyPlayedAlbums()
 
         if musicAuthorizationStatus == .authorized {
             await syncMyPlaylistsIfPossible(showError: false)
@@ -44,7 +106,31 @@ final class SongViewModel: ObservableObject {
 
         await loadFriendPlaylists(showError: false)
         await recommendationsTask
+        await recentAlbumsTask
         hasCompletedInitialLoad = true
+    }
+
+    /// 추천 카탈로그와 분리된 Apple Music 최근 재생 요청을 유지한다. 추천 요청이
+    /// 실패해도 이미 조회한 최근 앨범을 빈 배열로 덮어쓰지 않는다.
+    func refreshRecentlyPlayedAlbums() async {
+        guard musicAuthorizationStatus == .authorized else {
+            recentlyPlayedAlbums = []
+            return
+        }
+
+        isLoadingRecentlyPlayedAlbums = true
+        defer { isLoadingRecentlyPlayedAlbums = false }
+
+        do {
+            let albums = try await musicService.fetchRecentlyPlayedAlbums()
+            recentlyPlayedAlbums = albums
+            let artworkURLs = albums.compactMap {
+                $0.artwork?.url(width: 900, height: 900)?.absoluteString
+            }
+            Task { await ArtworkImageStore.shared.prefetch(urlStrings: artworkURLs) }
+        } catch {
+            // 기존 목록은 유지한다. 네트워크 일시 실패가 빈 상태로 보이지 않게 한다.
+        }
     }
 
     func reloadFriendsOnly() async {
@@ -154,7 +240,6 @@ final class SongViewModel: ObservableObject {
 
     private func loadRecommendations(isBackgroundRetry: Bool = false) async {
         guard musicAuthorizationStatus == .authorized else {
-            recentlyPlayedAlbums = []
             recommendedPlaylists = []
             recommendationArtworkURLs = [:]
             genreAlbumRows = []
@@ -169,12 +254,10 @@ final class SongViewModel: ObservableObject {
 
         let loadID = UUID()
         activeRecommendationLoadID = loadID
-        isLoadingRecentlyPlayedAlbums = true
         isLoadingRecommendations = true
         var keepsLoadingForBackgroundRetry = false
         defer {
             if activeRecommendationLoadID == loadID && !keepsLoadingForBackgroundRetry {
-                isLoadingRecentlyPlayedAlbums = false
                 isLoadingRecommendations = false
             }
         }
@@ -184,7 +267,6 @@ final class SongViewModel: ObservableObject {
             guard activeRecommendationLoadID == loadID else { return }
 
             hasCatalogAccess = result.subscription.canPlayCatalogContent
-            recentlyPlayedAlbums = result.bundle.recentlyPlayedAlbums
             recommendedPlaylists = result.bundle.playlists
             recommendationArtworkURLs = await musicService.resolvedRecommendationPlaylistArtworkURLs(
                 for: result.bundle.playlists
@@ -193,7 +275,6 @@ final class SongViewModel: ObservableObject {
             moodPlaylists = result.bundle.moodPlaylists
 
             let artworkURLs =
-                result.bundle.recentlyPlayedAlbums.compactMap { $0.artwork?.url(width: 900, height: 900)?.absoluteString } +
                 Array(recommendationArtworkURLs.values) +
                 result.bundle.genreAlbumRows
                 .flatMap(\.albums)
@@ -206,7 +287,6 @@ final class SongViewModel: ObservableObject {
         } catch {
             guard activeRecommendationLoadID == loadID else { return }
 
-            recentlyPlayedAlbums = []
             recommendedPlaylists = []
             recommendationArtworkURLs = [:]
             genreAlbumRows = []
