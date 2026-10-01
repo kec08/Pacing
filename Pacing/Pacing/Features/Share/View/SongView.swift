@@ -175,16 +175,16 @@ struct SongView: View {
         VStack(alignment: .leading, spacing: 14) {
             sectionTitle("최근에 들은 앨범")
 
-            if !vm.hasCompletedInitialLoad && vm.recentlyPlayedAlbums.isEmpty {
+            if !vm.hasCompletedInitialLoad && vm.recentAlbumItems.isEmpty {
                 albumSkeletonRow
             } else if vm.musicAuthorizationStatus != .authorized {
                 infoCard(
                     title: "Apple Music 권한이 필요해요",
                     message: "최근에 들은 앨범을 보려면 Apple Music 접근을 허용해주세요."
                 )
-            } else if vm.isLoadingRecentlyPlayedAlbums && vm.recentlyPlayedAlbums.isEmpty {
+            } else if vm.isLoadingRecentlyPlayedAlbums && vm.recentAlbumItems.isEmpty {
                 albumSkeletonRow
-            } else if vm.recentlyPlayedAlbums.isEmpty {
+            } else if vm.recentAlbumItems.isEmpty {
                 infoCard(
                     title: "최근에 들은 앨범이 없어요",
                     message: "Apple Music에서 재생한 앨범이 생기면 여기에서 바로 확인할 수 있어요."
@@ -192,14 +192,19 @@ struct SongView: View {
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 16) {
-                        ForEach(vm.recentlyPlayedAlbums, id: \.id) { album in
-                            NavigationLink {
-                                SharedPlaylistDetailView(viewModel: SharedPlaylistDetailViewModel(recentAlbum: album))
-                                    .environmentObject(nowPlayingController)
-                            } label: {
-                                RecentAlbumCard(album: album)
+                        ForEach(vm.recentAlbumItems) { item in
+                            if let album = item.catalogAlbum {
+                                NavigationLink {
+                                    SharedPlaylistDetailView(viewModel: SharedPlaylistDetailViewModel(recentAlbum: album))
+                                        .environmentObject(nowPlayingController)
+                                } label: {
+                                    RecentAlbumCard(item: item)
+                                }
+                                .buttonStyle(.plain)
+                            } else {
+                                RecentAlbumCard(item: item)
+                                    .accessibilityLabel("\(item.title) 최근에 들은 앨범")
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, 2)
@@ -635,6 +640,12 @@ final class SongNowPlayingController: ObservableObject {
                 title: nextTitle,
                 artist: entry.subtitle
             )
+            let contextSong = AppleMusicRecommendationService.shared.playbackContext.currentSong
+            RecentAlbumHistoryStore.shared.record(
+                albumTitle: contextSong?.albumTitle,
+                artistName: contextSong?.artistName ?? entry.subtitle,
+                artwork: nil
+            )
             let didTrackChange = title != nextTitle || artist != nextArtist
             title = nextTitle
             artist = nextArtist
@@ -665,6 +676,11 @@ final class SongNowPlayingController: ObservableObject {
         artist = item.artist ?? "Apple Music"
         artwork = item.artwork?.image(at: CGSize(width: 220, height: 220))
         isPlaying = player.playbackState == .playing
+        RecentAlbumHistoryStore.shared.record(
+            albumTitle: item.albumTitle,
+            artistName: item.albumArtist ?? item.artist,
+            artwork: item.artwork?.image(at: CGSize(width: 300, height: 300))
+        )
     }
 }
 
@@ -940,14 +956,11 @@ private struct RecommendationPlaylistCard: View {
 }
 
 private struct RecentAlbumCard: View {
-    let album: Album
+    let item: RecentAlbumDisplayItem
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RemoteArtworkView(
-                urlString: album.artwork?.url(width: 900, height: 900)?.absoluteString,
-                contentMode: .fill
-            )
+            artwork
             .frame(width: 188, height: 188)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
@@ -956,18 +969,30 @@ private struct RecentAlbumCard: View {
             )
 
             VStack(alignment: .leading, spacing: 8) {
-                Text(album.title)
+                Text(item.title)
                     .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
 
-                Text(album.artistName)
+                Text(item.artistName)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
             }
         }
         .frame(width: 188, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var artwork: some View {
+        if let data = item.artworkData,
+           let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+        } else {
+            RemoteArtworkView(urlString: item.artworkURL, contentMode: .fill)
+        }
     }
 }
 

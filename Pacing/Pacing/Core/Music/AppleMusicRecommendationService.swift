@@ -97,6 +97,92 @@ final class ApplicationPlaybackContext: ObservableObject {
     }
 }
 
+struct RecentAlbumDisplayItem: Identifiable {
+    let id: String
+    let title: String
+    let artistName: String
+    let artworkURL: String?
+    let artworkData: Data?
+    let catalogAlbum: Album?
+
+    init(album: Album) {
+        id = "catalog_\(album.id)"
+        title = album.title
+        artistName = album.artistName
+        artworkURL = album.artwork?.url(width: 900, height: 900)?.absoluteString
+        artworkData = nil
+        catalogAlbum = album
+    }
+
+    init(localAlbum: LocalRecentAlbum) {
+        id = localAlbum.id
+        title = localAlbum.title
+        artistName = localAlbum.artistName
+        artworkURL = nil
+        artworkData = localAlbum.artworkData
+        catalogAlbum = nil
+    }
+}
+
+struct LocalRecentAlbum: Codable, Identifiable {
+    let id: String
+    let title: String
+    let artistName: String
+    let artworkData: Data?
+}
+
+@MainActor
+final class RecentAlbumHistoryStore: ObservableObject {
+    static let shared = RecentAlbumHistoryStore()
+
+    @Published private(set) var albums: [LocalRecentAlbum]
+
+    private let storageKey = "recentAlbumHistory.v1"
+    private let maximumCount = 8
+
+    private init() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let storedAlbums = try? JSONDecoder().decode([LocalRecentAlbum].self, from: data)
+        else {
+            albums = []
+            return
+        }
+        albums = Array(storedAlbums.prefix(maximumCount))
+    }
+
+    func record(albumTitle: String?, artistName: String?, artwork: UIImage?) {
+        let title = albumTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty else { return }
+
+        let artist = artistName?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Apple Music"
+        let id = "local_\(normalizedIDComponent(title))_\(normalizedIDComponent(artist))"
+        guard albums.first?.id != id else { return }
+
+        let artworkData = artwork?.jpegData(compressionQuality: 0.7)
+        let album = LocalRecentAlbum(
+            id: id,
+            title: title,
+            artistName: artist,
+            artworkData: artworkData
+        )
+        albums.removeAll { $0.id == id }
+        albums.insert(album, at: 0)
+        albums = Array(albums.prefix(maximumCount))
+        persist()
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(albums) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    private func normalizedIDComponent(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+    }
+}
+
 @MainActor
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
