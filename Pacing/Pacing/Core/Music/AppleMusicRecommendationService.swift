@@ -318,6 +318,7 @@ final class AppleMusicRecommendationService {
             throw AppleMusicRecommendationError.notAuthorized
         }
 
+        let albumLimit = max(1, limit)
         // 최근 기록에는 앨범 외에 플레이리스트·스테이션도 함께 섞여 온다.
         // 첫 페이지의 항목만 앨범으로 필터링하면 최근에 플레이리스트를 들은 경우
         // 이전에 재생한 앨범이 있어도 빈 목록이 될 수 있어, 목표 개수까지 페이지를 순회한다.
@@ -337,14 +338,38 @@ final class AppleMusicRecommendationService {
 
         appendAlbums(from: batch)
 
-        while albums.uniquedByID().count < limit,
+        while albums.uniquedByID().count < albumLimit,
               batch.hasNextBatch,
               let nextBatch = try await batch.nextBatch(limit: pageSize) {
             batch = nextBatch
             appendAlbums(from: batch)
         }
 
-        return Array(albums.uniquedByID().prefix(limit))
+        let containerAlbums = albums.uniquedByID()
+        guard containerAlbums.count < albumLimit else {
+            return Array(containerAlbums.prefix(albumLimit))
+        }
+
+        // 컨테이너 응답은 앨범·플레이리스트·스테이션만 반환할 수 있다. 실제로는
+        // 곡 단위 재생 이력만 존재하는 계정도 있어, Song 요청으로 앨범 관계를 보완한다.
+        var songRequest = MusicRecentlyPlayedRequest<Song>()
+        songRequest.limit = pageSize
+        let songResponse = try await songRequest.response()
+
+        for song in songResponse.items {
+            guard let resolvedSong = try? await song.with([.albums], preferredSource: .catalog),
+                  let album = resolvedSong.albums?.first
+            else {
+                continue
+            }
+            albums.append(album)
+
+            if albums.uniquedByID().count >= albumLimit {
+                break
+            }
+        }
+
+        return Array(albums.uniquedByID().prefix(albumLimit))
     }
 
     func loadTracks(for playlist: Playlist) async throws -> [SharedPlaylistTrack] {
