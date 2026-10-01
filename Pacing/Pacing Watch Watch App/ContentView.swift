@@ -304,15 +304,193 @@ private struct WatchMusicArtwork: View {
     }
 }
 
+@MainActor
+private final class WatchListenTogetherViewModel: ObservableObject {
+    @Published private(set) var snapshot = WatchListenTogetherSnapshot.inactive
+
+    init(receiver: PhoneRunSyncReceiver = .shared) {
+        receiver.onListenTogetherSnapshot = { [weak self] snapshot in self?.snapshot = snapshot }
+    }
+}
+
 private struct WatchListenTogetherTabView: View {
+    @StateObject private var viewModel = WatchListenTogetherViewModel()
+
     var body: some View {
-        WatchPlaceholderPage(
-            title: "같이 듣기",
-            systemImage: "person.2.wave.2.fill",
-            accent: PacingWatchTheme.magenta,
-            headline: "함께 달릴 사람 찾기",
-            message: "주변 러너와 친구에게 같이 듣기 요청을 보내는 기능을 준비하고 있어요."
-        )
+        Group {
+            if viewModel.snapshot.isActive {
+                activeSession(viewModel.snapshot)
+            } else {
+                inactiveSession
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 28)
+    }
+
+    private var inactiveSession: some View {
+        VStack(spacing: 9) {
+            Spacer(minLength: 0)
+            Image(systemName: "person.2.wave.2.fill")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(PacingWatchTheme.magenta)
+                .accessibilityHidden(true)
+            Text("같이 듣기")
+                .font(.headline)
+            Text("iPhone에서 친구와 같이 듣기를 시작해 보세요.")
+                .font(.caption2)
+                .foregroundStyle(PacingWatchTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func activeSession(_ snapshot: WatchListenTogetherSnapshot) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("같이 듣기 중")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(PacingWatchTheme.magenta)
+
+                    HStack(spacing: 9) {
+                        WatchListenTogetherArtwork(snapshot: snapshot, size: 58)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(snapshot.title.isEmpty ? "재생 중인 음악" : snapshot.title)
+                                .font(.system(size: 13, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+                            Text(snapshot.artist.isEmpty ? "아티스트 정보 없음" : snapshot.artist)
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundStyle(PacingWatchTheme.textSecondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(8)
+                    .background(PacingWatchTheme.surface, in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+
+                    ForEach(snapshot.participants) { participant in
+                        WatchListenTogetherParticipantRow(
+                            participant: participant,
+                            elapsedText: elapsedText(startedAt: snapshot.startedAt)
+                        )
+                    }
+                }
+                .padding(.top, 5)
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func elapsedText(startedAt: Date?) -> String {
+        guard let startedAt else { return "함께 듣는 중" }
+        let seconds = max(0, Int(Date().timeIntervalSince(startedAt)))
+        if seconds < 60 { return "(seconds)초 함께 들음" }
+        return "(seconds / 60)분 함께 들음"
+    }
+}
+
+private struct WatchListenTogetherParticipantRow: View {
+    let participant: WatchListenTogetherParticipant
+    let elapsedText: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            WatchListenTogetherProfileImage(data: participant.profileImageData, size: 34)
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 4) {
+                    Text(participant.nickname)
+                        .font(.system(size: 12, weight: .semibold))
+                        .lineLimit(1)
+                    Text(participant.role)
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(PacingWatchTheme.magenta)
+                }
+                Text(elapsedText)
+                    .font(.system(size: 9))
+                    .foregroundStyle(PacingWatchTheme.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(participant.nickname), \(participant.role), \(elapsedText)")
+    }
+}
+
+private struct WatchListenTogetherArtwork: View {
+    let snapshot: WatchListenTogetherSnapshot
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let data = snapshot.artworkData, let image = image(from: data) {
+                image.resizable().scaledToFill()
+            } else if let url = snapshot.artworkURL,
+                      let artworkURL = URL(string: url),
+                      ["http", "https"].contains(artworkURL.scheme?.lowercased() ?? "") {
+                AsyncImage(url: artworkURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    placeholder
+                }
+            } else {
+                placeholder
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityHidden(true)
+    }
+
+    private var placeholder: some View {
+        RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .fill(PacingWatchTheme.surface)
+            .overlay {
+                Image(systemName: "music.note")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(PacingWatchTheme.purple)
+            }
+    }
+
+    private func image(from data: Data) -> Image? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return Image(decorative: image, scale: 1)
+    }
+}
+
+private struct WatchListenTogetherProfileImage: View {
+    let data: Data?
+    let size: CGFloat
+
+    var body: some View {
+        Group {
+            if let data, let image = image(from: data) {
+                image.resizable().scaledToFill()
+            } else {
+                Circle()
+                    .fill(PacingWatchTheme.surface)
+                    .overlay {
+                        Image(systemName: "person.fill")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(PacingWatchTheme.textSecondary)
+                    }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(Circle())
+        .accessibilityHidden(true)
+    }
+
+    private func image(from data: Data) -> Image? {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
+        else { return nil }
+        return Image(decorative: image, scale: 1)
     }
 }
 

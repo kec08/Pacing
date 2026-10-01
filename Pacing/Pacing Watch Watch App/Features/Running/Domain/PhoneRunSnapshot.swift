@@ -23,6 +23,37 @@ struct PhoneRunHistorySnapshot: Codable, Equatable {
     )
 }
 
+struct WatchListenTogetherParticipant: Codable, Equatable, Identifiable {
+    let id: String
+    let nickname: String
+    let role: String
+    let profileImageData: Data?
+}
+
+struct WatchListenTogetherSnapshot: Codable, Equatable {
+    let updatedAt: TimeInterval
+    let isActive: Bool
+    let sessionID: String?
+    let title: String
+    let artist: String
+    let artworkURL: String?
+    let artworkData: Data?
+    let startedAt: Date?
+    let participants: [WatchListenTogetherParticipant]
+
+    static let inactive = Self(
+        updatedAt: 0,
+        isActive: false,
+        sessionID: nil,
+        title: "",
+        artist: "",
+        artworkURL: nil,
+        artworkData: nil,
+        startedAt: nil,
+        participants: []
+    )
+}
+
 struct PhoneRunHistoryItem: Codable, Equatable, Identifiable {
     let id: String
     let startedAt: Date

@@ -68,6 +68,10 @@ enum WatchMusicArtworkEncoder {
         encode(image, maximumPixelSize: 64, maximumByteCount: 2_200)
     }
 
+    static func encodeProfileArtwork(_ image: UIImage) -> Data? {
+        encode(image, maximumPixelSize: 56, maximumByteCount: 2_400)
+    }
+
     private static func encode(_ image: UIImage, maximumPixelSize: CGFloat, maximumByteCount: Int) -> Data? {
         let largestDimension = max(image.size.width, image.size.height)
         let scale = min(1, maximumPixelSize / largestDimension)
@@ -84,6 +88,54 @@ enum WatchMusicArtworkEncoder {
             size = CGSize(width: max(24, (size.width * 0.8).rounded()), height: max(24, (size.height * 0.8).rounded()))
         }
         return nil
+    }
+}
+
+struct PhoneListenTogetherParticipant: Codable, Equatable, Identifiable {
+    let id: String
+    let nickname: String
+    let role: String
+    let profileImageData: Data?
+}
+
+struct PhoneListenTogetherSnapshot: Codable, Equatable {
+    let updatedAt: TimeInterval
+    let isActive: Bool
+    let sessionID: String?
+    let title: String
+    let artist: String
+    let artworkURL: String?
+    /// 앨범 아트는 Watch가 독립 네트워크에 있거나 URL이 만료된 경우에도 표시할 수 있도록 보조 데이터를 보관합니다.
+    let artworkData: Data?
+    let startedAt: Date?
+    let participants: [PhoneListenTogetherParticipant]
+
+    static let inactive = Self(
+        updatedAt: 0,
+        isActive: false,
+        sessionID: nil,
+        title: "",
+        artist: "",
+        artworkURL: nil,
+        artworkData: nil,
+        startedAt: nil,
+        participants: []
+    )
+
+    func removingProfileImages() -> Self {
+        Self(
+            updatedAt: updatedAt,
+            isActive: isActive,
+            sessionID: sessionID,
+            title: title,
+            artist: artist,
+            artworkURL: artworkURL,
+            artworkData: artworkData,
+            startedAt: startedAt,
+            participants: participants.map {
+                PhoneListenTogetherParticipant(id: $0.id, nickname: $0.nickname, role: $0.role, profileImageData: nil)
+            }
+        )
     }
 }
 

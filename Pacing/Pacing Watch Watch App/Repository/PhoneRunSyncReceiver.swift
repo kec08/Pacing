@@ -19,15 +19,22 @@ final class PhoneRunSyncReceiver: NSObject {
             if let latestRunHistorySnapshot { onRunHistorySnapshot?(latestRunHistorySnapshot) }
         }
     }
+    var onListenTogetherSnapshot: ((WatchListenTogetherSnapshot) -> Void)? {
+        didSet {
+            if let latestListenTogetherSnapshot { onListenTogetherSnapshot?(latestListenTogetherSnapshot) }
+        }
+    }
     private let session = WCSession.default
     private var latestSnapshot: PhoneRunSnapshot?
     private var latestMusicSnapshot: WatchMusicPlaybackSnapshot?
     private var latestRunHistorySnapshot: PhoneRunHistorySnapshot?
+    private var latestListenTogetherSnapshot: WatchListenTogetherSnapshot?
 
     private override init() {
         super.init()
         latestMusicSnapshot = WatchContentSnapshotCache.load(WatchMusicPlaybackSnapshot.self, forKey: .music)
         latestRunHistorySnapshot = WatchContentSnapshotCache.load(PhoneRunHistorySnapshot.self, forKey: .runHistory)
+        latestListenTogetherSnapshot = WatchContentSnapshotCache.load(WatchListenTogetherSnapshot.self, forKey: .listenTogether)
         guard WCSession.isSupported() else { return }
         session.delegate = self
         session.activate()
@@ -83,6 +90,21 @@ final class PhoneRunSyncReceiver: NSObject {
             }
         }
 
+        if let payload = container["phoneListenTogether"] as? [String: Any],
+           JSONSerialization.isValidJSONObject(payload),
+           let data = try? JSONSerialization.data(withJSONObject: payload),
+           let snapshot = try? JSONDecoder().decode(WatchListenTogetherSnapshot.self, from: data) {
+            DispatchQueue.main.async { [weak self] in
+                guard let self,
+                      snapshot.updatedAt > (self.latestListenTogetherSnapshot?.updatedAt ?? -.infinity)
+                else { return }
+                self.latestListenTogetherSnapshot = snapshot
+                // 종료 상태도 저장해 앱을 다시 열었을 때 과거 활성 세션이 다시 나타나지 않게 한다.
+                WatchContentSnapshotCache.save(snapshot, forKey: .listenTogether)
+                self.onListenTogetherSnapshot?(snapshot)
+            }
+        }
+
         // applicationContext는 마지막 운동 상태를 장시간 유지한다. 콘텐츠와 달리
         // 운동 상태를 복원하면 종료된 러닝의 정지 화면이 새 워치 실행에도 나타난다.
         guard acceptsRunSnapshot else { return }
@@ -121,6 +143,7 @@ private enum WatchContentSnapshotCache {
     enum Key: String {
         case music = "watch.cachedPhoneMusicSnapshot"
         case runHistory = "watch.cachedPhoneRunHistorySnapshot"
+        case listenTogether = "watch.cachedPhoneListenTogetherSnapshot"
     }
 
     static func load<Snapshot: Decodable>(_ type: Snapshot.Type, forKey key: Key) -> Snapshot? {
