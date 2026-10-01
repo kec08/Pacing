@@ -7,6 +7,7 @@ import MusicKit
 final class SongViewModel: ObservableObject {
     @Published var friendSharedPlaylists: [SharedPlaylistSummary] = []
     @Published var recentlyPlayedAlbums: [Album] = []
+    @Published var localRecentAlbums: [RecentAlbumHistoryStore.Entry] = []
     @Published var recommendedPlaylists: [Playlist] = []
     @Published var recommendationArtworkURLs: [String: String] = [:]
     @Published var genreAlbumRows: [GenreAlbumRow] = []
@@ -21,12 +22,33 @@ final class SongViewModel: ObservableObject {
 
     private let firestoreService = FirestoreService.shared
     private let musicService = AppleMusicRecommendationService.shared
+    private let recentAlbumHistoryStore = RecentAlbumHistoryStore.shared
     private let recommendationRetryDelays: [UInt64] = [600_000_000, 1_200_000_000]
     private let backgroundRecommendationRetryDelays: [UInt64] = [2_000_000_000, 4_000_000_000, 8_000_000_000]
     private var activeRecommendationLoadID: UUID?
     private var activeFriendLoadID: UUID?
     private var friendArtworkEnrichmentTask: Task<Void, Never>?
+    private var recentAlbumHistoryObserver: AnyCancellable?
     private var backgroundRecommendationRetryCount = 0
+
+    init() {
+        localRecentAlbums = recentAlbumHistoryStore.albums
+        recentAlbumHistoryObserver = recentAlbumHistoryStore.$albums
+            .receive(on: RunLoop.main)
+            .sink { [weak self] albums in
+                self?.localRecentAlbums = albums
+            }
+    }
+
+    var recentAlbumItems: [RecentAlbumDisplayItem] {
+        let remoteItems = recentlyPlayedAlbums.map(RecentAlbumDisplayItem.init(album:))
+        let localItems = localRecentAlbums.map(RecentAlbumDisplayItem.init(localAlbum:))
+        var seenKeys = Set<String>()
+
+        return (localItems + remoteItems).filter { item in
+            seenKeys.insert(item.deduplicationKey).inserted
+        }
+    }
 
     func load() async {
         errorMessage = nil

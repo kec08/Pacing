@@ -85,8 +85,13 @@ final class ApplicationPlaybackContext: ObservableObject {
             $0.title.caseInsensitiveCompare(title) == .orderedSame
         })
         guard let index else { return }
+        let nextSong = songs[index]
+        let didChangeSong = currentSong?.id != nextSong.id
         currentIndex = index
-        currentSong = songs[index]
+        currentSong = nextSong
+        if didChangeSong {
+            RecentAlbumHistoryStore.shared.record(song: nextSong)
+        }
     }
 
     func move(by offset: Int) {
@@ -97,11 +102,100 @@ final class ApplicationPlaybackContext: ObservableObject {
     }
 }
 
+struct RecentAlbumDisplayItem: Identifiable {
+    let id: String
+    let title: String
+    let artistName: String
+    let artworkURL: String?
+    let catalogAlbum: Album?
+    let deduplicationKey: String
+
+    init(album: Album) {
+        id = "catalog_\(album.id)"
+        title = album.title
+        artistName = album.artistName
+        artworkURL = album.artwork?.url(width: 900, height: 900)?.absoluteString
+        catalogAlbum = album
+        deduplicationKey = Self.makeDeduplicationKey(title: title, artistName: artistName)
+    }
+
+    init(localAlbum: RecentAlbumHistoryStore.Entry) {
+        id = localAlbum.id
+        title = localAlbum.title
+        artistName = localAlbum.artistName
+        artworkURL = localAlbum.artworkURL
+        catalogAlbum = nil
+        deduplicationKey = Self.makeDeduplicationKey(title: title, artistName: artistName)
+    }
+
+    private static func makeDeduplicationKey(title: String, artistName: String) -> String {
+        "\(title)|\(artistName)"
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+    }
+}
+
+/// ApplicationMusicPlayer 재생은 Apple Music의 최근 컨테이너 이력에 즉시 반영되지
+/// 않을 수 있어, 앱에서 실제 선택해 재생한 앨범을 별도 이력으로 유지한다.
+@MainActor
+final class RecentAlbumHistoryStore: ObservableObject {
+    struct Entry: Codable, Identifiable {
+        let id: String
+        let title: String
+        let artistName: String
+        let artworkURL: String?
+    }
+
+    static let shared = RecentAlbumHistoryStore()
+
+    @Published private(set) var albums: [Entry]
+
+    private let storageKey = "recentAlbumHistory.v2"
+    private let maximumCount = 8
+
+    private init() {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let savedAlbums = try? JSONDecoder().decode([Entry].self, from: data)
+        else {
+            albums = []
+            return
+        }
+        albums = Array(savedAlbums.prefix(maximumCount))
+    }
+
+    func record(song: Song) {
+        let title = (song.albumTitle ?? song.title).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+
+        let artistName = song.artistName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let id = "local_\(normalizedIDComponent(title))_\(normalizedIDComponent(artistName))"
+        let artworkURL = song.artwork?.url(width: 900, height: 900)?.absoluteString
+        let entry = Entry(id: id, title: title, artistName: artistName, artworkURL: artworkURL)
+
+        albums.removeAll { $0.id == entry.id }
+        albums.insert(entry, at: 0)
+        albums = Array(albums.prefix(maximumCount))
+        persist()
+    }
+
+    private func persist() {
+        guard let data = try? JSONEncoder().encode(albums) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+
+    private func normalizedIDComponent(_ value: String) -> String {
+        value
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
+            .replacingOccurrences(of: " ", with: "")
+    }
+}
+
 @MainActor
 final class AppleMusicRecommendationService {
     static let shared = AppleMusicRecommendationService()
 
     let playbackContext = ApplicationPlaybackContext.shared
+    let recentAlbumHistoryStore = RecentAlbumHistoryStore.shared
 
     private let player = ApplicationMusicPlayer.shared
     private let resolvedCatalogSongsByStoreID = NSCache<NSString, CachedCatalogSong>()
@@ -513,6 +607,9 @@ final class AppleMusicRecommendationService {
         NotificationCenter.default.post(name: .applicationMusicPlayerQueueDidChange, object: player)
         try await player.prepareToPlay()
         try await player.play()
+        if let song = playbackContext.currentSong {
+            recentAlbumHistoryStore.record(song: song)
+        }
     }
 
     func prepareSharedTracksForPlayback(_ tracks: [SharedPlaylistTrack]) async -> [SharedPlaylistTrack] {
