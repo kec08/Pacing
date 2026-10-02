@@ -54,6 +54,21 @@ struct WatchListenTogetherSnapshot: Codable, Equatable {
         isCurrentUserHost: nil,
         participants: []
     )
+
+    /// 재생 제어가 없는 게스트는 러닝 중에도 상태 전용 같이 듣기 탭을 표시합니다.
+    var isCurrentUserGuest: Bool {
+        isActive && isCurrentUserHost == false
+    }
+}
+
+enum WatchListenTogetherElapsedTimeFormatter {
+    static func text(startedAt: Date?, now: Date) -> String {
+        guard let startedAt else { return "함께 듣는 중" }
+
+        let seconds = max(0, Int(now.timeIntervalSince(startedAt)))
+        if seconds < 60 { return "\(seconds)초 함께 들음" }
+        return "\(seconds / 60)분 함께 들음"
+    }
 }
 
 struct PhoneRunHistoryItem: Codable, Equatable, Identifiable {

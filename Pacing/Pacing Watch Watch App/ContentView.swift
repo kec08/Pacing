@@ -314,7 +314,7 @@ private final class WatchListenTogetherViewModel: ObservableObject {
     @Published private(set) var snapshot = WatchListenTogetherSnapshot.inactive
 
     var isGuest: Bool {
-        snapshot.isActive && snapshot.isCurrentUserHost == false
+        snapshot.isCurrentUserGuest
     }
 
     init(receiver: PhoneRunSyncReceiver = .shared) {
@@ -380,7 +380,10 @@ private struct WatchListenTogetherTabView: View {
                     ForEach(snapshot.participants) { participant in
                         WatchListenTogetherParticipantRow(
                             participant: participant,
-                            elapsedText: elapsedText(startedAt: snapshot.startedAt, now: context.date)
+                            elapsedText: WatchListenTogetherElapsedTimeFormatter.text(
+                                startedAt: snapshot.startedAt,
+                                now: context.date
+                            )
                         )
                     }
                 }
@@ -392,12 +395,6 @@ private struct WatchListenTogetherTabView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func elapsedText(startedAt: Date?, now: Date) -> String {
-        guard let startedAt else { return "함께 듣는 중" }
-        let seconds = max(0, Int(now.timeIntervalSince(startedAt)))
-        if seconds < 60 { return "\(seconds)초 함께 들음" }
-        return "\(seconds / 60)분 함께 들음"
-    }
 }
 
 private struct WatchListenTogetherParticipantRow: View {

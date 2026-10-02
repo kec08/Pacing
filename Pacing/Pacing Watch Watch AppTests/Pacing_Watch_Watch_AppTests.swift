@@ -70,4 +70,41 @@ final class Pacing_Watch_Watch_AppTests: XCTestCase {
         XCTAssertNil(WatchListenTogetherSnapshot.inactive.artworkData)
     }
 
+    func testListenTogetherElapsedTimeUsesTimelineDate() {
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertEqual(
+            WatchListenTogetherElapsedTimeFormatter.text(
+                startedAt: startedAt,
+                now: Date(timeIntervalSince1970: 1_037)
+            ),
+            "37초 함께 들음"
+        )
+        XCTAssertEqual(
+            WatchListenTogetherElapsedTimeFormatter.text(
+                startedAt: startedAt,
+                now: Date(timeIntervalSince1970: 1_120)
+            ),
+            "2분 함께 들음"
+        )
+    }
+
+    func testActiveGuestSnapshotRequestsStatusOnlyWatchTab() {
+        let guestSnapshot = WatchListenTogetherSnapshot(
+            updatedAt: 1,
+            isActive: true,
+            sessionID: "session",
+            title: "노래",
+            artist: "아티스트",
+            artworkURL: nil,
+            artworkData: nil,
+            startedAt: nil,
+            isCurrentUserHost: false,
+            participants: []
+        )
+
+        XCTAssertTrue(guestSnapshot.isCurrentUserGuest)
+        XCTAssertFalse(WatchListenTogetherSnapshot.inactive.isCurrentUserGuest)
+    }
+
 }
