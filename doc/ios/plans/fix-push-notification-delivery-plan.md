@@ -1,8 +1,8 @@
 # #215 전체 푸시 알림 수신 실패 진단·복구 계획서
 
-> **상태**: 구현 완료 · 실기기 QA 대기  
-> **작성일**: 2026-10-02  
-> **관련 이슈**: [#215](https://github.com/kec08/Pacing/issues/215)  
+> **상태**: 구현 완료 · 실기기 QA 대기<br>
+> **작성일**: 2026-10-02<br>
+> **관련 이슈**: [#215](https://github.com/kec08/Pacing/issues/215)<br>
 > **브랜치**: `fix/215-push-notification-delivery`
 
 ## 목적
