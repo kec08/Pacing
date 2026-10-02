@@ -25,6 +25,20 @@ async function deviceTokensFor(uid) {
   return snapshot.docs.map((document) => ({ id: document.id, token: document.get("token") })).filter(({ token }) => typeof token === "string" && token);
 }
 
+function usableNickname(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function nicknameFor(uid, fallback = "러너") {
+  try {
+    const profile = await firestore.collection("users").doc(uid).get();
+    return usableNickname(profile.get("nickname")) || usableNickname(fallback) || "러너";
+  } catch (error) {
+    logger.warn("Push notification sender profile lookup failed", { uid, errorCode: error.code });
+    return usableNickname(fallback) || "러너";
+  }
+}
+
 async function sendNotification(uid, { title, body, data }) {
   const devices = await deviceTokensFor(uid);
   const notificationType = data.type || "unknown";
@@ -67,10 +81,10 @@ async function sendNotification(uid, { title, body, data }) {
 exports.notifyFriendRequest = onDocumentCreated("friendRequests/{requestID}", async (event) => {
   const request = event.data?.data();
   if (!request || request.status !== "pending" || !request.fromUID || !request.toUID) return;
-  const sender = await firestore.collection("users").doc(request.fromUID).get();
+  const senderNickname = await nicknameFor(request.fromUID);
   await sendNotification(request.toUID, {
     title: "새로운 친구 요청",
-    body: `${sender.get("nickname") || "러너"}님이 친구 요청을 보냈어요.`,
+    body: `${senderNickname}님이 친구 요청을 보냈어요.`,
     data: { type: "friendRequest", requestID: event.params.requestID, senderUID: request.fromUID },
   });
 });
@@ -86,13 +100,13 @@ exports.notifyFriendRunStarted = onValueCreated({
   const runner = event.data?.val();
   const uid = event.params.uid;
   if (!runner || !uid) return;
-  const [profile, friends] = await Promise.all([
-    firestore.collection("users").doc(uid).get(),
+  const [runnerNickname, friends] = await Promise.all([
+    nicknameFor(uid, runner.nickname),
     firestore.collection("users").doc(uid).collection("friends").get(),
   ]);
   await Promise.all(friends.docs.map((friend) => sendNotification(friend.id, {
     title: "친구가 러닝을 시작했어요",
-    body: `${profile.get("nickname") || runner.nickname || "친구"}님과 같이 달려볼까요?`,
+    body: `${runnerNickname}님과 같이 달려볼까요?`,
     data: { type: "friendRunStarted", senderUID: uid },
   })));
 });
@@ -110,9 +124,10 @@ exports.notifyListenTogetherRequest = onValueCreated({
   const sessionID = event.params.sessionID;
   if (!request || !recipientUID || !sessionID || request.status !== "pending" || !request.guestUID) return;
 
+  const guestNickname = await nicknameFor(request.guestUID, request.guestNickname);
   await sendNotification(recipientUID, {
     title: "같이 듣기 요청",
-    body: `${request.guestNickname || "친구"}님이 같이 듣기를 요청했어요.`,
+    body: `${guestNickname}님이 같이 듣기를 요청했어요.`,
     data: { type: "listenTogetherRequest", sessionID, senderUID: request.guestUID },
   });
 });
