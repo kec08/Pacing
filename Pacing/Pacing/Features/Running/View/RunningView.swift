@@ -410,7 +410,8 @@ struct RunningView: View {
             RunSummaryView(
                 distance: viewModel.distance,
                 elapsedSeconds: viewModel.elapsedSeconds,
-                avgPace: viewModel.overallAveragePace,
+                // 활동 상세에 저장하는 평균 페이스와 같은 유효 이동 시간 기준 값을 사용한다.
+                avgPace: viewModel.avgPace,
                 calories: viewModel.estimatedCalories,
                 lapPaces: viewModel.completedLapPaces,
                 routeCoordinates: viewModel.locationManager.routeCoordinates,

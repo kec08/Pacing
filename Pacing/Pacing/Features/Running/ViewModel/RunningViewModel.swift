@@ -58,17 +58,17 @@ enum RunningPacePolicy {
         distanceKilometers >= minimumDistanceForPaceKilometers && elapsedSeconds > 0
     }
 
-    /// 일시정지 시간을 제외한 전체 러닝 시간 기준 평균 페이스입니다.
-    static func overallAveragePace(
-        elapsedSeconds: Int,
+    /// 유효 GPS 이동 구간의 누적 시간 기준 평균 페이스입니다.
+    static func averagePace(
+        movingElapsedSeconds: Int,
         distanceKilometers: Double
     ) -> Double {
         guard canDisplayPace(
             distanceKilometers: distanceKilometers,
-            elapsedSeconds: elapsedSeconds
+            elapsedSeconds: movingElapsedSeconds
         ) else { return 0 }
 
-        return Double(elapsedSeconds) / 60.0 / distanceKilometers
+        return Double(movingElapsedSeconds) / 60.0 / distanceKilometers
     }
 }
 
@@ -391,19 +391,9 @@ final class RunningViewModel: ObservableObject {
     }
 
     var avgPace: Double {
-        guard RunningPacePolicy.canDisplayPace(
+        RunningPacePolicy.averagePace(
+            movingElapsedSeconds: Int(activeElapsedSeconds.rounded()),
             distanceKilometers: distance,
-            elapsedSeconds: Int(activeElapsedSeconds)
-        ) else { return 0 }
-        return activeElapsedSeconds / 60.0 / distance
-    }
-
-    /// 종료 요약에 표시할 전체 평균 페이스입니다.
-    /// `elapsedSeconds`는 일시정지 시간을 제외한 누적 러닝 시간입니다.
-    var overallAveragePace: Double {
-        RunningPacePolicy.overallAveragePace(
-            elapsedSeconds: elapsedSeconds,
-            distanceKilometers: distance
         )
     }
 
@@ -729,7 +719,7 @@ final class RunningViewModel: ObservableObject {
         guard let announcement = RunCompletionVoiceAnnouncement(
             distanceKilometers: distance,
             elapsedSeconds: elapsedSeconds,
-            averagePaceMinutesPerKilometer: overallAveragePace
+            averagePaceMinutesPerKilometer: avgPace
         ) else { return }
 
         // 마지막 킬로미터 안내가 진행 중인 경우 종료 요약으로 교체해, 완료 수치를
