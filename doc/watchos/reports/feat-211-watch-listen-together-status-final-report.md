@@ -3,7 +3,7 @@
 > **완료일**: 2026-10-02
 > **관련 이슈**: [#211](https://github.com/kec08/Pacing/issues/211)
 > **브랜치**: `feat/211-watch-listen-together-status`
-> **PR**: 생성 예정
+> **PR**: [#212](https://github.com/kec08/Pacing/pull/212)
 
 ## 구현 요약
 
