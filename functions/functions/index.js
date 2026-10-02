@@ -27,6 +27,14 @@ async function deviceTokensFor(uid) {
 
 async function sendNotification(uid, { title, body, data }) {
   const devices = await deviceTokensFor(uid);
+  const notificationType = data.type || "unknown";
+  if (devices.length === 0) {
+    logger.warn("Push notification skipped because no registered device token exists", { uid, notificationType });
+    return { successCount: 0, failureCount: 0, deviceCount: 0 };
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
   for (let index = 0; index < devices.length; index += 500) {
     const chunk = devices.slice(index, index + 500);
     const response = await messaging.sendEachForMulticast({
@@ -35,12 +43,25 @@ async function sendNotification(uid, { title, body, data }) {
       data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)])),
       apns: { payload: { aps: { sound: "default" } } },
     });
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+    const errorCodes = response.responses.map((result) => result.error?.code).filter(Boolean);
+    logger.info("Push notification delivery result", {
+      uid,
+      notificationType,
+      deviceCount: chunk.length,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      errorCodes,
+    });
     await Promise.all(response.responses.map((result, offset) => {
       const code = result.error?.code;
       if (code !== "messaging/registration-token-not-registered" && code !== "messaging/invalid-registration-token") return undefined;
       return firestore.collection("users").doc(uid).collection("notificationDevices").doc(chunk[offset].id).delete();
     }));
   }
+
+  return { successCount, failureCount, deviceCount: devices.length };
 }
 
 exports.notifyFriendRequest = onDocumentCreated("friendRequests/{requestID}", async (event) => {

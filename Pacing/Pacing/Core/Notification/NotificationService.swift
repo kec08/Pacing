@@ -3,17 +3,32 @@ import FirebaseMessaging
 import Combine
 import UserNotifications
 import UIKit
+import os
 
 @MainActor
 final class NotificationService: NSObject, ObservableObject {
     static let shared = NotificationService()
     private let repository: NotificationDeviceRepository = FirestoreNotificationDeviceRepository.shared
     private let installationID = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+    private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "com.pacing.app", category: "PushNotification")
 
-    func configure() { Messaging.messaging().delegate = self }
+    func configure() {
+        Messaging.messaging().delegate = self
+        logger.debug("FCM delegate configured")
+    }
 
     func requestAuthorization() async {
-        guard (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound])) == true else { return }
+        do {
+            guard try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) else {
+                logger.notice("Push authorization was not granted")
+                return
+            }
+        } catch {
+            logger.error("Push authorization request failed: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+
+        logger.info("Push authorization granted; registering with APNs")
         UIApplication.shared.registerForRemoteNotifications()
     }
 
@@ -24,25 +39,62 @@ final class NotificationService: NSObject, ObservableObject {
         if settings.authorizationStatus == .notDetermined {
             await requestAuthorization()
         } else if settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional {
+            logger.debug("Push authorization already granted; registering with APNs")
             UIApplication.shared.registerForRemoteNotifications()
+        } else {
+            logger.notice("Push authorization unavailable: \(settings.authorizationStatus.rawValue)")
         }
         synchronizeCurrentToken()
     }
 
+    func didRegisterAPNSToken(_ token: Data) {
+        Messaging.messaging().apnsToken = token
+        logger.info("APNs token registered; synchronizing FCM token")
+        synchronizeCurrentToken()
+    }
+
+    func didFailToRegisterForRemoteNotifications(with error: Error) {
+        logger.error("APNs registration failed: \(error.localizedDescription, privacy: .public)")
+    }
+
     func synchronizeToken(_ token: String?) {
-        guard let uid = Auth.auth().currentUser?.uid, let token, !token.isEmpty else { return }
-        Task { try? await repository.save(token: token, installationID: installationID, uid: uid) }
+        guard let uid = Auth.auth().currentUser?.uid else {
+            logger.notice("FCM token unavailable for storage because no authenticated user exists")
+            return
+        }
+        guard let token, !token.isEmpty else {
+            logger.error("FCM token is empty")
+            return
+        }
+
+        Task {
+            do {
+                try await repository.save(token: token, installationID: installationID, uid: uid)
+                logger.info("FCM token synchronized to Firestore")
+            } catch {
+                logger.error("FCM token Firestore synchronization failed: \(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     func synchronizeCurrentToken() {
-        Messaging.messaging().token { [weak self] token, _ in
-            Task { @MainActor in self?.synchronizeToken(token) }
+        Messaging.messaging().token { [weak self] token, error in
+            Task { @MainActor in
+                if let error {
+                    self?.logger.error("FCM token retrieval failed: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
+                self?.synchronizeToken(token)
+            }
         }
     }
 }
 
 extension NotificationService: MessagingDelegate {
     nonisolated func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        Task { @MainActor in self.synchronizeToken(fcmToken) }
+        Task { @MainActor in
+            self.logger.info("FCM registration token refreshed")
+            self.synchronizeToken(fcmToken)
+        }
     }
 }
