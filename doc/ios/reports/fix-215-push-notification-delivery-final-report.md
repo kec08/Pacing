@@ -7,6 +7,7 @@
 ## 관련 이슈
 
 - https://github.com/kec08/Pacing/issues/215
+- PR: https://github.com/kec08/Pacing/pull/216
 - 브랜치: `fix/215-push-notification-delivery`
 
 ## 구현 내용
