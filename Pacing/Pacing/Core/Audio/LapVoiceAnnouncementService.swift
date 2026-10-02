@@ -3,6 +3,11 @@ import Foundation
 import MediaPlayer
 import MusicKit
 
+extension Notification.Name {
+    static let runningVoiceAnnouncementDidStart = Notification.Name("runningVoiceAnnouncementDidStart")
+    static let runningVoiceAnnouncementDidFinish = Notification.Name("runningVoiceAnnouncementDidFinish")
+}
+
 struct LapVoiceAnnouncement: Equatable {
     let kilometer: Int
     let elapsedSeconds: Int
@@ -151,6 +156,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
         pendingUtteranceIDs.insert(ObjectIdentifier(utterance))
+        NotificationCenter.default.post(name: .runningVoiceAnnouncementDidStart, object: nil)
         synthesizer.speak(utterance)
     }
 
@@ -158,6 +164,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         synthesizer.stopSpeaking(at: .immediate)
         pendingUtteranceIDs.removeAll()
         restoreAudioSessionAfterAnnouncement()
+        NotificationCenter.default.post(name: .runningVoiceAnnouncementDidFinish, object: nil)
     }
 
     private func configureAudioSessionForAnnouncement() {
@@ -211,6 +218,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             announcementSessionConfiguration = nil
         }
         resumeMusicAfterAnnouncementIfNeeded()
+        NotificationCenter.default.post(name: .runningVoiceAnnouncementDidFinish, object: nil)
     }
 
     private func pauseMusicForAnnouncementIfNeeded() {

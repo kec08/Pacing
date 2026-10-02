@@ -388,6 +388,12 @@ struct RunningView: View {
         .onChange(of: musicVM.nowPlayingSnapshot) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
+        .onReceive(listenVM.$activeSession) { _ in
+            PhoneRunSyncPublisher.shared.publishListenTogether(listenVM.watchListenTogetherSnapshot())
+        }
+        .onChange(of: listenVM.sessionStartDate) { _, _ in
+            PhoneRunSyncPublisher.shared.publishListenTogether(listenVM.watchListenTogetherSnapshot())
+        }
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
             Button("설정으로 이동") {
                 guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }

@@ -35,4 +35,76 @@ final class Pacing_Watch_Watch_AppTests: XCTestCase {
         }
     }
 
+    func testListenTogetherSnapshotPreservesArtworkAndParticipantRoles() throws {
+        let artwork = Data([0x01, 0x02, 0x03])
+        let snapshot = WatchListenTogetherSnapshot(
+            updatedAt: 123,
+            isActive: true,
+            sessionID: "session",
+            title: "Hyperventilation",
+            artist: "RADWIMPS",
+            artworkURL: "https://example.com/artwork.jpg",
+            artworkData: artwork,
+            startedAt: Date(timeIntervalSince1970: 100),
+            isCurrentUserHost: true,
+            participants: [
+                WatchListenTogetherParticipant(id: "host", nickname: "은찬", role: "호스트", profileImageData: artwork),
+                WatchListenTogetherParticipant(id: "guest", nickname: "윤재", role: "게스트", profileImageData: nil)
+            ]
+        )
+
+        let decoded = try JSONDecoder().decode(
+            WatchListenTogetherSnapshot.self,
+            from: JSONEncoder().encode(snapshot)
+        )
+
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(decoded.participants.map(\.role), ["호스트", "게스트"])
+        XCTAssertEqual(decoded.artworkData, artwork)
+        XCTAssertEqual(decoded.isCurrentUserHost, true)
+    }
+
+    func testInactiveListenTogetherSnapshotContainsNoStaleParticipants() {
+        XCTAssertFalse(WatchListenTogetherSnapshot.inactive.isActive)
+        XCTAssertTrue(WatchListenTogetherSnapshot.inactive.participants.isEmpty)
+        XCTAssertNil(WatchListenTogetherSnapshot.inactive.artworkData)
+    }
+
+    func testListenTogetherElapsedTimeUsesTimelineDate() {
+        let startedAt = Date(timeIntervalSince1970: 1_000)
+
+        XCTAssertEqual(
+            WatchListenTogetherElapsedTimeFormatter.text(
+                startedAt: startedAt,
+                now: Date(timeIntervalSince1970: 1_037)
+            ),
+            "37초 함께 들음"
+        )
+        XCTAssertEqual(
+            WatchListenTogetherElapsedTimeFormatter.text(
+                startedAt: startedAt,
+                now: Date(timeIntervalSince1970: 1_120)
+            ),
+            "2분 함께 들음"
+        )
+    }
+
+    func testActiveGuestSnapshotRequestsStatusOnlyWatchTab() {
+        let guestSnapshot = WatchListenTogetherSnapshot(
+            updatedAt: 1,
+            isActive: true,
+            sessionID: "session",
+            title: "노래",
+            artist: "아티스트",
+            artworkURL: nil,
+            artworkData: nil,
+            startedAt: nil,
+            isCurrentUserHost: false,
+            participants: []
+        )
+
+        XCTAssertTrue(guestSnapshot.isCurrentUserGuest)
+        XCTAssertFalse(WatchListenTogetherSnapshot.inactive.isCurrentUserGuest)
+    }
+
 }

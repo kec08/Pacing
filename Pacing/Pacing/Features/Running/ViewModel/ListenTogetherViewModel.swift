@@ -12,7 +12,40 @@ final class ListenTogetherViewModel: ObservableObject {
     @Published var isHost: Bool = false
     @Published var sessionStartDate: Date? = nil
 
+    private var isVoiceAnnouncementActive = false
+    private weak var observedMusicViewModel: RunningMusicViewModel?
+    private var voiceAnnouncementObservers: [NSObjectProtocol] = []
+
     private var myUID: String { Auth.auth().currentUser?.uid ?? "" }
+
+    init() {
+        voiceAnnouncementObservers = [
+            NotificationCenter.default.addObserver(
+                forName: .runningVoiceAnnouncementDidStart,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.isVoiceAnnouncementActive = true
+            },
+            NotificationCenter.default.addObserver(
+                forName: .runningVoiceAnnouncementDidFinish,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                guard let self else { return }
+                self.isVoiceAnnouncementActive = false
+                guard !self.isHost,
+                      let session = self.activeSession,
+                      let musicVM = self.observedMusicViewModel
+                else { return }
+                Task { await self.syncMusic(session: session, musicVM: musicVM) }
+            }
+        ]
+    }
+
+    deinit {
+        voiceAnnouncementObservers.forEach(NotificationCenter.default.removeObserver)
+    }
     private var myNickname: String { UserDefaults.standard.string(forKey: "nickname") ?? "러너" }
     private var lastIncomingRequestID: String?
     private var hostBroadcastTimer: AnyCancellable?
@@ -33,6 +66,9 @@ final class ListenTogetherViewModel: ObservableObject {
     private var profileImageLookupTasks: [String: Task<String?, Never>] = [:]
     private var missingProfileImageExpiry: [String: Date] = [:]
     private let missingProfileImageTTL: TimeInterval = 10 * 60
+    private var lastWatchArtworkBase64 = ""
+    private var cachedWatchArtworkData: Data?
+    private var cachedWatchProfileData: [String: Data?] = [:]
 
     // MARK: - 요청 수신 감지 시작
     func startObservingRequests() {
@@ -184,6 +220,39 @@ final class ListenTogetherViewModel: ObservableObject {
         cleanup()
     }
 
+    func watchListenTogetherSnapshot() -> PhoneListenTogetherSnapshot {
+        guard let session = activeSession, session.status == "active" else {
+            return PhoneListenTogetherSnapshot(
+                updatedAt: Date().timeIntervalSince1970,
+                isActive: false,
+                sessionID: nil,
+                title: "",
+                artist: "",
+                artworkURL: nil,
+                artworkData: nil,
+                startedAt: nil,
+                isCurrentUserHost: nil,
+                participants: []
+            )
+        }
+
+        return PhoneListenTogetherSnapshot(
+            updatedAt: Date().timeIntervalSince1970,
+            isActive: true,
+            sessionID: session.id,
+            title: session.songTitle,
+            artist: session.artistName,
+            artworkURL: session.artworkURL.nonEmpty,
+            artworkData: compactWatchArtworkData(from: session.artworkData),
+            startedAt: sessionStartDate,
+            isCurrentUserHost: isHost,
+            participants: [
+                participant(uid: session.hostUID, nickname: session.hostNickname, role: "호스트", imageBase64: session.hostProfileImageBase64),
+                participant(uid: session.guestUID, nickname: session.guestNickname, role: "게스트", imageBase64: session.guestProfileImageBase64)
+            ]
+        )
+    }
+
     // MARK: - 음악 소스: 재생 상태 브로드캐스트
     func broadcastSeekIfHost(musicVM: RunningMusicViewModel) {
         guard isHost, activeSession?.status == "active" else { return }
@@ -261,6 +330,7 @@ final class ListenTogetherViewModel: ObservableObject {
 
     // MARK: - 세션 구독
     private func observeSession(sessionID: String, musicVM: RunningMusicViewModel) {
+        observedMusicViewModel = musicVM
         RealtimeDBService.shared.observeSession(sessionID: sessionID) { [weak self] session in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -279,7 +349,7 @@ final class ListenTogetherViewModel: ObservableObject {
                         self.activeSession = resolvedSession
                         // 곡·재생 상태뿐 아니라, 같은 이벤트에서 늦게 보강되는 앨범 커버도
                         // 게스트 큐 캐시에 반영해야 음악 시트가 placeholder에 머물지 않습니다.
-                        if self.shouldSyncMusic(
+                        if !self.isVoiceAnnouncementActive, self.shouldSyncMusic(
                             with: resolvedSession,
                             previousSession: previousSession,
                             musicVM: musicVM
@@ -292,7 +362,7 @@ final class ListenTogetherViewModel: ObservableObject {
                         // ApplicationMusicPlayer 세션은 syncMusic에서 재생 상태까지 반영한다.
                         // 시스템 플레이어를 다시 조작하면 게스트 큐가 매 위치 갱신마다
                         // 다른 곡으로 재구성될 수 있어 legacy 재생에서만 사용한다.
-                        if !musicVM.isUsingApplicationPlayer {
+                        if !self.isVoiceAnnouncementActive, !musicVM.isUsingApplicationPlayer {
                             let player = MPMusicPlayerController.systemMusicPlayer
                             if resolvedSession.isPlaying && player.playbackState != .playing {
                                 player.play()
@@ -513,6 +583,30 @@ final class ListenTogetherViewModel: ObservableObject {
         return resized.jpegData(compressionQuality: 0.65)?.base64EncodedString() ?? ""
     }
 
+    private func compactWatchArtworkData(from base64: String) -> Data? {
+        if lastWatchArtworkBase64 == base64 { return cachedWatchArtworkData }
+        lastWatchArtworkBase64 = base64
+        guard let data = Data(base64Encoded: base64), let image = UIImage(data: data) else { return nil }
+        let compacted = WatchMusicArtworkEncoder.encodeCurrentArtwork(image)
+        cachedWatchArtworkData = compacted
+        return compacted
+    }
+
+    private func participant(uid: String, nickname: String, role: String, imageBase64: String) -> PhoneListenTogetherParticipant {
+        let cacheKey = "\(uid)|\(imageBase64)"
+        let imageData: Data?
+        if let cached = cachedWatchProfileData[cacheKey] {
+            imageData = cached
+        } else {
+            let compacted = Data(base64Encoded: imageBase64)
+                .flatMap(UIImage.init(data:))
+                .flatMap(WatchMusicArtworkEncoder.encodeProfileArtwork)
+            cachedWatchProfileData = [cacheKey: compacted]
+            imageData = compacted
+        }
+        return PhoneListenTogetherParticipant(id: uid, nickname: nickname, role: role, profileImageData: imageData)
+    }
+
     private func isCurrentTrackMatching(
         session: ListenSession,
         player: MPMusicPlayerController
@@ -594,6 +688,9 @@ final class ListenTogetherViewModel: ObservableObject {
         isHostSeeking = false
         lastHostedTrackKey = ""
         lastHostedArtworkURL = ""
+        lastWatchArtworkBase64 = ""
+        cachedWatchArtworkData = nil
+        cachedWatchProfileData.removeAll()
     }
 
     private func resolvedProfileImages(for session: ListenSession) async -> ListenSession {

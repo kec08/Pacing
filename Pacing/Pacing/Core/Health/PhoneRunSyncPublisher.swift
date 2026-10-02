@@ -10,6 +10,7 @@ final class PhoneRunSyncPublisher: NSObject {
     /// `updatedAt`은 매 상태 확인마다 달라진다. 이를 그대로 기준으로 삼으면
     /// 재생 중인 곡이 바뀌지 않아도 0.5초마다 큰 앨범 아트를 직렬화·전송한다.
     private var lastPublishedMusicSnapshot: PhoneMusicPlaybackSnapshot?
+    private var lastPublishedListenTogetherSnapshot: PhoneListenTogetherSnapshot?
 
     private override init() {
         super.init()
@@ -54,6 +55,21 @@ final class PhoneRunSyncPublisher: NSObject {
         if session.isReachable { session.sendMessage(["phoneMusic": payload], replyHandler: nil) }
     }
 
+    func publishListenTogether(_ snapshot: PhoneListenTogetherSnapshot) {
+        guard !hasSameListenTogetherContent(snapshot, as: lastPublishedListenTogetherSnapshot),
+              let payload = listenTogetherPayload(for: snapshot)
+        else { return }
+        lastPublishedListenTogetherSnapshot = snapshot
+
+        var context = session.applicationContext
+        context["phoneListenTogether"] = payload
+        if let contextData = try? JSONSerialization.data(withJSONObject: context),
+           contextData.count <= maximumMusicContextSize {
+            try? session.updateApplicationContext(context)
+        }
+        if session.isReachable { session.sendMessage(["phoneListenTogether": payload], replyHandler: nil) }
+    }
+
     func publishRunHistory(records: [RunRecord], calendar: Calendar = .current) {
         let snapshot = makeRunHistorySnapshot(records: records, calendar: calendar)
         guard let data = try? JSONEncoder().encode(snapshot),
@@ -80,6 +96,18 @@ final class PhoneRunSyncPublisher: NSObject {
         return nil
     }
 
+    private func listenTogetherPayload(for snapshot: PhoneListenTogetherSnapshot) -> [String: Any]? {
+        // Watch의 핵심 정보인 앨범 아트는 끝까지 유지하고, 전송량이 부족할 때만 프로필 이미지를 제거합니다.
+        for candidate in [snapshot, snapshot.removingProfileImages()] {
+            guard let data = try? JSONEncoder().encode(candidate),
+                  data.count <= maximumMusicContextSize,
+                  let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { continue }
+            return payload
+        }
+        return nil
+    }
+
     private func hasSameMusicContent(
         _ snapshot: PhoneMusicPlaybackSnapshot,
         as previous: PhoneMusicPlaybackSnapshot?
@@ -92,6 +120,21 @@ final class PhoneRunSyncPublisher: NSObject {
             && snapshot.isPlaying == previous.isPlaying
             && snapshot.recentlyPlayed == previous.recentlyPlayed
             && snapshot.playlistTracks == previous.playlistTracks
+    }
+
+    private func hasSameListenTogetherContent(
+        _ snapshot: PhoneListenTogetherSnapshot,
+        as previous: PhoneListenTogetherSnapshot?
+    ) -> Bool {
+        guard let previous else { return false }
+        return snapshot.isActive == previous.isActive
+            && snapshot.sessionID == previous.sessionID
+            && snapshot.title == previous.title
+            && snapshot.artist == previous.artist
+            && snapshot.artworkURL == previous.artworkURL
+            && snapshot.artworkData == previous.artworkData
+            && snapshot.startedAt == previous.startedAt
+            && snapshot.participants == previous.participants
     }
 
     private func makeRunHistorySnapshot(
