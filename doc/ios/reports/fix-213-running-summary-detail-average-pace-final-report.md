@@ -7,6 +7,7 @@
 ## 관련 이슈
 
 - https://github.com/kec08/Pacing/issues/213
+- PR: https://github.com/kec08/Pacing/pull/214
 - 브랜치: `fix/213-running-summary-detail-average-pace`
 
 ## 구현 내용
