@@ -317,7 +317,8 @@ private final class WatchListenTogetherViewModel: ObservableObject {
         snapshot.isCurrentUserGuest
     }
 
-    init(receiver: PhoneRunSyncReceiver = .shared) {
+    init(receiver: PhoneRunSyncReceiver? = nil) {
+        let receiver = receiver ?? .shared
         receiver.onListenTogetherSnapshot = { [weak self] snapshot in self?.snapshot = snapshot }
     }
 }

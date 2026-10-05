@@ -1,5 +1,6 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import CoreLocation
+import MapKit
 import SwiftUI
 import UIKit
 import Combine
@@ -142,11 +143,11 @@ struct RunRecordShareCameraView: View {
     let record: RunRecord
     let template: RunShareTemplate
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.displayScale) private var displayScale
     @StateObject private var camera = RunShareCameraController()
     @State private var capturedImage: UIImage?
     @State private var capturedPhoto: UIImage?
-    @State private var shareItemSource: RunShareImageItemSource?
-    @State private var presentsShareSheet = false
+    @State private var sharePayload: RunSharePayload?
     @State private var locationName = "위치 정보 확인 중"
     @State private var isCapturing = false
 
@@ -185,10 +186,13 @@ struct RunRecordShareCameraView: View {
             locationName = await RunShareLocationResolver.name(for: record.routeCoordinates.first)
         }
         .onDisappear { camera.stop() }
-        .sheet(isPresented: $presentsShareSheet) {
-            if let shareItemSource {
-                RunShareSheet(items: [shareItemSource])
-            }
+        .sheet(item: $sharePayload) { payload in
+            RunShareSheet(items: [
+                RunShareImageItemSource(
+                    defaultImage: payload.defaultImage,
+                    instagramStoryImage: payload.instagramStoryImage
+                )
+            ])
         }
         .alert("카메라를 사용할 수 없어요", isPresented: $camera.showsPermissionAlert) {
             Button("확인", role: .cancel) { dismiss() }
@@ -201,6 +205,15 @@ struct RunRecordShareCameraView: View {
     private func controls(previewSize: CGSize) -> some View {
         VStack {
             HStack {
+                if capturedImage == nil, camera.isAuthorized {
+                    Button { camera.switchCamera() } label: {
+                        Image(systemName: "camera.rotate")
+                            .font(.headline)
+                            .frame(width: 44, height: 44)
+                            .background(.black.opacity(0.42), in: Circle())
+                    }
+                    .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
+                }
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
@@ -214,12 +227,12 @@ struct RunRecordShareCameraView: View {
 
             Spacer()
 
-            if let capturedImage {
+            if capturedImage != nil {
                 HStack(spacing: 14) {
                     Button {
                         self.capturedImage = nil
                         self.capturedPhoto = nil
-                        self.shareItemSource = nil
+                        self.sharePayload = nil
                     } label: {
                         Label("재촬영", systemImage: "arrow.counterclockwise")
                             .font(.headline.weight(.bold))
@@ -234,7 +247,8 @@ struct RunRecordShareCameraView: View {
                             record: record,
                             template: template,
                             locationName: locationName,
-                            previewSize: previewSize
+                            previewSize: previewSize,
+                            displayScale: displayScale
                         )
                         let storyShareImage = RunShareImageComposer.instagramStory(
                             from: capturedPhoto,
@@ -243,13 +257,10 @@ struct RunRecordShareCameraView: View {
                             locationName: locationName,
                             previewSize: previewSize
                         )
-                        shareItemSource = RunShareImageItemSource(
+                        sharePayload = RunSharePayload(
                             defaultImage: shareImage,
                             instagramStoryImage: storyShareImage
                         )
-                        DispatchQueue.main.async {
-                            presentsShareSheet = true
-                        }
                     } label: {
                         Label("공유", systemImage: "square.and.arrow.up")
                             .font(.headline.weight(.bold))
@@ -270,7 +281,8 @@ struct RunRecordShareCameraView: View {
                             record: record,
                             template: template,
                             locationName: locationName,
-                            previewSize: previewSize
+                            previewSize: previewSize,
+                            displayScale: displayScale
                         )
                         isCapturing = false
                     }
@@ -436,6 +448,12 @@ private enum RunShareOverlayMode {
     case preview
 }
 
+private struct RunSharePayload: Identifiable {
+    let id = UUID()
+    let defaultImage: UIImage
+    let instagramStoryImage: UIImage
+}
+
 private struct RunShareRouteLine: Shape {
     let coordinates: [CLLocationCoordinate2D]
 
@@ -470,7 +488,8 @@ private enum RunShareImageComposer {
         record: RunRecord,
         template: RunShareTemplate,
         locationName: String,
-        previewSize: CGSize
+        previewSize: CGSize,
+        displayScale: CGFloat
     ) -> UIImage {
         compose(
             photo: photo,
@@ -478,7 +497,7 @@ private enum RunShareImageComposer {
             template: template,
             locationName: locationName,
             overlaySize: previewSize,
-            outputSize: CGSize(width: previewSize.width * UIScreen.main.scale, height: previewSize.height * UIScreen.main.scale),
+            outputSize: CGSize(width: previewSize.width * displayScale, height: previewSize.height * displayScale),
             mode: .liveCamera
         )
     }
@@ -488,7 +507,8 @@ private enum RunShareImageComposer {
         record: RunRecord,
         template: RunShareTemplate,
         locationName: String,
-        previewSize: CGSize
+        previewSize: CGSize,
+        displayScale: CGFloat
     ) -> UIImage {
         compose(
             photo: photo,
@@ -496,7 +516,7 @@ private enum RunShareImageComposer {
             template: template,
             locationName: locationName,
             overlaySize: previewSize,
-            outputSize: CGSize(width: previewSize.width * UIScreen.main.scale, height: previewSize.height * UIScreen.main.scale),
+            outputSize: CGSize(width: previewSize.width * displayScale, height: previewSize.height * displayScale),
             mode: .camera
         )
     }
@@ -557,9 +577,21 @@ private enum RunShareLocationResolver {
         guard let coordinate else { return "위치 정보 없음" }
 
         do {
-            let placemark = try await CLGeocoder().reverseGeocodeLocation(
-                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            ).first
+            if #available(iOS 26.0, *) {
+                let request = MKReverseGeocodingRequest(
+                    location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+                )
+                let mapItem = try await request.mapItems.first
+                if let shortAddress = mapItem?.address?.shortAddress, !shortAddress.isEmpty {
+                    return shortAddress
+                }
+                if let fullAddress = mapItem?.address?.fullAddress, !fullAddress.isEmpty {
+                    return fullAddress
+                }
+                return "위치 정보 없음"
+            }
+
+            let placemark = try await legacyPlacemark(for: coordinate)
             guard let placemark else { return "위치 정보 없음" }
             let city = placemark.locality ?? placemark.subAdministrativeArea ?? placemark.administrativeArea
             let parts = [city, placemark.country].compactMap { $0 }.filter { !$0.isEmpty }
@@ -568,14 +600,23 @@ private enum RunShareLocationResolver {
             return "위치 정보 없음"
         }
     }
+
+    @available(iOS, deprecated: 26.0, message: "Use MKReverseGeocodingRequest on iOS 26 and later.")
+    private static func legacyPlacemark(for coordinate: CLLocationCoordinate2D) async throws -> CLPlacemark? {
+        try await CLGeocoder().reverseGeocodeLocation(
+            CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        ).first
+    }
 }
 
 private final class RunShareCameraController: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
     let session = AVCaptureSession()
     @Published var isAuthorized = false
     @Published var showsPermissionAlert = false
+    @Published private(set) var isUsingFrontCamera = false
     private let output = AVCapturePhotoOutput()
     private let sessionQueue = DispatchQueue(label: "com.pacing.run-share-camera")
+    private var videoInput: AVCaptureDeviceInput?
     private var completion: ((UIImage) -> Void)?
 
     func start() {
@@ -608,6 +649,35 @@ private final class RunShareCameraController: NSObject, ObservableObject, AVCapt
         }
     }
 
+    func switchCamera() {
+        sessionQueue.async {
+            let nextPosition: AVCaptureDevice.Position = self.videoInput?.device.position == .front ? .back : .front
+            guard let device = Self.cameraDevice(for: nextPosition),
+                  let newInput = try? AVCaptureDeviceInput(device: device) else {
+                return
+            }
+
+            self.session.beginConfiguration()
+            defer { self.session.commitConfiguration() }
+
+            if let videoInput = self.videoInput {
+                self.session.removeInput(videoInput)
+            }
+            guard self.session.canAddInput(newInput) else {
+                if let videoInput = self.videoInput, self.session.canAddInput(videoInput) {
+                    self.session.addInput(videoInput)
+                }
+                return
+            }
+
+            self.session.addInput(newInput)
+            self.videoInput = newInput
+            DispatchQueue.main.async {
+                self.isUsingFrontCamera = nextPosition == .front
+            }
+        }
+    }
+
     private func configureAndStart() {
         sessionQueue.async {
             guard self.session.inputs.isEmpty else {
@@ -616,13 +686,14 @@ private final class RunShareCameraController: NSObject, ObservableObject, AVCapt
             }
             self.session.beginConfiguration()
             self.session.sessionPreset = .photo
-            guard let device = AVCaptureDevice.default(for: .video),
+            guard let device = Self.cameraDevice(for: .back),
                   let input = try? AVCaptureDeviceInput(device: device),
                   self.session.canAddInput(input), self.session.canAddOutput(self.output) else {
                 self.session.commitConfiguration()
                 return
             }
             self.session.addInput(input)
+            self.videoInput = input
             self.session.addOutput(self.output)
             self.output.maxPhotoQualityPrioritization = .speed
             self.session.commitConfiguration()
@@ -630,9 +701,14 @@ private final class RunShareCameraController: NSObject, ObservableObject, AVCapt
         }
     }
 
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
+    nonisolated func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
         guard error == nil, let data = photo.fileDataRepresentation(), let image = UIImage(data: data) else { return }
         DispatchQueue.main.async { [weak self] in self?.completion?(image) }
+    }
+
+    private static func cameraDevice(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
+        AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position)
+            ?? AVCaptureDevice.default(for: .video)
     }
 }
 

@@ -25,20 +25,24 @@ final class ListenTogetherViewModel: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.isVoiceAnnouncementActive = true
+                Task { @MainActor [weak self] in
+                    self?.isVoiceAnnouncementActive = true
+                }
             },
             NotificationCenter.default.addObserver(
                 forName: .runningVoiceAnnouncementDidFinish,
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                guard let self else { return }
-                self.isVoiceAnnouncementActive = false
-                guard !self.isHost,
-                      let session = self.activeSession,
-                      let musicVM = self.observedMusicViewModel
-                else { return }
-                Task { await self.syncMusic(session: session, musicVM: musicVM) }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isVoiceAnnouncementActive = false
+                    guard !self.isHost,
+                          let session = self.activeSession,
+                          let musicVM = self.observedMusicViewModel
+                    else { return }
+                    await self.syncMusic(session: session, musicVM: musicVM)
+                }
             }
         ]
     }
