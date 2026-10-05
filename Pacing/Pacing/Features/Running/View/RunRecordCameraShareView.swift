@@ -298,10 +298,10 @@ struct RunRecordShareCameraView: View {
                     HStack {
                         Spacer()
                         Button { camera.switchCamera() } label: {
-                            Image(systemName: "camera.rotate")
-                                .font(.title3.weight(.semibold))
-                                .frame(width: 54, height: 54)
-                                .background(.black.opacity(0.42), in: Circle())
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(.title3.weight(.semibold))
+                            .frame(width: 48, height: 48)
+                            .background(.black.opacity(0.42), in: Circle())
                         }
                         .disabled(isCapturing)
                         .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
