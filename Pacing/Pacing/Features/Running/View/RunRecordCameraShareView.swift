@@ -259,7 +259,7 @@ private struct RunSharePhotoOverlay: View {
                     .scaledToFit()
                     .frame(width: min(148, proxy.size.width * 0.34), height: 42)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(x: -8)
+                    .offset(x: -28)
                     .accessibilityHidden(true)
                 Spacer()
                 switch template {
@@ -268,8 +268,8 @@ private struct RunSharePhotoOverlay: View {
                 case .route: routeLayout
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.top, max(88, proxy.size.height * 0.11))
+            .padding(.horizontal, 12)
+            .padding(.top, max(120, proxy.size.height * 0.14))
             .padding(.bottom, proxy.size.height * 0.09)
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
@@ -279,11 +279,11 @@ private struct RunSharePhotoOverlay: View {
     private var distanceLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(String(format: "%.1f", record.distance))
-                .font(.system(size: 50, weight: .heavy, design: .rounded))
+                .font(.system(size: 56, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
             Text("KM")
-                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .tracking(1.5)
         }
     }
@@ -323,6 +323,8 @@ private struct RunSharePhotoOverlay: View {
                 .lineLimit(1)
             Text(label)
                 .font(.caption.bold())
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
