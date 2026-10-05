@@ -597,22 +597,7 @@ private enum RunShareLocationResolver {
             return "위치 정보 없음"
         }
 
-        return await legacyLocationName(for: coordinate)
-    }
-
-    @available(iOS, introduced: 2.0, obsoleted: 26.0)
-    private static func legacyLocationName(for coordinate: CLLocationCoordinate2D) async -> String {
-        do {
-            let placemark = try await CLGeocoder().reverseGeocodeLocation(
-                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            ).first
-            guard let placemark else { return "위치 정보 없음" }
-            let city = placemark.locality ?? placemark.subAdministrativeArea ?? placemark.administrativeArea
-            let parts = [city, placemark.country].compactMap { $0 }.filter { !$0.isEmpty }
-            return parts.isEmpty ? "위치 정보 없음" : parts.joined(separator: ", ")
-        } catch {
-            return "위치 정보 없음"
-        }
+        return "위치 정보 없음"
     }
 }
 
