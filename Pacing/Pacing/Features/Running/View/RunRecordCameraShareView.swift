@@ -275,9 +275,14 @@ private struct RunSharePhotoOverlay: View {
                 case .route: routeLayout
                 }
             }
-            .padding(.horizontal, mode == .preview ? 12 : 16)
-            .padding(.top, max(78, proxy.size.height * 0.09))
-            .padding(.bottom, proxy.size.height * 0.09)
+            .padding(.horizontal, mode == .preview ? 4 : 16)
+            .padding(
+                .top,
+                mode == .preview
+                    ? max(34, proxy.size.height * 0.05)
+                    : max(78, proxy.size.height * 0.09)
+            )
+            .padding(.bottom, mode == .preview ? 12 : proxy.size.height * 0.09)
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
         }
@@ -315,9 +320,9 @@ private struct RunSharePhotoOverlay: View {
                 .frame(width: 50, height: 60)
             VStack(alignment: .leading, spacing: 5) {
                 Text("러닝 위치")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 12, weight: .bold))
                 Text(locationName)
-                    .font(.caption2)
+                    .font(.system(size: 12, weight: .medium))
                     .lineLimit(2)
             }
         }
