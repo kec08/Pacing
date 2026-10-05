@@ -128,7 +128,7 @@ private struct RunShareTemplatePreview: View {
 
             ZStack {
                 Color.black.opacity(0.9)
-                RunSharePhotoOverlay(record: record, template: template)
+                RunSharePhotoOverlay(record: record, template: template, mode: .preview)
                     .frame(width: previewCanvasWidth, height: previewCanvasHeight)
                     .scaleEffect(previewScale)
             }
@@ -244,11 +244,18 @@ private struct RunSharePhotoOverlay: View {
     let record: RunRecord
     let template: RunShareTemplate
     let locationName: String
+    let mode: RunShareOverlayMode
 
-    init(record: RunRecord, template: RunShareTemplate, locationName: String = "위치 정보") {
+    init(
+        record: RunRecord,
+        template: RunShareTemplate,
+        locationName: String = "위치 정보",
+        mode: RunShareOverlayMode = .camera
+    ) {
         self.record = record
         self.template = template
         self.locationName = locationName
+        self.mode = mode
     }
 
     var body: some View {
@@ -259,7 +266,7 @@ private struct RunSharePhotoOverlay: View {
                     .scaledToFit()
                     .frame(width: min(148, proxy.size.width * 0.34), height: 42)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .offset(x: -28)
+                    .offset(x: mode == .preview ? -28 : -32)
                     .accessibilityHidden(true)
                 Spacer()
                 switch template {
@@ -268,7 +275,7 @@ private struct RunSharePhotoOverlay: View {
                 case .route: routeLayout
                 }
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, mode == .preview ? 12 : 16)
             .padding(.top, max(120, proxy.size.height * 0.14))
             .padding(.bottom, proxy.size.height * 0.09)
             .foregroundStyle(.white)
@@ -279,11 +286,11 @@ private struct RunSharePhotoOverlay: View {
     private var distanceLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(String(format: "%.1f", record.distance))
-                .font(.system(size: 56, weight: .heavy, design: .rounded))
+                .font(.system(size: mode == .preview ? 56 : 50, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
             Text("KM")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .font(.system(size: mode == .preview ? 16 : 14, weight: .bold, design: .rounded))
                 .tracking(1.5)
         }
     }
@@ -323,8 +330,8 @@ private struct RunSharePhotoOverlay: View {
                 .lineLimit(1)
             Text(label)
                 .font(.caption.bold())
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
+                .lineLimit(mode == .preview ? 1 : nil)
+                .minimumScaleFactor(mode == .preview ? 0.5 : 1)
         }
         .frame(maxWidth: .infinity, alignment: .center)
     }
@@ -340,6 +347,11 @@ private struct RunSharePhotoOverlay: View {
         String(format: "%.1fkm", record.distance)
     }
 
+}
+
+private enum RunShareOverlayMode {
+    case camera
+    case preview
 }
 
 private struct RunShareRouteLine: Shape {
