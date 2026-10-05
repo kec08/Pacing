@@ -93,7 +93,8 @@ struct RunRecordShareTemplatePickerView: View {
                         .frame(height: 54)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(Color.main500)
+                .tint(.white)
+                .foregroundStyle(.black)
             }
             .padding(20)
             .background(Color.backgroundSecondary)
@@ -102,6 +103,7 @@ struct RunRecordShareTemplatePickerView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button("닫기") { dismiss() }
+                        .tint(.white)
                 }
             }
             .fullScreenCover(isPresented: $presentsCamera) {
@@ -211,7 +213,8 @@ struct RunRecordShareCameraView: View {
                     }
                     .buttonStyle(.borderedProminent)
                 }
-                .tint(Color.main500)
+                .tint(.white)
+                .foregroundStyle(.black)
                 .padding(.bottom, 34)
             } else if camera.isAuthorized {
                 Button {

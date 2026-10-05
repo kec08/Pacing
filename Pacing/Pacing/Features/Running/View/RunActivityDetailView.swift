@@ -43,6 +43,7 @@ struct RunActivityDetailView: View {
                     } label: {
                         Image(systemName: "square.and.arrow.up")
                     }
+                    .tint(.white)
                     .accessibilityLabel("러닝 기록 공유")
                 }
             }
