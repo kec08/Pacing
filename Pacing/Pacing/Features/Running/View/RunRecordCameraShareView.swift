@@ -209,17 +209,23 @@ struct RunRecordShareCameraView: View {
 
             if let capturedImage {
                 HStack(spacing: 14) {
-                    Button("다시 촬영") { self.capturedImage = nil }
-                        .buttonStyle(.bordered)
+                    Button { self.capturedImage = nil } label: {
+                        Label("다시 촬영", systemImage: "arrow.counterclockwise")
+                            .font(.headline.weight(.bold))
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.white)
+                    .foregroundStyle(.black)
                     Button {
                         presentsShareSheet = true
                     } label: {
                         Label("공유", systemImage: "square.and.arrow.up")
+                            .font(.headline.weight(.bold))
                     }
                     .buttonStyle(.borderedProminent)
+                    .tint(Color.main500)
+                    .foregroundStyle(.white)
                 }
-                .tint(.white)
-                .foregroundStyle(.black)
                 .padding(.bottom, 34)
             } else if camera.isAuthorized {
                 Button {
@@ -423,13 +429,13 @@ private enum RunShareImageComposer {
         locationName: String,
         previewSize: CGSize
     ) -> UIImage {
+        let storySize = CGSize(width: previewSize.width, height: previewSize.width * 16 / 9)
+        let outputSize = CGSize(width: 1_080, height: 1_920)
         let overlay = RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
-            .frame(width: previewSize.width, height: previewSize.height)
+            .frame(width: storySize.width, height: storySize.height)
         let imageRenderer = ImageRenderer(content: overlay)
-        let screenScale = UIScreen.main.scale
-        imageRenderer.scale = screenScale
+        imageRenderer.scale = outputSize.width / storySize.width
         guard let overlayImage = imageRenderer.uiImage else { return photo }
-        let outputSize = CGSize(width: previewSize.width * screenScale, height: previewSize.height * screenScale)
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         format.opaque = true
