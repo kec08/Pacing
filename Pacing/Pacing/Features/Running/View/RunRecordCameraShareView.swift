@@ -189,15 +189,15 @@ struct RunRecordShareCameraView: View {
     private var controls: some View {
         VStack {
             HStack {
+                Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
                         .font(.headline)
                         .frame(width: 44, height: 44)
                         .background(.black.opacity(0.42), in: Circle())
                 }
-                Spacer()
             }
-            .padding(.leading, 12)
+            .padding(.trailing, 12)
             .padding(.top, 12)
 
             Spacer()
@@ -276,7 +276,7 @@ private struct RunSharePhotoOverlay: View {
                 }
             }
             .padding(.horizontal, mode == .preview ? 12 : 16)
-            .padding(.top, max(120, proxy.size.height * 0.14))
+            .padding(.top, max(64, proxy.size.height * 0.075))
             .padding(.bottom, proxy.size.height * 0.09)
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
@@ -296,7 +296,7 @@ private struct RunSharePhotoOverlay: View {
     }
 
     private var summaryLayout: some View {
-        HStack(alignment: .bottom, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             shareMetric(value: durationText, label: "시간")
             shareMetric(value: formattedDistance, label: "거리")
             shareMetric(value: RunRecord.formattedPace(record.displayPace), label: "평균 페이스")
@@ -304,7 +304,7 @@ private struct RunSharePhotoOverlay: View {
     }
 
     private var routeLayout: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 22) {
             Text(formattedDistance)
                 .font(.system(size: 28, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.55)
@@ -323,7 +323,7 @@ private struct RunSharePhotoOverlay: View {
     }
 
     private func shareMetric(value: String, label: String) -> some View {
-        VStack(alignment: .center, spacing: 5) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(value)
                 .font(.system(size: 22, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.55)
@@ -333,7 +333,7 @@ private struct RunSharePhotoOverlay: View {
                 .lineLimit(mode == .preview ? 1 : nil)
                 .minimumScaleFactor(mode == .preview ? 0.5 : 1)
         }
-        .frame(maxWidth: .infinity, alignment: .center)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var durationText: String {
