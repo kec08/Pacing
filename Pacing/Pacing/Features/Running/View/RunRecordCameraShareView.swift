@@ -576,11 +576,14 @@ private enum RunShareLocationResolver {
     static func name(for coordinate: CLLocationCoordinate2D?) async -> String {
         guard let coordinate else { return "위치 정보 없음" }
 
-        do {
-            if #available(iOS 26.0, *) {
-                let request = MKReverseGeocodingRequest(
-                    location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                )
+        if #available(iOS 26.0, *) {
+            guard let request = MKReverseGeocodingRequest(
+                location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            ) else {
+                return "위치 정보 없음"
+            }
+
+            do {
                 let mapItem = try await request.mapItems.first
                 if let shortAddress = mapItem?.address?.shortAddress, !shortAddress.isEmpty {
                     return shortAddress
@@ -588,10 +591,21 @@ private enum RunShareLocationResolver {
                 if let fullAddress = mapItem?.address?.fullAddress, !fullAddress.isEmpty {
                     return fullAddress
                 }
+            } catch {
                 return "위치 정보 없음"
             }
+            return "위치 정보 없음"
+        }
 
-            let placemark = try await legacyPlacemark(for: coordinate)
+        return await legacyLocationName(for: coordinate)
+    }
+
+    @available(iOS, introduced: 2.0, obsoleted: 26.0)
+    private static func legacyLocationName(for coordinate: CLLocationCoordinate2D) async -> String {
+        do {
+            let placemark = try await CLGeocoder().reverseGeocodeLocation(
+                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            ).first
             guard let placemark else { return "위치 정보 없음" }
             let city = placemark.locality ?? placemark.subAdministrativeArea ?? placemark.administrativeArea
             let parts = [city, placemark.country].compactMap { $0 }.filter { !$0.isEmpty }
@@ -599,13 +613,6 @@ private enum RunShareLocationResolver {
         } catch {
             return "위치 정보 없음"
         }
-    }
-
-    @available(iOS, deprecated: 26.0, message: "Use MKReverseGeocodingRequest on iOS 26 and later.")
-    private static func legacyPlacemark(for coordinate: CLLocationCoordinate2D) async throws -> CLPlacemark? {
-        try await CLGeocoder().reverseGeocodeLocation(
-            CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-        ).first
     }
 }
 
