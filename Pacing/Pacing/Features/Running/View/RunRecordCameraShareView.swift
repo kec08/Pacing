@@ -166,7 +166,12 @@ struct RunRecordShareCameraView: View {
                 }
 
                 if capturedImage == nil, camera.isAuthorized {
-                    RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
+                    RunSharePhotoOverlay(
+                        record: record,
+                        template: template,
+                        locationName: locationName,
+                        mode: .liveCamera
+                    )
                         .allowsHitTesting(false)
                         .ignoresSafeArea()
                 }
@@ -321,9 +326,18 @@ private struct RunSharePhotoOverlay: View {
                 .top,
                 mode == .preview
                     ? max(34, proxy.size.height * 0.05)
+                    : mode == .liveCamera
+                        ? max(78, proxy.size.height * 0.09)
                     : max(52, proxy.size.height * 0.06)
             )
-            .padding(.bottom, mode == .preview ? 12 : proxy.size.height * 0.05)
+            .padding(
+                .bottom,
+                mode == .preview
+                    ? 12
+                    : mode == .liveCamera
+                        ? proxy.size.height * 0.09
+                        : proxy.size.height * 0.05
+            )
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
         }
@@ -409,6 +423,7 @@ private struct RunSharePhotoOverlay: View {
 }
 
 private enum RunShareOverlayMode {
+    case liveCamera
     case camera
     case preview
 }
