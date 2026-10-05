@@ -205,15 +205,6 @@ struct RunRecordShareCameraView: View {
     private func controls(previewSize: CGSize) -> some View {
         VStack {
             HStack {
-                if capturedImage == nil, camera.isAuthorized {
-                    Button { camera.switchCamera() } label: {
-                        Image(systemName: "camera.rotate")
-                            .font(.headline)
-                            .frame(width: 44, height: 44)
-                            .background(.black.opacity(0.42), in: Circle())
-                    }
-                    .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
-                }
                 Spacer()
                 Button { dismiss() } label: {
                     Image(systemName: "xmark")
@@ -271,37 +262,47 @@ struct RunRecordShareCameraView: View {
                 }
                 .padding(.bottom, 34)
             } else if camera.isAuthorized {
-                Button {
-                    guard !isCapturing else { return }
-                    isCapturing = true
-                    camera.capture { photo in
-                        capturedPhoto = photo
-                        capturedImage = RunShareImageComposer.preview(
-                            photo: photo,
-                            record: record,
-                            template: template,
-                            locationName: locationName,
-                            previewSize: previewSize,
-                            displayScale: displayScale
-                        )
-                        isCapturing = false
-                    }
-                } label: {
-                    Group {
-                        if isCapturing {
-                            ProgressView()
-                                .tint(.white)
-                        } else {
-                            Circle()
-                                .stroke(.white, lineWidth: 5)
-                                .frame(width: 76, height: 76)
-                                .overlay { Circle().fill(.white).padding(7) }
+                HStack(spacing: 20) {
+                    Button {
+                        guard !isCapturing else { return }
+                        isCapturing = true
+                        camera.capture { photo in
+                            capturedPhoto = photo
+                            capturedImage = RunShareImageComposer.preview(
+                                photo: photo,
+                                record: record,
+                                template: template,
+                                locationName: locationName,
+                                previewSize: previewSize,
+                                displayScale: displayScale
+                            )
+                            isCapturing = false
                         }
+                    } label: {
+                        Group {
+                            if isCapturing {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Circle()
+                                    .stroke(.white, lineWidth: 5)
+                                    .frame(width: 76, height: 76)
+                                    .overlay { Circle().fill(.white).padding(7) }
+                            }
+                        }
+                        .frame(width: 76, height: 76)
                     }
-                    .frame(width: 76, height: 76)
+                    .disabled(isCapturing)
+                    .accessibilityLabel("사진 촬영")
+                    Button { camera.switchCamera() } label: {
+                        Image(systemName: "camera.rotate")
+                            .font(.headline)
+                            .frame(width: 44, height: 44)
+                            .background(.black.opacity(0.42), in: Circle())
+                    }
+                    .disabled(isCapturing)
+                    .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
                 }
-                .disabled(isCapturing)
-                .accessibilityLabel("사진 촬영")
                 .padding(.bottom, 34)
             }
         }
