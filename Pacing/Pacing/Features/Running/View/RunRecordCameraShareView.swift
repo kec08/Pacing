@@ -262,7 +262,7 @@ struct RunRecordShareCameraView: View {
                 }
                 .padding(.bottom, 34)
             } else if camera.isAuthorized {
-                HStack(spacing: 20) {
+                ZStack {
                     Button {
                         guard !isCapturing else { return }
                         isCapturing = true
@@ -294,14 +294,19 @@ struct RunRecordShareCameraView: View {
                     }
                     .disabled(isCapturing)
                     .accessibilityLabel("사진 촬영")
-                    Button { camera.switchCamera() } label: {
-                        Image(systemName: "camera.rotate")
-                            .font(.headline)
-                            .frame(width: 44, height: 44)
-                            .background(.black.opacity(0.42), in: Circle())
+
+                    HStack {
+                        Spacer()
+                        Button { camera.switchCamera() } label: {
+                            Image(systemName: "camera.rotate")
+                                .font(.headline)
+                                .frame(width: 44, height: 44)
+                                .background(.black.opacity(0.42), in: Circle())
+                        }
+                        .disabled(isCapturing)
+                        .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
                     }
-                    .disabled(isCapturing)
-                    .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
+                    .frame(width: 208)
                 }
                 .padding(.bottom, 34)
             }
