@@ -78,14 +78,14 @@ final class NotificationService: NSObject, ObservableObject {
     }
 
     func synchronizeCurrentToken() {
-        Messaging.messaging().register { [weak self] token, error in
-            Task { @MainActor in
+        Messaging.messaging().register { [weak self] error in
+            Task { @MainActor [weak self] in
                 guard let self else { return }
                 if let error {
-                    self.logger.error("FCM token retrieval failed: \(error.localizedDescription, privacy: .public)")
+                    self.logger.error("FCM token registration failed: \(error.localizedDescription, privacy: .public)")
                     return
                 }
-                self.synchronizeToken(token)
+                self.logger.debug("FCM token registration requested")
             }
         }
     }
