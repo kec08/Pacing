@@ -181,8 +181,13 @@ struct RunRecordShareCameraView: View {
         }
         .onDisappear { camera.stop() }
         .sheet(isPresented: $presentsShareSheet) {
-            if let storyShareImage {
-                RunShareSheet(items: [storyShareImage])
+            if let capturedImage, let storyShareImage {
+                RunShareSheet(items: [
+                    RunShareImageItemSource(
+                        defaultImage: capturedImage,
+                        instagramStoryImage: storyShareImage
+                    )
+                ])
             }
         }
         .alert("카메라를 사용할 수 없어요", isPresented: $camera.showsPermissionAlert) {
@@ -609,4 +614,29 @@ private struct RunShareSheet: UIViewControllerRepresentable {
     let items: [Any]
     func makeUIViewController(context: Context) -> UIActivityViewController { UIActivityViewController(activityItems: items, applicationActivities: nil) }
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) { }
+}
+
+private final class RunShareImageItemSource: NSObject, UIActivityItemSource {
+    private let defaultImage: UIImage
+    private let instagramStoryImage: UIImage
+
+    init(defaultImage: UIImage, instagramStoryImage: UIImage) {
+        self.defaultImage = defaultImage
+        self.instagramStoryImage = instagramStoryImage
+    }
+
+    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any {
+        defaultImage
+    }
+
+    func activityViewController(
+        _ activityViewController: UIActivityViewController,
+        itemForActivityType activityType: UIActivity.ActivityType?
+    ) -> Any? {
+        guard let activityType,
+              activityType.rawValue.lowercased().contains("instagram") else {
+            return defaultImage
+        }
+        return instagramStoryImage
+    }
 }
