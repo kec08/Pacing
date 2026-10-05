@@ -145,6 +145,7 @@ struct RunRecordShareCameraView: View {
     @StateObject private var camera = RunShareCameraController()
     @State private var capturedImage: UIImage?
     @State private var capturedPhoto: UIImage?
+    @State private var shareImage: UIImage?
     @State private var storyShareImage: UIImage?
     @State private var presentsShareSheet = false
     @State private var locationName = "위치 정보 확인 중"
@@ -186,10 +187,10 @@ struct RunRecordShareCameraView: View {
         }
         .onDisappear { camera.stop() }
         .sheet(isPresented: $presentsShareSheet) {
-            if let capturedImage, let storyShareImage {
+            if let shareImage, let storyShareImage {
                 RunShareSheet(items: [
                     RunShareImageItemSource(
-                        defaultImage: capturedImage,
+                        defaultImage: shareImage,
                         instagramStoryImage: storyShareImage
                     )
                 ])
@@ -224,6 +225,7 @@ struct RunRecordShareCameraView: View {
                     Button {
                         self.capturedImage = nil
                         self.capturedPhoto = nil
+                        self.shareImage = nil
                         self.storyShareImage = nil
                     } label: {
                         Label("다시 촬영", systemImage: "arrow.counterclockwise")
@@ -234,6 +236,13 @@ struct RunRecordShareCameraView: View {
                     .foregroundStyle(.black)
                     Button {
                         guard let capturedPhoto else { return }
+                        shareImage = RunShareImageComposer.shareImage(
+                            from: capturedPhoto,
+                            record: record,
+                            template: template,
+                            locationName: locationName,
+                            previewSize: previewSize
+                        )
                         storyShareImage = RunShareImageComposer.instagramStory(
                             from: capturedPhoto,
                             record: record,
@@ -470,7 +479,26 @@ private enum RunShareImageComposer {
             template: template,
             locationName: locationName,
             overlaySize: previewSize,
-            outputSize: CGSize(width: previewSize.width * UIScreen.main.scale, height: previewSize.height * UIScreen.main.scale)
+            outputSize: CGSize(width: previewSize.width * UIScreen.main.scale, height: previewSize.height * UIScreen.main.scale),
+            mode: .liveCamera
+        )
+    }
+
+    static func shareImage(
+        from photo: UIImage,
+        record: RunRecord,
+        template: RunShareTemplate,
+        locationName: String,
+        previewSize: CGSize
+    ) -> UIImage {
+        compose(
+            photo: photo,
+            record: record,
+            template: template,
+            locationName: locationName,
+            overlaySize: previewSize,
+            outputSize: CGSize(width: previewSize.width * UIScreen.main.scale, height: previewSize.height * UIScreen.main.scale),
+            mode: .camera
         )
     }
 
@@ -489,7 +517,8 @@ private enum RunShareImageComposer {
             template: template,
             locationName: locationName,
             overlaySize: storySize,
-            outputSize: outputSize
+            outputSize: outputSize,
+            mode: .camera
         )
     }
 
@@ -499,9 +528,10 @@ private enum RunShareImageComposer {
         template: RunShareTemplate,
         locationName: String,
         overlaySize: CGSize,
-        outputSize: CGSize
+        outputSize: CGSize,
+        mode: RunShareOverlayMode
     ) -> UIImage {
-        let overlay = RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
+        let overlay = RunSharePhotoOverlay(record: record, template: template, locationName: locationName, mode: mode)
             .frame(width: overlaySize.width, height: overlaySize.height)
         let imageRenderer = ImageRenderer(content: overlay)
         imageRenderer.scale = outputSize.width / overlaySize.width
