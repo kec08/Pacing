@@ -19,6 +19,7 @@ struct RunActivityDetailView: View {
     }
 
     @State private var cameraPosition: MapCameraPosition = .automatic
+    @State private var presentsShareTemplatePicker = false
 
     var body: some View {
         ScrollView {
@@ -34,6 +35,22 @@ struct RunActivityDetailView: View {
         .background(Color.backgroundSecondary)
         .navigationTitle("활동 상세")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if owner == nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        presentsShareTemplatePicker = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                    }
+                    .tint(.white)
+                    .accessibilityLabel("러닝 기록 공유")
+                }
+            }
+        }
+        .sheet(isPresented: $presentsShareTemplatePicker) {
+            RunRecordShareTemplatePickerView(record: record)
+        }
         .onAppear(perform: fitRoute)
     }
 
