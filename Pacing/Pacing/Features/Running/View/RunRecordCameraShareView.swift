@@ -62,11 +62,6 @@ struct RunRecordShareTemplatePickerView: View {
                                         .font(.subheadline)
                                         .foregroundStyle(Color.textSecondary)
                                         .lineLimit(2)
-                                    if selectedTemplate == template {
-                                        Label("선택됨", systemImage: "checkmark.circle.fill")
-                                            .font(.caption.bold())
-                                            .foregroundStyle(Color.main500)
-                                    }
                                 }
                                 Spacer(minLength: 0)
                             }
@@ -119,10 +114,17 @@ private struct RunShareTemplatePreview: View {
     let record: RunRecord
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.9)
-            RunSharePhotoOverlay(record: record, template: template)
-                .padding(10)
+        GeometryReader { proxy in
+            let previewScale = min(proxy.size.width / 390, proxy.size.height / 844)
+
+            ZStack {
+                Color.black.opacity(0.9)
+                RunSharePhotoOverlay(record: record, template: template)
+                    .frame(width: 390, height: 844)
+                    .scaleEffect(previewScale)
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
     }
 }
