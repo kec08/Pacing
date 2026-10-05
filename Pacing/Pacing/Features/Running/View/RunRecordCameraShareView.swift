@@ -321,9 +321,9 @@ private struct RunSharePhotoOverlay: View {
                 .top,
                 mode == .preview
                     ? max(34, proxy.size.height * 0.05)
-                    : max(78, proxy.size.height * 0.09)
+                    : max(52, proxy.size.height * 0.06)
             )
-            .padding(.bottom, mode == .preview ? 12 : proxy.size.height * 0.09)
+            .padding(.bottom, mode == .preview ? 12 : proxy.size.height * 0.05)
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
         }
