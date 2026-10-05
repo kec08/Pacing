@@ -145,8 +145,7 @@ struct RunRecordShareCameraView: View {
     @StateObject private var camera = RunShareCameraController()
     @State private var capturedImage: UIImage?
     @State private var capturedPhoto: UIImage?
-    @State private var shareImage: UIImage?
-    @State private var storyShareImage: UIImage?
+    @State private var shareItemSource: RunShareImageItemSource?
     @State private var presentsShareSheet = false
     @State private var locationName = "위치 정보 확인 중"
     @State private var isCapturing = false
@@ -187,13 +186,8 @@ struct RunRecordShareCameraView: View {
         }
         .onDisappear { camera.stop() }
         .sheet(isPresented: $presentsShareSheet) {
-            if let shareImage, let storyShareImage {
-                RunShareSheet(items: [
-                    RunShareImageItemSource(
-                        defaultImage: shareImage,
-                        instagramStoryImage: storyShareImage
-                    )
-                ])
+            if let shareItemSource {
+                RunShareSheet(items: [shareItemSource])
             }
         }
         .alert("카메라를 사용할 수 없어요", isPresented: $camera.showsPermissionAlert) {
@@ -225,8 +219,7 @@ struct RunRecordShareCameraView: View {
                     Button {
                         self.capturedImage = nil
                         self.capturedPhoto = nil
-                        self.shareImage = nil
-                        self.storyShareImage = nil
+                        self.shareItemSource = nil
                     } label: {
                         Label("재촬영", systemImage: "arrow.counterclockwise")
                             .font(.headline.weight(.bold))
@@ -236,21 +229,27 @@ struct RunRecordShareCameraView: View {
                     .foregroundStyle(.black)
                     Button {
                         guard let capturedPhoto else { return }
-                        shareImage = RunShareImageComposer.shareImage(
+                        let shareImage = RunShareImageComposer.shareImage(
                             from: capturedPhoto,
                             record: record,
                             template: template,
                             locationName: locationName,
                             previewSize: previewSize
                         )
-                        storyShareImage = RunShareImageComposer.instagramStory(
+                        let storyShareImage = RunShareImageComposer.instagramStory(
                             from: capturedPhoto,
                             record: record,
                             template: template,
                             locationName: locationName,
                             previewSize: previewSize
                         )
-                        presentsShareSheet = true
+                        shareItemSource = RunShareImageItemSource(
+                            defaultImage: shareImage,
+                            instagramStoryImage: storyShareImage
+                        )
+                        DispatchQueue.main.async {
+                            presentsShareSheet = true
+                        }
                     } label: {
                         Label("공유", systemImage: "square.and.arrow.up")
                             .font(.headline.weight(.bold))
