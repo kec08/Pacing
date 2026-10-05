@@ -136,6 +136,7 @@ struct RunRecordShareCameraView: View {
     @StateObject private var camera = RunShareCameraController()
     @State private var capturedImage: UIImage?
     @State private var presentsShareSheet = false
+    @State private var locationName = "위치 정보 확인 중"
 
     var body: some View {
         ZStack {
@@ -151,14 +152,17 @@ struct RunRecordShareCameraView: View {
             }
 
             if capturedImage == nil, camera.isAuthorized {
-                RunSharePhotoOverlay(record: record, template: template)
+                RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
                     .allowsHitTesting(false)
                     .ignoresSafeArea()
             }
 
             controls
         }
-        .task { camera.start() }
+        .task {
+            camera.start()
+            locationName = await RunShareLocationResolver.name(for: record.routeCoordinates.first)
+        }
         .onDisappear { camera.stop() }
         .sheet(isPresented: $presentsShareSheet) {
             if let capturedImage {
@@ -184,8 +188,8 @@ struct RunRecordShareCameraView: View {
                 }
                 Spacer()
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 56)
+            .padding(.leading, 16)
+            .padding(.top, 70)
 
             Spacer()
 
@@ -205,7 +209,12 @@ struct RunRecordShareCameraView: View {
             } else if camera.isAuthorized {
                 Button {
                     camera.capture { photo in
-                        capturedImage = RunShareImageComposer.compose(photo: photo, record: record, template: template)
+                        capturedImage = RunShareImageComposer.compose(
+                            photo: photo,
+                            record: record,
+                            template: template,
+                            locationName: locationName
+                        )
                     }
                 } label: {
                     Circle()
@@ -224,6 +233,13 @@ struct RunRecordShareCameraView: View {
 private struct RunSharePhotoOverlay: View {
     let record: RunRecord
     let template: RunShareTemplate
+    let locationName: String
+
+    init(record: RunRecord, template: RunShareTemplate, locationName: String = "위치 정보") {
+        self.record = record
+        self.template = template
+        self.locationName = locationName
+    }
 
     var body: some View {
         GeometryReader { proxy in
@@ -232,6 +248,7 @@ private struct RunSharePhotoOverlay: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: min(148, proxy.size.width * 0.34), height: 42)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityHidden(true)
                 Spacer()
                 switch template {
@@ -251,7 +268,7 @@ private struct RunSharePhotoOverlay: View {
     private var distanceLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(String(format: "%.2f", record.distance))
-                .font(.system(size: 68, weight: .heavy, design: .rounded))
+                .font(.system(size: 56, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
             Text("KM")
@@ -261,7 +278,7 @@ private struct RunSharePhotoOverlay: View {
     }
 
     private var summaryLayout: some View {
-        HStack(alignment: .bottom, spacing: 12) {
+        HStack(alignment: .bottom, spacing: 8) {
             shareMetric(value: durationText, label: "시간")
             shareMetric(value: String(format: "%.2f", record.distance), label: "KM")
             shareMetric(value: RunRecord.formattedPace(record.displayPace), label: "평균 페이스")
@@ -269,10 +286,10 @@ private struct RunSharePhotoOverlay: View {
     }
 
     private var routeLayout: some View {
-        HStack(alignment: .bottom, spacing: 15) {
+        VStack(alignment: .leading, spacing: 9) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(String(format: "%.2f", record.distance))
-                    .font(.system(size: 42, weight: .heavy, design: .rounded))
+                    .font(.system(size: 32, weight: .heavy, design: .rounded))
                     .minimumScaleFactor(0.55)
                 Text("KM")
                     .font(.caption.bold())
@@ -280,28 +297,27 @@ private struct RunSharePhotoOverlay: View {
             }
             RunShareRouteLine(coordinates: record.routeCoordinates)
                 .stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-                .frame(width: 78, height: 112)
+                .frame(width: 56, height: 66)
             VStack(alignment: .leading, spacing: 5) {
                 Text("러닝 위치")
                     .font(.caption.bold())
-                Text(locationText)
+                Text(locationName)
                     .font(.caption2)
-                    .lineLimit(3)
+                    .lineLimit(2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func shareMetric(value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .center, spacing: 5) {
             Text(value)
-                .font(.system(size: 25, weight: .heavy, design: .rounded))
+                .font(.system(size: 22, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.55)
                 .lineLimit(1)
             Text(label)
                 .font(.caption.bold())
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private var durationText: String {
@@ -311,10 +327,6 @@ private struct RunSharePhotoOverlay: View {
         return hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%d:%02d", minutes, seconds)
     }
 
-    private var locationText: String {
-        guard let coordinate = record.routeCoordinates.first else { return "위치 정보 없음" }
-        return String(format: "%.4f, %.4f", coordinate.latitude, coordinate.longitude)
-    }
 }
 
 private struct RunShareRouteLine: Shape {
@@ -346,8 +358,8 @@ private struct RunShareRouteLine: Shape {
 
 @MainActor
 private enum RunShareImageComposer {
-    static func compose(photo: UIImage, record: RunRecord, template: RunShareTemplate) -> UIImage {
-        let overlay = RunSharePhotoOverlay(record: record, template: template)
+    static func compose(photo: UIImage, record: RunRecord, template: RunShareTemplate, locationName: String) -> UIImage {
+        let overlay = RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
             .frame(width: photo.size.width, height: photo.size.height)
         let imageRenderer = ImageRenderer(content: overlay)
         imageRenderer.scale = photo.scale
@@ -356,6 +368,24 @@ private enum RunShareImageComposer {
         return renderer.image { _ in
             photo.draw(in: CGRect(origin: .zero, size: photo.size))
             overlayImage.draw(in: CGRect(origin: .zero, size: photo.size))
+        }
+    }
+}
+
+private enum RunShareLocationResolver {
+    static func name(for coordinate: CLLocationCoordinate2D?) async -> String {
+        guard let coordinate else { return "위치 정보 없음" }
+
+        do {
+            let placemark = try await CLGeocoder().reverseGeocodeLocation(
+                CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            ).first
+            guard let placemark else { return "위치 정보 없음" }
+            let city = placemark.locality ?? placemark.subAdministrativeArea ?? placemark.administrativeArea
+            let parts = [city, placemark.country].compactMap { $0 }.filter { !$0.isEmpty }
+            return parts.isEmpty ? "위치 정보 없음" : parts.joined(separator: ", ")
+        } catch {
+            return "위치 정보 없음"
         }
     }
 }
