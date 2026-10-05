@@ -299,14 +299,14 @@ struct RunRecordShareCameraView: View {
                         Spacer()
                         Button { camera.switchCamera() } label: {
                             Image(systemName: "camera.rotate")
-                                .font(.headline)
-                                .frame(width: 44, height: 44)
+                                .font(.title3.weight(.semibold))
+                                .frame(width: 54, height: 54)
                                 .background(.black.opacity(0.42), in: Circle())
                         }
                         .disabled(isCapturing)
                         .accessibilityLabel(camera.isUsingFrontCamera ? "후면 카메라로 전환" : "전면 카메라로 전환")
                     }
-                    .frame(width: 208)
+                    .frame(width: 248)
                 }
                 .padding(.bottom, 34)
             }
