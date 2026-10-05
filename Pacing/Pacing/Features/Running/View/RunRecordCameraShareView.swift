@@ -54,6 +54,7 @@ struct RunRecordShareTemplatePickerView: View {
                                 RunShareTemplatePreview(template: template, record: record)
                                     .frame(width: 104, height: 132)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    .allowsHitTesting(false)
                                 VStack(alignment: .leading, spacing: 7) {
                                     Text(template.title)
                                         .font(.headline)
@@ -67,6 +68,7 @@ struct RunRecordShareTemplatePickerView: View {
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(12)
+                            .contentShape(Rectangle())
                             .background(Color.backgroundPrimary)
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .overlay {
@@ -272,34 +274,27 @@ private struct RunSharePhotoOverlay: View {
 
     private var distanceLayout: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(String(format: "%.2f", record.distance))
+            Text(formattedDistance)
                 .font(.system(size: 56, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.45)
                 .lineLimit(1)
-            Text("KM")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .tracking(2)
         }
     }
 
     private var summaryLayout: some View {
         HStack(alignment: .bottom, spacing: 8) {
             shareMetric(value: durationText, label: "시간")
-            shareMetric(value: String(format: "%.2f", record.distance), label: "KM")
+            shareMetric(value: formattedDistance, label: "거리")
             shareMetric(value: RunRecord.formattedPace(record.displayPace), label: "평균 페이스")
         }
     }
 
     private var routeLayout: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(format: "%.2f", record.distance))
-                    .font(.system(size: 32, weight: .heavy, design: .rounded))
-                    .minimumScaleFactor(0.55)
-                Text("KM")
-                    .font(.caption.bold())
-                    .tracking(1.5)
-            }
+        VStack(alignment: .leading, spacing: 16) {
+            Text(formattedDistance)
+                .font(.system(size: 32, weight: .heavy, design: .rounded))
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
             RunShareRouteLine(coordinates: record.routeCoordinates)
                 .stroke(.white, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                 .frame(width: 56, height: 66)
@@ -330,6 +325,10 @@ private struct RunSharePhotoOverlay: View {
         let minutes = (record.duration % 3_600) / 60
         let seconds = record.duration % 60
         return hours > 0 ? String(format: "%d:%02d:%02d", hours, minutes, seconds) : String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var formattedDistance: String {
+        String(format: "%.1fkm", record.distance)
     }
 
 }
