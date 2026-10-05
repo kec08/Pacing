@@ -276,7 +276,7 @@ private struct RunSharePhotoOverlay: View {
                 }
             }
             .padding(.horizontal, mode == .preview ? 12 : 16)
-            .padding(.top, max(64, proxy.size.height * 0.075))
+            .padding(.top, max(78, proxy.size.height * 0.09))
             .padding(.bottom, proxy.size.height * 0.09)
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.35), radius: 4, y: 2)
@@ -292,6 +292,7 @@ private struct RunSharePhotoOverlay: View {
             Text("KM")
                 .font(.system(size: mode == .preview ? 16 : 14, weight: .bold, design: .rounded))
                 .tracking(1.5)
+                .padding(.leading, 5)
         }
     }
 
@@ -304,7 +305,7 @@ private struct RunSharePhotoOverlay: View {
     }
 
     private var routeLayout: some View {
-        VStack(alignment: .leading, spacing: 22) {
+        VStack(alignment: .leading, spacing: 28) {
             Text(formattedDistance)
                 .font(.system(size: 28, weight: .heavy, design: .rounded))
                 .minimumScaleFactor(0.55)
@@ -314,7 +315,7 @@ private struct RunSharePhotoOverlay: View {
                 .frame(width: 50, height: 60)
             VStack(alignment: .leading, spacing: 5) {
                 Text("러닝 위치")
-                    .font(.caption.bold())
+                    .font(.system(size: 10, weight: .bold))
                 Text(locationName)
                     .font(.caption2)
                     .lineLimit(2)
