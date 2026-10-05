@@ -214,7 +214,7 @@ struct RunRecordShareCameraView: View {
                 }
             }
             .padding(.trailing, 12)
-            .padding(.top, 56)
+            .padding(.top, 78)
 
             Spacer()
 
