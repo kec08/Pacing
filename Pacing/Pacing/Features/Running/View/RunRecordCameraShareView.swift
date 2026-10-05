@@ -228,7 +228,7 @@ struct RunRecordShareCameraView: View {
                         self.shareImage = nil
                         self.storyShareImage = nil
                     } label: {
-                        Label("다시 촬영", systemImage: "arrow.counterclockwise")
+                        Label("재촬영", systemImage: "arrow.counterclockwise")
                             .font(.headline.weight(.bold))
                     }
                     .buttonStyle(.borderedProminent)
