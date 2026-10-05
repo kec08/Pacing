@@ -52,7 +52,7 @@ struct RunRecordShareTemplatePickerView: View {
                         } label: {
                             HStack(spacing: 16) {
                                 RunShareTemplatePreview(template: template, record: record)
-                                    .frame(width: 128, height: 104)
+                                    .frame(width: 104, height: 132)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                 VStack(alignment: .leading, spacing: 7) {
                                     Text(template.title)
@@ -115,12 +115,17 @@ private struct RunShareTemplatePreview: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let previewScale = min(proxy.size.width / 390, proxy.size.height / 844)
+            let previewCanvasWidth: CGFloat = 225
+            let previewCanvasHeight: CGFloat = 400
+            let previewScale = min(
+                proxy.size.width / previewCanvasWidth,
+                proxy.size.height / previewCanvasHeight
+            )
 
             ZStack {
                 Color.black.opacity(0.9)
                 RunSharePhotoOverlay(record: record, template: template)
-                    .frame(width: 390, height: 844)
+                    .frame(width: previewCanvasWidth, height: previewCanvasHeight)
                     .scaleEffect(previewScale)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
