@@ -63,6 +63,8 @@
 	<string>AccentColor</string>
 	<key>NSAppleMusicUsageDescription</key>
 	<string>주변 러너와 음악을 함께 듣기 위해 Apple Music 접근이 필요합니다.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>러닝 기록을 사진에 담아 공유하기 위해 카메라 접근이 필요합니다.</string>
 	<key>NSHealthShareUsageDescription</key>
 	<string>러닝 결과에 Apple Watch로 측정한 심박수를 표시하기 위해 건강 데이터 읽기 권한이 필요합니다.</string>
 	<key>NSHealthUpdateUsageDescription</key>
