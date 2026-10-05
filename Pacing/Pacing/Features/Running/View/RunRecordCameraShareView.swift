@@ -144,6 +144,8 @@ struct RunRecordShareCameraView: View {
     @Environment(\.dismiss) private var dismiss
     @StateObject private var camera = RunShareCameraController()
     @State private var capturedImage: UIImage?
+    @State private var capturedPhoto: UIImage?
+    @State private var storyShareImage: UIImage?
     @State private var presentsShareSheet = false
     @State private var locationName = "위치 정보 확인 중"
     @State private var isCapturing = false
@@ -179,8 +181,8 @@ struct RunRecordShareCameraView: View {
         }
         .onDisappear { camera.stop() }
         .sheet(isPresented: $presentsShareSheet) {
-            if let capturedImage {
-                RunShareSheet(items: [capturedImage])
+            if let storyShareImage {
+                RunShareSheet(items: [storyShareImage])
             }
         }
         .alert("카메라를 사용할 수 없어요", isPresented: $camera.showsPermissionAlert) {
@@ -209,7 +211,11 @@ struct RunRecordShareCameraView: View {
 
             if let capturedImage {
                 HStack(spacing: 14) {
-                    Button { self.capturedImage = nil } label: {
+                    Button {
+                        self.capturedImage = nil
+                        self.capturedPhoto = nil
+                        self.storyShareImage = nil
+                    } label: {
                         Label("다시 촬영", systemImage: "arrow.counterclockwise")
                             .font(.headline.weight(.bold))
                     }
@@ -217,6 +223,14 @@ struct RunRecordShareCameraView: View {
                     .tint(.white)
                     .foregroundStyle(.black)
                     Button {
+                        guard let capturedPhoto else { return }
+                        storyShareImage = RunShareImageComposer.instagramStory(
+                            from: capturedPhoto,
+                            record: record,
+                            template: template,
+                            locationName: locationName,
+                            previewSize: previewSize
+                        )
                         presentsShareSheet = true
                     } label: {
                         Label("공유", systemImage: "square.and.arrow.up")
@@ -232,7 +246,8 @@ struct RunRecordShareCameraView: View {
                     guard !isCapturing else { return }
                     isCapturing = true
                     camera.capture { photo in
-                        capturedImage = RunShareImageComposer.compose(
+                        capturedPhoto = photo
+                        capturedImage = RunShareImageComposer.preview(
                             photo: photo,
                             record: record,
                             template: template,
@@ -422,8 +437,25 @@ private struct RunShareRouteLine: Shape {
 
 @MainActor
 private enum RunShareImageComposer {
-    static func compose(
+    static func preview(
         photo: UIImage,
+        record: RunRecord,
+        template: RunShareTemplate,
+        locationName: String,
+        previewSize: CGSize
+    ) -> UIImage {
+        compose(
+            photo: photo,
+            record: record,
+            template: template,
+            locationName: locationName,
+            overlaySize: previewSize,
+            outputSize: CGSize(width: previewSize.width * UIScreen.main.scale, height: previewSize.height * UIScreen.main.scale)
+        )
+    }
+
+    static func instagramStory(
+        from photo: UIImage,
         record: RunRecord,
         template: RunShareTemplate,
         locationName: String,
@@ -431,10 +463,28 @@ private enum RunShareImageComposer {
     ) -> UIImage {
         let storySize = CGSize(width: previewSize.width, height: previewSize.width * 16 / 9)
         let outputSize = CGSize(width: 1_080, height: 1_920)
+        return compose(
+            photo: photo,
+            record: record,
+            template: template,
+            locationName: locationName,
+            overlaySize: storySize,
+            outputSize: outputSize
+        )
+    }
+
+    private static func compose(
+        photo: UIImage,
+        record: RunRecord,
+        template: RunShareTemplate,
+        locationName: String,
+        overlaySize: CGSize,
+        outputSize: CGSize
+    ) -> UIImage {
         let overlay = RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
-            .frame(width: storySize.width, height: storySize.height)
+            .frame(width: overlaySize.width, height: overlaySize.height)
         let imageRenderer = ImageRenderer(content: overlay)
-        imageRenderer.scale = outputSize.width / storySize.width
+        imageRenderer.scale = outputSize.width / overlaySize.width
         guard let overlayImage = imageRenderer.uiImage else { return photo }
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
