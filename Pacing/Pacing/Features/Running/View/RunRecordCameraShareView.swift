@@ -146,28 +146,33 @@ struct RunRecordShareCameraView: View {
     @State private var capturedImage: UIImage?
     @State private var presentsShareSheet = false
     @State private var locationName = "위치 정보 확인 중"
+    @State private var isCapturing = false
 
     var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
-            if let capturedImage {
-                Image(uiImage: capturedImage)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if camera.isAuthorized {
-                RunShareCameraPreview(session: camera.session)
-                    .ignoresSafeArea()
-            }
+        GeometryReader { proxy in
+            ZStack {
+                Color.black.ignoresSafeArea()
+                if let capturedImage {
+                    Image(uiImage: capturedImage)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .clipped()
+                } else if camera.isAuthorized {
+                    RunShareCameraPreview(session: camera.session)
+                        .ignoresSafeArea()
+                }
 
-            if capturedImage == nil, camera.isAuthorized {
-                RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
-                    .allowsHitTesting(false)
-                    .ignoresSafeArea()
-            }
+                if capturedImage == nil, camera.isAuthorized {
+                    RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
+                        .allowsHitTesting(false)
+                        .ignoresSafeArea()
+                }
 
-            controls
+                controls(previewSize: proxy.size)
+            }
         }
+        .ignoresSafeArea()
         .task {
             camera.start()
             locationName = await RunShareLocationResolver.name(for: record.routeCoordinates.first)
@@ -186,7 +191,7 @@ struct RunRecordShareCameraView: View {
     }
 
     @ViewBuilder
-    private var controls: some View {
+    private func controls(previewSize: CGSize) -> some View {
         VStack {
             HStack {
                 Spacer()
@@ -218,20 +223,33 @@ struct RunRecordShareCameraView: View {
                 .padding(.bottom, 34)
             } else if camera.isAuthorized {
                 Button {
+                    guard !isCapturing else { return }
+                    isCapturing = true
                     camera.capture { photo in
                         capturedImage = RunShareImageComposer.compose(
                             photo: photo,
                             record: record,
                             template: template,
-                            locationName: locationName
+                            locationName: locationName,
+                            previewSize: previewSize
                         )
+                        isCapturing = false
                     }
                 } label: {
-                    Circle()
-                        .stroke(.white, lineWidth: 5)
-                        .frame(width: 76, height: 76)
-                        .overlay { Circle().fill(.white).padding(7) }
+                    Group {
+                        if isCapturing {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Circle()
+                                .stroke(.white, lineWidth: 5)
+                                .frame(width: 76, height: 76)
+                                .overlay { Circle().fill(.white).padding(7) }
+                        }
+                    }
+                    .frame(width: 76, height: 76)
                 }
+                .disabled(isCapturing)
                 .accessibilityLabel("사진 촬영")
                 .padding(.bottom, 34)
             }
@@ -398,16 +416,33 @@ private struct RunShareRouteLine: Shape {
 
 @MainActor
 private enum RunShareImageComposer {
-    static func compose(photo: UIImage, record: RunRecord, template: RunShareTemplate, locationName: String) -> UIImage {
+    static func compose(
+        photo: UIImage,
+        record: RunRecord,
+        template: RunShareTemplate,
+        locationName: String,
+        previewSize: CGSize
+    ) -> UIImage {
         let overlay = RunSharePhotoOverlay(record: record, template: template, locationName: locationName)
-            .frame(width: photo.size.width, height: photo.size.height)
+            .frame(width: previewSize.width, height: previewSize.height)
         let imageRenderer = ImageRenderer(content: overlay)
-        imageRenderer.scale = photo.scale
+        let screenScale = UIScreen.main.scale
+        imageRenderer.scale = screenScale
         guard let overlayImage = imageRenderer.uiImage else { return photo }
-        let renderer = UIGraphicsImageRenderer(size: photo.size)
+        let outputSize = CGSize(width: previewSize.width * screenScale, height: previewSize.height * screenScale)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = true
+        let renderer = UIGraphicsImageRenderer(size: outputSize, format: format)
         return renderer.image { _ in
-            photo.draw(in: CGRect(origin: .zero, size: photo.size))
-            overlayImage.draw(in: CGRect(origin: .zero, size: photo.size))
+            let scale = max(outputSize.width / photo.size.width, outputSize.height / photo.size.height)
+            let photoSize = CGSize(width: photo.size.width * scale, height: photo.size.height * scale)
+            let photoOrigin = CGPoint(
+                x: (outputSize.width - photoSize.width) / 2,
+                y: (outputSize.height - photoSize.height) / 2
+            )
+            photo.draw(in: CGRect(origin: photoOrigin, size: photoSize))
+            overlayImage.draw(in: CGRect(origin: .zero, size: outputSize))
         }
     }
 }
@@ -462,7 +497,8 @@ private final class RunShareCameraController: NSObject, ObservableObject, AVCapt
         self.completion = completion
         sessionQueue.async {
             let settings = AVCapturePhotoSettings()
-            settings.flashMode = .auto
+            settings.flashMode = .off
+            settings.photoQualityPrioritization = .speed
             self.output.capturePhoto(with: settings, delegate: self)
         }
     }
@@ -483,6 +519,7 @@ private final class RunShareCameraController: NSObject, ObservableObject, AVCapt
             }
             self.session.addInput(input)
             self.session.addOutput(self.output)
+            self.output.maxPhotoQualityPrioritization = .speed
             self.session.commitConfiguration()
             self.session.startRunning()
         }
