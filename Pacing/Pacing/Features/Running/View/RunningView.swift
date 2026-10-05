@@ -680,29 +680,31 @@ struct RunningView: View {
     }
 
     private var pausedRunDashboard: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-
+        GeometryReader { proxy in
             VStack(spacing: 0) {
-                pausedMetricGrid
-                    .padding(.top, 64)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-                    .offset(y: -10)
+                Spacer(minLength: 0)
 
-                Capsule()
-                    .fill(Color.secondary.opacity(0.28))
-                    .frame(width: 300, height: 2.5)
+                VStack(spacing: 0) {
+                    pausedMetricGrid
+                        .padding(.top, 64)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                        .offset(y: -10)
 
-                pausedControls
-                    .padding(.top, 44)
-                    .padding(.bottom, 34)
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.28))
+                        .frame(width: 300, height: 2.5)
+
+                    pausedControls
+                        .padding(.top, 44)
+                        .padding(.bottom, 34)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: proxy.size.height * 0.55, alignment: .top)
+                .background(Color.backgroundPrimary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: UIScreen.main.bounds.height * 0.55, alignment: .top)
-            .background(Color.backgroundPrimary)
         }
-        .frame(maxWidth: .infinity)
         .ignoresSafeArea(edges: .bottom)
     }
 

@@ -932,11 +932,10 @@ final class RunningMusicViewModel: ObservableObject {
     }
 
     private func publishWatchMusicSnapshot() {
-        let includesArtwork = true
         resolveVisibleWatchPlaylistArtworkIfNeeded()
         guard let current = currentSongSnapshot() else {
             PhoneRunSyncPublisher.shared.publishMusic(
-                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) }, playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork))
+                PhoneMusicPlaybackSnapshot(updatedAt: Date().timeIntervalSince1970, title: "재생 중인 음악 없음", artist: "iPhone에서 음악을 재생해 주세요", artworkURL: nil, artworkData: nil, isPlaying: false, recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: true) }, playlistTracks: makeWatchPlaylistTracks(includesArtwork: true))
             )
             return
         }
@@ -950,12 +949,12 @@ final class RunningMusicViewModel: ObservableObject {
                 title: current.title,
                 artist: current.artistName,
                 artworkURL: current.artworkURL,
-                artworkData: includesArtwork ? watchArtworkData(for: current, presentation: .current) : nil,
+                artworkData: watchArtworkData(for: current, presentation: .current),
                 isPlaying: isPlaying,
                 // 러닝 시작 전 첫 음악 탭도 최근 재생 목록을 사용한다. 목록용으로
                 // 축소한 JPEG를 함께 보내 Watch가 MusicKit 전용 URL 없이도 커버를 표시한다.
-                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: includesArtwork) },
-                playlistTracks: makeWatchPlaylistTracks(includesArtwork: includesArtwork)
+                recentlyPlayed: recentlyPlayedSnapshots.map { makeWatchTrack($0, includesArtwork: true) },
+                playlistTracks: makeWatchPlaylistTracks(includesArtwork: true)
             )
         )
     }

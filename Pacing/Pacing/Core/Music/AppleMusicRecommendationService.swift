@@ -628,7 +628,7 @@ final class AppleMusicRecommendationService {
     /// 선택한 곡부터 목록의 마지막 곡까지 순서대로 재생한다.
     /// 선택 곡이 재생 불가한 경우 다음 곡으로 건너뛰지 않고 오류를 반환한다.
     func play(sharedTracks: [SharedPlaylistTrack], startingAt trackID: String, title: String? = nil) async throws {
-        guard let startIndex = sharedTracks.firstIndex(where: { $0.id == trackID }) else {
+        guard sharedTracks.contains(where: { $0.id == trackID }) else {
             throw AppleMusicRecommendationError.noPlayableTracks
         }
 
