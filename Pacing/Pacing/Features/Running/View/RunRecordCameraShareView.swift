@@ -269,13 +269,7 @@ private struct RunSharePhotoOverlay: View {
                     .offset(x: mode == .preview ? -28 : -32)
                     .accessibilityHidden(true)
                 Spacer()
-                Group {
-                    switch template {
-                    case .distance: distanceLayout
-                    case .summary: summaryLayout
-                    case .route: routeLayout
-                    }
-                }
+                templateLayout
                 .offset(x: mode == .preview ? -8 : 0)
             }
             .padding(.horizontal, mode == .preview ? 4 : 16)
@@ -301,6 +295,18 @@ private struct RunSharePhotoOverlay: View {
                 .font(.system(size: mode == .preview ? 16 : 14, weight: .bold, design: .rounded))
                 .tracking(1.5)
                 .padding(.leading, 5)
+        }
+    }
+
+    @ViewBuilder
+    private var templateLayout: some View {
+        switch template {
+        case .distance:
+            distanceLayout
+        case .summary:
+            summaryLayout
+        case .route:
+            routeLayout
         }
     }
 
