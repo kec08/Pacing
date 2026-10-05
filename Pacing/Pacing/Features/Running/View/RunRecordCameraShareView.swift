@@ -2,6 +2,7 @@ import AVFoundation
 import CoreLocation
 import SwiftUI
 import UIKit
+import Combine
 
 enum RunShareTemplate: String, CaseIterable, Identifiable {
     case distance
@@ -44,37 +45,38 @@ struct RunRecordShareTemplatePickerView: View {
                         .foregroundStyle(Color.textSecondary)
                 }
 
-                HStack(alignment: .top, spacing: 10) {
+                VStack(spacing: 12) {
                     ForEach(RunShareTemplate.allCases) { template in
                         Button {
                             selectedTemplate = template
                         } label: {
-                            VStack(alignment: .leading, spacing: 10) {
+                            HStack(spacing: 16) {
                                 RunShareTemplatePreview(template: template, record: record)
-                                    .frame(height: 142)
+                                    .frame(width: 128, height: 104)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                Text(template.title)
-                                    .font(.subheadline.bold())
-                                    .foregroundStyle(Color.textPrimary)
-                                Text(template.description)
-                                    .font(.caption2)
-                                    .foregroundStyle(Color.textSecondary)
-                                    .lineLimit(2)
+                                VStack(alignment: .leading, spacing: 7) {
+                                    Text(template.title)
+                                        .font(.headline)
+                                        .foregroundStyle(Color.textPrimary)
+                                    Text(template.description)
+                                        .font(.subheadline)
+                                        .foregroundStyle(Color.textSecondary)
+                                        .lineLimit(2)
+                                    if selectedTemplate == template {
+                                        Label("선택됨", systemImage: "checkmark.circle.fill")
+                                            .font(.caption.bold())
+                                            .foregroundStyle(Color.main500)
+                                    }
+                                }
+                                Spacer(minLength: 0)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
+                            .padding(12)
                             .background(Color.backgroundPrimary)
                             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                                     .stroke(selectedTemplate == template ? Color.main500 : Color.surfaceBorder, lineWidth: selectedTemplate == template ? 2 : 1)
-                            }
-                            .overlay(alignment: .topTrailing) {
-                                if selectedTemplate == template {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .foregroundStyle(Color.main500, .white)
-                                        .padding(5)
-                                }
                             }
                         }
                         .buttonStyle(.plain)
@@ -181,7 +183,7 @@ struct RunRecordShareCameraView: View {
                 Spacer()
             }
             .padding(.horizontal, 20)
-            .padding(.top, 12)
+            .padding(.top, 56)
 
             Spacer()
 
@@ -227,7 +229,7 @@ private struct RunSharePhotoOverlay: View {
                 Image("PacingShareLogo")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: min(108, proxy.size.width * 0.26), height: 30)
+                    .frame(width: min(148, proxy.size.width * 0.34), height: 42)
                     .accessibilityHidden(true)
                 Spacer()
                 switch template {
@@ -401,12 +403,15 @@ private final class RunShareCameraController: NSObject, ObservableObject, AVCapt
             }
             self.session.beginConfiguration()
             self.session.sessionPreset = .photo
-            defer { self.session.commitConfiguration() }
             guard let device = AVCaptureDevice.default(for: .video),
                   let input = try? AVCaptureDeviceInput(device: device),
-                  self.session.canAddInput(input), self.session.canAddOutput(self.output) else { return }
+                  self.session.canAddInput(input), self.session.canAddOutput(self.output) else {
+                self.session.commitConfiguration()
+                return
+            }
             self.session.addInput(input)
             self.session.addOutput(self.output)
+            self.session.commitConfiguration()
             self.session.startRunning()
         }
     }
