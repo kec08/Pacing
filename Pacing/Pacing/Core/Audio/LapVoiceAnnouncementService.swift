@@ -116,12 +116,18 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private let synthesizer = AVSpeechSynthesizer()
+    private let melo = MeloSpeechEngine.shared
     private var announcementSessionConfiguration: AudioSessionConfiguration?
-    private var pendingUtteranceIDs = Set<ObjectIdentifier>()
+    private var pendingTexts: [String] = []
+    private var activeText: String?
+    private var activeUtterance: AVSpeechUtterance?
+    private var audioPlayer: AVAudioPlayer?
+    private var generationID: UUID?
 
     override init() {
         super.init()
         synthesizer.delegate = self
+        melo.prepare()
     }
 
     func announce(_ announcement: LapVoiceAnnouncement) {
@@ -137,28 +143,110 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private func speak(_ text: String) {
-        configureAudioSessionForAnnouncement()
+        pendingTexts.append(text)
+        startNextIfNeeded()
+    }
 
+    private func startNextIfNeeded() {
+        guard activeText == nil, !pendingTexts.isEmpty else { return }
+        let text = pendingTexts.removeFirst()
+        activeText = text
+
+        // Fixed state prompts are bundled MeloTTS clips so the first cue starts at once.
+        if let clip = Self.bundledClip(for: text),
+           let url = Bundle.main.url(forResource: clip, withExtension: "wav"),
+           let audio = try? Data(contentsOf: url) {
+            playMelo(audio, text: text)
+            return
+        }
+
+        guard melo.isReady else {
+            NSLog("MeloTTS is still loading; using the system Korean voice")
+            speakWithSystemVoice(text)
+            return
+        }
+
+        let requestID = UUID()
+        generationID = requestID
+        melo.synthesize(text) { [weak self] audio in
+            guard let self, self.generationID == requestID, self.activeText == text else { return }
+            self.generationID = nil
+            if let audio {
+                self.playMelo(audio, text: text)
+            } else {
+                self.speakWithSystemVoice(text)
+            }
+        }
+
+        // A slow inference must never delay or drop a kilometer announcement.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self, self.generationID == requestID, self.activeText == text else { return }
+            self.generationID = nil
+            NSLog("MeloTTS inference exceeded 1.2 seconds; using the system Korean voice")
+            self.speakWithSystemVoice(text)
+        }
+    }
+
+    private func playMelo(_ audio: Data, text: String) {
+        do {
+            let player = try AVAudioPlayer(data: audio)
+            configureAudioSessionForAnnouncement()
+            player.delegate = self
+            player.prepareToPlay()
+            guard player.play() else {
+                speakWithSystemVoice(text)
+                return
+            }
+            audioPlayer = player
+            NotificationCenter.default.post(name: .runningVoiceAnnouncementDidStart, object: nil)
+        } catch {
+            speakWithSystemVoice(text)
+        }
+    }
+
+    private static func bundledClip(for text: String) -> String? {
+        switch text {
+        case RunningStateVoiceAnnouncement.started.text: "melo_started"
+        case RunningStateVoiceAnnouncement.paused.text: "melo_paused"
+        case RunningStateVoiceAnnouncement.resumed.text: "melo_resumed"
+        default: nil
+        }
+    }
+
+    private func speakWithSystemVoice(_ text: String) {
+        configureAudioSessionForAnnouncement()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredKoreanVoice()
         utterance.rate = 0.48
         utterance.pitchMultiplier = 1.0
         utterance.volume = 1.0
-        pendingUtteranceIDs.insert(ObjectIdentifier(utterance))
+        activeUtterance = utterance
         NotificationCenter.default.post(name: .runningVoiceAnnouncementDidStart, object: nil)
         synthesizer.speak(utterance)
     }
 
     func stop() {
+        pendingTexts.removeAll()
+        generationID = nil
+        activeText = nil
+        activeUtterance = nil
+        audioPlayer?.stop()
+        audioPlayer = nil
         synthesizer.stopSpeaking(at: .immediate)
-        pendingUtteranceIDs.removeAll()
         restoreAudioSessionAfterAnnouncement()
-        NotificationCenter.default.post(name: .runningVoiceAnnouncementDidFinish, object: nil)
+    }
+
+    private func finishCurrentAnnouncement() {
+        guard activeText != nil else { return }
+        activeText = nil
+        activeUtterance = nil
+        audioPlayer = nil
+        restoreAudioSessionAfterAnnouncement()
+        startNextIfNeeded()
     }
 
     private func configureAudioSessionForAnnouncement() {
         guard announcementSessionConfiguration == nil else { return }
-
         let session = AVAudioSession.sharedInstance()
         do {
             let previousConfiguration = AudioSessionConfiguration(
@@ -181,24 +269,20 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             try session.setActive(true)
             announcementSessionConfiguration = previousConfiguration
         } catch {
-            // 음성 안내 실패가 러닝 측정을 중단시키지 않도록 오디오 세션 오류는 무시합니다.
+            // Audio session failure must not interrupt running measurement or the fallback voice.
         }
     }
 
     private func preferredKoreanVoice() -> AVSpeechSynthesisVoice? {
         let koreanVoices = AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.lowercased().hasPrefix("ko") }
-
         return koreanVoices.max { lhs, rhs in
             lhs.quality.rawValue < rhs.quality.rawValue
         } ?? AVSpeechSynthesisVoice(language: "ko-KR")
     }
 
     private func restoreAudioSessionAfterAnnouncement() {
-        guard pendingUtteranceIDs.isEmpty else { return }
-
-        // MusicKit은 앱의 공유 오디오 세션을 사용한다. 음성 안내 뒤 세션 전체를
-        // 비활성화하면 재생 중인 곡까지 멈출 수 있으므로, 안내 전 구성만 복원한다.
+        // MusicKit shares the app audio session. Deactivation can stop the song.
         if let configuration = announcementSessionConfiguration {
             try? AVAudioSession.sharedInstance().setCategory(
                 configuration.category,
@@ -213,19 +297,26 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
 }
 
 extension LapVoiceAnnouncementService: AVSpeechSynthesizerDelegate {
-    func speechSynthesizer(
-        _ synthesizer: AVSpeechSynthesizer,
-        didFinish utterance: AVSpeechUtterance
-    ) {
-        pendingUtteranceIDs.remove(ObjectIdentifier(utterance))
-        restoreAudioSessionAfterAnnouncement()
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        guard activeUtterance === utterance else { return }
+        finishCurrentAnnouncement()
     }
 
-    func speechSynthesizer(
-        _ synthesizer: AVSpeechSynthesizer,
-        didCancel utterance: AVSpeechUtterance
-    ) {
-        pendingUtteranceIDs.remove(ObjectIdentifier(utterance))
-        restoreAudioSessionAfterAnnouncement()
+    func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+        guard activeUtterance === utterance else { return }
+        finishCurrentAnnouncement()
+    }
+}
+
+extension LapVoiceAnnouncementService: AVAudioPlayerDelegate {
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        guard audioPlayer === player else { return }
+        finishCurrentAnnouncement()
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        guard audioPlayer === player, let activeText else { return }
+        audioPlayer = nil
+        speakWithSystemVoice(activeText)
     }
 }
