@@ -1,7 +1,5 @@
 import AVFoundation
 import Foundation
-import MediaPlayer
-import MusicKit
 
 extension Notification.Name {
     static let runningVoiceAnnouncementDidStart = Notification.Name("runningVoiceAnnouncementDidStart")
@@ -110,11 +108,6 @@ protocol RunningVoiceAnnouncing: AnyObject {
 }
 
 final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
-    private enum PausedMusicPlayer {
-        case application
-        case system
-    }
-
     private struct AudioSessionConfiguration {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode
@@ -123,11 +116,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private let synthesizer = AVSpeechSynthesizer()
-    private let applicationMusicPlayer = ApplicationMusicPlayer.shared
-    private let systemMusicPlayer = MPMusicPlayerController.systemMusicPlayer
     private var announcementSessionConfiguration: AudioSessionConfiguration?
     private var pendingUtteranceIDs = Set<ObjectIdentifier>()
-    private var pausedMusicPlayer: PausedMusicPlayer?
 
     override init() {
         super.init()
@@ -147,7 +137,6 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private func speak(_ text: String) {
-        pauseMusicForAnnouncementIfNeeded()
         configureAudioSessionForAnnouncement()
 
         let utterance = AVSpeechUtterance(string: text)
@@ -183,6 +172,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 mode: .voicePrompt,
                 policy: .default,
                 options: [
+                    .duckOthers,
+                    .interruptSpokenAudioAndMixWithOthers,
                     .allowBluetoothHFP,
                     .allowBluetoothA2DP
                 ]
@@ -217,39 +208,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             )
             announcementSessionConfiguration = nil
         }
-        resumeMusicAfterAnnouncementIfNeeded()
         NotificationCenter.default.post(name: .runningVoiceAnnouncementDidFinish, object: nil)
-    }
-
-    private func pauseMusicForAnnouncementIfNeeded() {
-        guard pausedMusicPlayer == nil else { return }
-
-        if applicationMusicPlayer.state.playbackStatus == .playing {
-            applicationMusicPlayer.pause()
-            pausedMusicPlayer = .application
-        } else if systemMusicPlayer.playbackState == .playing {
-            systemMusicPlayer.pause()
-            pausedMusicPlayer = .system
-        }
-    }
-
-    private func resumeMusicAfterAnnouncementIfNeeded() {
-        guard let pausedMusicPlayer else { return }
-
-        Task { @MainActor [weak self] in
-            guard let self,
-                  self.pendingUtteranceIDs.isEmpty,
-                  self.pausedMusicPlayer != nil
-            else { return }
-
-            self.pausedMusicPlayer = nil
-            switch pausedMusicPlayer {
-            case .application:
-                try? await self.applicationMusicPlayer.play()
-            case .system:
-                self.systemMusicPlayer.play()
-            }
-        }
     }
 }
 
