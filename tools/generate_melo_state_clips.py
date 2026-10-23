@@ -15,9 +15,9 @@ lexicon = json.loads((ASSETS / 'korean_lexicon.json').read_text())
 session = ort.InferenceSession(str(ASSETS / 'melotts_kr_int8.onnx'), providers=['CPUExecutionProvider'])
 
 for name, text in {
-    'started': '운동을 시작합니다.',
-    'paused': '운동을 정지합니다.',
-    'resumed': '운동을 재개합니다.',
+    'started': '러닝을 시작할게요.',
+    'paused': '잠시 멈출게요.',
+    'resumed': '다시 달려볼게요.',
 }.items():
     phones = [0] + lexicon[text] + [0]
     tokens = np.array([[value for index, phone in enumerate(phones)
@@ -40,6 +40,6 @@ for name, text in {
     with wave.open(str(ASSETS / f'melo_{name}.wav'), 'wb') as output:
         output.setnchannels(1)
         output.setsampwidth(2)
-        output.setframerate(44_100)
+        output.setframerate(48_000)
         output.writeframes((np.clip(audio, -1, 1) * 32_767).astype('<i2').tobytes())
-    print(name, round(len(audio) / 44_100, 2), 'seconds')
+    print(name, round(len(audio) / 48_000, 2), 'seconds')

@@ -129,8 +129,9 @@ final class MeloSpeechEngine {
         data.appendLittleEndian(UInt32(16))
         data.appendLittleEndian(UInt16(1))
         data.appendLittleEndian(UInt16(1))
-        data.appendLittleEndian(UInt32(44_100))
-        data.appendLittleEndian(UInt32(44_100 * 2))
+        // Play 44.1 kHz model samples at 48 kHz for a slightly brighter, quicker voice.
+        data.appendLittleEndian(UInt32(48_000))
+        data.appendLittleEndian(UInt32(48_000 * 2))
         data.appendLittleEndian(UInt16(2))
         data.appendLittleEndian(UInt16(16))
         data.append(contentsOf: "data".utf8)

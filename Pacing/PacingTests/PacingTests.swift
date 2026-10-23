@@ -77,7 +77,7 @@ final class PacingTests: XCTestCase {
 
         XCTAssertEqual(
             announcement?.text,
-            "2킬로미터. 10분 52초. 킬로미터당 페이스 5분 27초."
+            "2킬로미터 달렸어요. 구간 기록은 10분 52초, 평균 페이스는 5분 27초예요."
         )
     }
 
@@ -100,9 +100,9 @@ final class PacingTests: XCTestCase {
     }
 
     func testRunningStateVoiceAnnouncementsUseExpectedKoreanMessages() {
-        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "운동을 시작합니다.")
-        XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "운동을 정지합니다.")
-        XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "러닝을 시작할게요.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "잠시 멈출게요.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "다시 달려볼게요.")
     }
 
     func testMeloLexiconCoversRunningAnnouncementsOffline() throws {
@@ -184,7 +184,7 @@ final class PacingTests: XCTestCase {
 
         XCTAssertEqual(
             announcement?.text,
-            "운동을 완료했습니다. 총 거리 3.25킬로미터. 총 시간 1시간 5분 5초. 평균 페이스 5분 30초."
+            "러닝을 마쳤어요. 총 거리 3.25킬로미터, 시간은 1시간 5분 5초예요. 평균 페이스는 5분 30초예요."
         )
     }
 
@@ -196,7 +196,7 @@ final class PacingTests: XCTestCase {
         )
         XCTAssertEqual(
             noPaceAnnouncement?.text,
-            "운동을 완료했습니다. 총 거리 0.00킬로미터. 총 시간 0분 0초. 평균 페이스 정보 없음."
+            "러닝을 마쳤어요. 총 거리 0.00킬로미터, 시간은 0분 0초예요. 평균 페이스는 아직 확인되지 않았어요."
         )
         XCTAssertNil(RunCompletionVoiceAnnouncement(
             distanceKilometers: -.infinity,

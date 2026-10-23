@@ -34,7 +34,7 @@ struct LapVoiceAnnouncement: Equatable {
         let paceMinutes = paceSeconds / 60
         let paceRemainingSeconds = paceSeconds % 60
 
-        return "\(kilometer)킬로미터. \(elapsedMinutes)분 \(elapsedRemainingSeconds)초. 킬로미터당 페이스 \(paceMinutes)분 \(paceRemainingSeconds)초."
+        return "\(kilometer)킬로미터 달렸어요. 구간 기록은 \(elapsedMinutes)분 \(elapsedRemainingSeconds)초, 평균 페이스는 \(paceMinutes)분 \(paceRemainingSeconds)초예요."
     }
 }
 
@@ -46,11 +46,11 @@ enum RunningStateVoiceAnnouncement: Equatable {
     var text: String {
         switch self {
         case .started:
-            "운동을 시작합니다."
+            "러닝을 시작할게요."
         case .paused:
-            "운동을 정지합니다."
+            "잠시 멈출게요."
         case .resumed:
-            "운동을 재개합니다."
+            "다시 달려볼게요."
         }
     }
 }
@@ -91,12 +91,12 @@ struct RunCompletionVoiceAnnouncement: Equatable {
         let paceText: String
         if averagePaceMinutesPerKilometer > 0 {
             let paceSeconds = Int((averagePaceMinutesPerKilometer * 60).rounded())
-            paceText = "평균 페이스 \(paceSeconds / 60)분 \(paceSeconds % 60)초"
+            paceText = "평균 페이스는 \(paceSeconds / 60)분 \(paceSeconds % 60)초예요"
         } else {
-            paceText = "평균 페이스 정보 없음"
+            paceText = "평균 페이스는 아직 확인되지 않았어요"
         }
 
-        return "운동을 완료했습니다. 총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터. 총 시간 \(elapsedText). \(paceText)."
+        return "러닝을 마쳤어요. 총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터, 시간은 \(elapsedText)예요. \(paceText)."
     }
 }
 
@@ -217,8 +217,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         configureAudioSessionForAnnouncement()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredKoreanVoice()
-        utterance.rate = 0.48
-        utterance.pitchMultiplier = 1.0
+        utterance.rate = 0.53
+        utterance.pitchMultiplier = 1.08
         utterance.volume = 1.0
         activeUtterance = utterance
         NotificationCenter.default.post(name: .runningVoiceAnnouncementDidStart, object: nil)
