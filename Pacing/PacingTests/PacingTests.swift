@@ -100,7 +100,7 @@ final class PacingTests: XCTestCase {
     }
 
     func testRunningStateVoiceAnnouncementsUseExpectedKoreanMessages() {
-        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "러닝을 시작합니다.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "운동을 시작합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "운동을 정지합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
     }
@@ -144,7 +144,7 @@ final class PacingTests: XCTestCase {
             elapsedSeconds: 0,
             averagePaceMinutesPerKilometer: 0
         ))
-        let prompts = [
+        var prompts = [
             RunningStateVoiceAnnouncement.started.text,
             RunningStateVoiceAnnouncement.paused.text,
             RunningStateVoiceAnnouncement.resumed.text,
@@ -155,6 +155,12 @@ final class PacingTests: XCTestCase {
             completion.text,
             noPace.text
         ]
+        for details in [completion.detailsText, noPace.detailsText] {
+            let parts = details.components(separatedBy: ". ")
+            XCTAssertGreaterThan(parts.count, 1)
+            prompts.append(parts[0] + ".")
+            prompts.append(parts.dropFirst().joined(separator: ". "))
+        }
         for prompt in prompts {
             let tokens = try XCTUnwrap(tokenizer.tokenIDs(for: prompt), prompt)
             XCTAssertGreaterThan(tokens.count, 2)

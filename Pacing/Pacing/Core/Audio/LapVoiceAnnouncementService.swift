@@ -46,7 +46,7 @@ enum RunningStateVoiceAnnouncement: Equatable {
     var text: String {
         switch self {
         case .started:
-            "러닝을 시작합니다."
+            "운동을 시작합니다."
         case .paused:
             "운동을 정지합니다."
         case .resumed:
@@ -195,7 +195,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         speak(remaining, synthesisTimeout: 15)
     }
 
-    private func speak(_ text: String, synthesisTimeout: TimeInterval = 1.2) {
+    private func speak(_ text: String, synthesisTimeout: TimeInterval = 15) {
         pendingTexts.append((text, synthesisTimeout))
         startNextIfNeeded()
     }
@@ -236,12 +236,6 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
            let url = Bundle.main.url(forResource: clip, withExtension: "wav"),
            let audio = try? Data(contentsOf: url) {
             playMelo(audio, text: text)
-            return
-        }
-
-        guard melo.isReady else {
-            NSLog("MeloTTS is still loading; using the system Korean voice")
-            speakWithSystemVoice(text)
             return
         }
 
