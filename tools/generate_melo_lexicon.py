@@ -25,7 +25,7 @@ def korean_number(value):
             result += ('' if place > 1 and digit == 1 else digits[digit - 1]) + suffix
     return result
 LITERALS = [
-    '이제 러닝을 시작합니다.', '운동을 정지합니다.', '운동을 재개합니다.',
+    '러닝을 시작합니다.', '운동을 정지합니다.', '운동을 재개합니다.',
     '운동을 완료했습니다.', '총 거리',
     '.', '. 킬로미터당 페이스',
     '운동을 완료했습니다. 총 거리', '. 총 시간',

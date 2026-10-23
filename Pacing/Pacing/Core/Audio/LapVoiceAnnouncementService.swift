@@ -46,7 +46,7 @@ enum RunningStateVoiceAnnouncement: Equatable {
     var text: String {
         switch self {
         case .started:
-            "이제 러닝을 시작합니다."
+            "러닝을 시작합니다."
         case .paused:
             "운동을 정지합니다."
         case .resumed:
@@ -132,6 +132,9 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     private var completionDetailsText: String?
     private var completionDetailsAudio: Data?
     private var isCompletionPrefetching = false
+    private var completionRemainingText: String?
+    private var completionRemainingAudio: Data?
+    private var isCompletionRemainingPrefetching = false
 
     override init() {
         super.init()
@@ -149,24 +152,47 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
 
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {
         let details = announcement.detailsText
+        let parts = details.components(separatedBy: ". ")
+        guard parts.count > 1 else {
+            speak(RunCompletionVoiceAnnouncement.openingText)
+            speak(details, synthesisTimeout: 15)
+            return
+        }
+        let first = parts[0] + "."
+        let remaining = parts.dropFirst().joined(separator: ". ")
         let requestID = UUID()
         completionPrefetchID = requestID
-        completionDetailsText = details
+        completionDetailsText = first
         completionDetailsAudio = nil
+        completionRemainingText = remaining
+        completionRemainingAudio = nil
         isCompletionPrefetching = true
-        melo.synthesize(details) { [weak self] audio in
+        isCompletionRemainingPrefetching = true
+        melo.synthesize(first) { [weak self] audio in
             guard let self, self.completionPrefetchID == requestID else { return }
             self.isCompletionPrefetching = false
-            if self.activeText == details {
+            if self.activeText == first {
                 self.generationID = nil
-                if let audio { self.playMelo(audio, text: details) }
-                else { self.speakWithSystemVoice(details) }
+                if let audio { self.playMelo(audio, text: first) }
+                else { self.speakWithSystemVoice(first) }
             } else {
                 self.completionDetailsAudio = audio
             }
         }
+        melo.synthesize(remaining) { [weak self] audio in
+            guard let self, self.completionPrefetchID == requestID else { return }
+            self.isCompletionRemainingPrefetching = false
+            if self.activeText == remaining {
+                self.generationID = nil
+                if let audio { self.playMelo(audio, text: remaining) }
+                else { self.speakWithSystemVoice(remaining) }
+            } else {
+                self.completionRemainingAudio = audio
+            }
+        }
         speak(RunCompletionVoiceAnnouncement.openingText)
-        speak(details, synthesisTimeout: 15)
+        speak(first, synthesisTimeout: 15)
+        speak(remaining, synthesisTimeout: 15)
     }
 
     private func speak(_ text: String, synthesisTimeout: TimeInterval = 1.2) {
@@ -185,6 +211,19 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 return
             }
             if isCompletionPrefetching {
+                let requestID = UUID()
+                generationID = requestID
+                scheduleSynthesisFallback(for: text, requestID: requestID, timeout: synthesisTimeout)
+                return
+            }
+        }
+        if completionRemainingText == text {
+            if let audio = completionRemainingAudio {
+                completionRemainingAudio = nil
+                playMelo(audio, text: text)
+                return
+            }
+            if isCompletionRemainingPrefetching {
                 let requestID = UUID()
                 generationID = requestID
                 scheduleSynthesisFallback(for: text, requestID: requestID, timeout: synthesisTimeout)
@@ -226,7 +265,11 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
             guard let self, self.generationID == requestID, self.activeText == text else { return }
             self.generationID = nil
-            if text == self.completionDetailsText { self.completionPrefetchID = nil }
+            if text == self.completionDetailsText || text == self.completionRemainingText {
+                self.completionPrefetchID = nil
+                self.isCompletionPrefetching = false
+                self.isCompletionRemainingPrefetching = false
+            }
             NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", timeout)
             self.speakWithSystemVoice(text)
         }
@@ -280,6 +323,9 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         completionDetailsText = nil
         completionDetailsAudio = nil
         isCompletionPrefetching = false
+        completionRemainingText = nil
+        completionRemainingAudio = nil
+        isCompletionRemainingPrefetching = false
         activeText = nil
         activeUtterance = nil
         audioPlayer?.stop()
@@ -290,11 +336,15 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
 
     private func finishCurrentAnnouncement() {
         guard let finishedText = activeText else { return }
-        if finishedText == completionDetailsText {
+        if finishedText == completionRemainingText ||
+            (completionRemainingText == nil && finishedText == completionDetailsText) {
             completionPrefetchID = nil
             completionDetailsText = nil
             completionDetailsAudio = nil
             isCompletionPrefetching = false
+            completionRemainingText = nil
+            completionRemainingAudio = nil
+            isCompletionRemainingPrefetching = false
         }
         activeText = nil
         activeUtterance = nil
