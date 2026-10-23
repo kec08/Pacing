@@ -41,6 +41,12 @@ final class WatchRunningViewModel: ObservableObject {
                 self?.metrics.distanceMeters = liveMetrics.distanceMeters
                 self?.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
                 self?.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
+                if self?.state == .ending, liveMetrics.elapsed > 0 {
+                    self?.metrics.elapsed = liveMetrics.elapsed
+                }
+                if self?.state == .running || self?.state == .paused || self?.state == .ending {
+                    self?.publishWatchMetrics()
+                }
             }
             .store(in: &cancellables)
 
@@ -77,7 +83,8 @@ final class WatchRunningViewModel: ObservableObject {
     }
 
     func startFromPhone(configuration: HKWorkoutConfiguration) {
-        guard state == .idle || state == .ended || isFailure else { return }
+        let canRecoverFromPhoneSnapshot = state == .running && !workoutRepository.hasActiveWorkoutSession
+        guard state == .idle || state == .ended || isFailure || canRecoverFromPhoneSnapshot else { return }
         countdownTask?.cancel()
         resetMetrics()
         state = .starting
@@ -85,12 +92,14 @@ final class WatchRunningViewModel: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             do {
-                try await workoutRepository.start(configuration: configuration, startDate: .now)
-                startedAt = pendingStartAt ?? .now
+                let workoutStartDate = pendingStartAt ?? .now
+                try await workoutRepository.start(configuration: configuration, startDate: workoutStartDate)
+                startedAt = workoutStartDate
                 pendingStartAt = nil
                 state = .running
                 locationRepository.startTracking()
                 startTimer()
+                publishWatchMetrics()
             } catch let error as WatchRunError {
                 state = .failed(error)
             } catch {
@@ -161,7 +170,9 @@ final class WatchRunningViewModel: ObservableObject {
 
     private func updateMetrics(from snapshot: PhoneRunSnapshot) {
         metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
-        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        if !workoutRepository.hasActiveWorkoutSession {
+            metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        }
         metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
             ? snapshot.paceMinutesPerKilometer * 60
             : nil
@@ -191,6 +202,7 @@ final class WatchRunningViewModel: ObservableObject {
                 state = .running
                 locationRepository.startTracking()
                 startTimer()
+                publishWatchMetrics()
             } catch let error as WatchRunError {
                 state = .failed(error)
             } catch {
@@ -218,6 +230,7 @@ final class WatchRunningViewModel: ObservableObject {
                     PhoneRunCommand(action: .pause, sender: .watch, sessionID: sessionID)
                 )
             }
+            publishWatchMetrics(state: .paused)
             WKInterfaceDevice.current().play(.stop)
         case .paused:
             startedAt = .now
@@ -227,6 +240,7 @@ final class WatchRunningViewModel: ObservableObject {
                 locationRepository.startTracking()
             }
             startTimer()
+            publishWatchMetrics(state: .running)
             if sendCommand {
                 WatchRunCommandPublisher.shared.send(
                     PhoneRunCommand(action: .resume, sender: .watch, sessionID: sessionID)
@@ -260,6 +274,10 @@ final class WatchRunningViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await workoutRepository.end()
+                metrics.distanceMeters = workoutRepository.liveMetrics.distanceMeters
+                if workoutRepository.liveMetrics.elapsed > 0 {
+                    metrics.elapsed = workoutRepository.liveMetrics.elapsed
+                }
                 self.completeRun()
             } catch let error as WatchRunError {
                 state = .failed(error)
@@ -277,6 +295,7 @@ final class WatchRunningViewModel: ObservableObject {
         elapsedBeforeCurrentSegment = metrics.elapsed
         locationRepository.reset()
         state = .ended
+        publishWatchMetrics(state: .ended)
     }
 
     func reset() {
@@ -323,7 +342,23 @@ final class WatchRunningViewModel: ObservableObject {
         timer?.cancel()
         timer = Timer.publish(every: 1, on: .main, in: .common)
             .autoconnect()
-            .sink { [weak self] _ in self?.syncElapsed() }
+            .sink { [weak self] _ in
+                self?.syncElapsed()
+                self?.publishWatchMetrics()
+            }
+    }
+
+    private func publishWatchMetrics(state snapshotState: WatchRunMetricsSnapshot.State? = nil) {
+        let resolvedState = snapshotState ?? (state == .paused ? .paused : (state == .ended ? .ended : .running))
+        WatchRunCommandPublisher.shared.publish(
+            WatchRunMetricsSnapshot(
+                sessionID: sessionID,
+                state: resolvedState,
+                elapsedSeconds: max(0, Int(metrics.elapsed.rounded())),
+                distanceMeters: max(0, metrics.distanceMeters),
+                sentAt: .now
+            )
+        )
     }
 
     private func syncElapsed() {

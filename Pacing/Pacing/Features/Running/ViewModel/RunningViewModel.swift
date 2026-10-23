@@ -48,9 +48,11 @@ enum RunningPacePolicy {
               speed < maximumRunningSpeedMetersPerSecond
         else { return false }
 
-        // 정확도가 낮을수록 조금 더 큰 이동을 요구하되, 정상적인 러닝 위치 업데이트는 놓치지 않는다.
+        // 위치 정확도와 속도 범위를 확인하되, 짧은 정상 GPS 업데이트를 누락하지 않는다.
         let accuracy = max(previousHorizontalAccuracy, currentHorizontalAccuracy)
-        let minimumDistance = max(3.0, min(12.0, accuracy * 0.5))
+        // Frequent 5m updates are common even when reported horizontal accuracy is 20–30m.
+        // The previous half-accuracy threshold (up to 12m) discarded those valid segments.
+        let minimumDistance = max(1.5, min(3.0, accuracy * 0.1))
         return distanceMeters >= minimumDistance
     }
 
@@ -60,15 +62,30 @@ enum RunningPacePolicy {
 
     /// 유효 GPS 이동 구간의 누적 시간 기준 평균 페이스입니다.
     static func averagePace(
-        movingElapsedSeconds: Int,
+        elapsedSeconds: Int,
         distanceKilometers: Double
     ) -> Double {
         guard canDisplayPace(
             distanceKilometers: distanceKilometers,
-            elapsedSeconds: movingElapsedSeconds
+            elapsedSeconds: elapsedSeconds
         ) else { return 0 }
 
-        return Double(movingElapsedSeconds) / 60.0 / distanceKilometers
+        return Double(elapsedSeconds) / 60.0 / distanceKilometers
+    }
+}
+
+enum RunningLapBoundaryPolicy {
+    static func crossedKilometers(
+        distanceKilometers: Double,
+        startingAt nextKilometer: Int
+    ) -> [Int] {
+        guard distanceKilometers.isFinite,
+              distanceKilometers >= Double(nextKilometer),
+              nextKilometer > 0,
+              distanceKilometers < Double(Int.max)
+        else { return [] }
+
+        return Array(nextKilometer...Int(distanceKilometers.rounded(.down)))
     }
 }
 
@@ -93,7 +110,6 @@ final class RunningViewModel: ObservableObject {
     private var countdownTask: Task<Void, Never>?
     private var countdownBackgroundTaskIdentifier: UIBackgroundTaskIdentifier = .invalid
     private var lastLocation: CLLocation?
-    private var activeElapsedSeconds: TimeInterval = 0
     private var activeElevationLocations: [CLLocation] = []
     private var activeBarometerElevationSamples: [ElevationSample] = []
     private var cancellables = Set<AnyCancellable>()
@@ -112,6 +128,12 @@ final class RunningViewModel: ObservableObject {
     private var cadenceSegmentStartDate: Date?
     private var healthAuthorizationTask: Task<Bool, Never>?
     private var sessionID = UUID()
+    private var usesWatchWorkoutDistance = false
+    private var gpsDistance = 0.0
+    private var latestWatchMetricsReceivedAt = Date.distantPast
+    private var latestWatchMetricsSentAt = Date.distantPast
+    private var watchWorkoutDidEnd = false
+    private var isStopping = false
 
     init(
         locationManager: LocationManager = .shared,
@@ -158,6 +180,10 @@ final class RunningViewModel: ObservableObject {
                 guard self.state == .running || self.state == .paused else { return }
                 Task { await self.stop(sendCommand: false) }
             }
+        }
+
+        PhoneRunCommandReceiver.shared.onWatchMetrics = { [weak self] snapshot in
+            self?.applyWatchMetrics(snapshot)
         }
     }
 
@@ -218,7 +244,12 @@ final class RunningViewModel: ObservableObject {
         distance = 0
         currentPace = 0
         lastLocation = nil
-        activeElapsedSeconds = 0
+        usesWatchWorkoutDistance = false
+        gpsDistance = 0
+        latestWatchMetricsReceivedAt = .distantPast
+        latestWatchMetricsSentAt = .distantPast
+        watchWorkoutDidEnd = false
+        isStopping = false
         activeElevationLocations = []
         activeBarometerElevationSamples = []
         resetLapState()
@@ -299,10 +330,10 @@ final class RunningViewModel: ObservableObject {
         // iPhone 버튼과 Watch 종료 명령이 거의 동시에 도착할 수 있다. 첫 종료가
         // 상태를 finished로 확정한 뒤에는 후속 요청을 무시해 요약·음성 안내가
         // 중복되지 않게 한다.
-        guard state == .running || state == .paused else { return }
+        guard (state == .running || state == .paused), !isStopping else { return }
 
         syncElapsedSeconds()
-        completePendingLapsIfNeeded()
+        isStopping = true
         let endedAt = Date()
         let healthStartedAt = healthRunStartedAt
         accumulatedElapsedSecondsBeforeResume = elapsedSeconds
@@ -311,13 +342,24 @@ final class RunningViewModel: ObservableObject {
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
-        state = .finished
-        announceRunCompletion()
         if sendCommand {
             PhoneRunSyncPublisher.shared.send(
                 PhoneRunCommand(action: .finish, sender: .phone, sessionID: sessionID)
             )
         }
+
+        // Watch finishes saving its HealthKit workout after the finish command. Give the
+        // final cumulative distance and workout duration a short chance to reach the summary.
+        if usesWatchWorkoutDistance {
+            for _ in 0..<30 where !watchWorkoutDidEnd {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+        }
+
+        syncElapsedSeconds()
+        completePendingLapsIfNeeded()
+        state = .finished
+        announceRunCompletion()
         publishRunSnapshot(state: .ended, persist: true)
         let lastLiveCadence = currentCadenceStepsPerMinute
 
@@ -348,6 +390,12 @@ final class RunningViewModel: ObservableObject {
         distance = 0
         currentPace = 0
         lastLocation = nil
+        usesWatchWorkoutDistance = false
+        gpsDistance = 0
+        latestWatchMetricsReceivedAt = .distantPast
+        latestWatchMetricsSentAt = .distantPast
+        watchWorkoutDidEnd = false
+        isStopping = false
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
         runningStartedAt = nil
@@ -392,8 +440,8 @@ final class RunningViewModel: ObservableObject {
 
     var avgPace: Double {
         RunningPacePolicy.averagePace(
-            movingElapsedSeconds: Int(activeElapsedSeconds.rounded()),
-            distanceKilometers: distance,
+            elapsedSeconds: elapsedSeconds,
+            distanceKilometers: distance
         )
     }
 
@@ -525,21 +573,36 @@ final class RunningViewModel: ObservableObject {
         guard state == .running else { return }
         guard !locations.isEmpty else { return }
 
+        // Watch 연결이 끊겨도 iPhone GPS 누적을 유지해 기록이 멈추지 않게 합니다.
+        let watchMetricsAreStale = Date().timeIntervalSince(latestWatchMetricsReceivedAt) > 15
+        if usesWatchWorkoutDistance && watchMetricsAreStale {
+            usesWatchWorkoutDistance = false
+            distance = max(distance, gpsDistance)
+        }
+
         var hasDistanceChanged = false
 
-        for location in locations {
-            syncElapsedSeconds(referenceDate: location.timestamp)
+        for location in locations.sorted(by: { $0.timestamp < $1.timestamp }) {
+            if !usesWatchWorkoutDistance {
+                syncElapsedSeconds(referenceDate: location.timestamp)
+            }
 
             guard let last = lastLocation else {
                 lastLocation = location
                 continue
             }
 
-            defer { lastLocation = location }
-
             let deltaMeters = location.distance(from: last)
             let timeDelta = location.timestamp.timeIntervalSince(last.timestamp)
             guard deltaMeters > 0, timeDelta > 0 else { continue }
+
+            let speed = deltaMeters / timeDelta
+            guard speed.isFinite else { continue }
+            if speed < 0.8 {
+                // Update the anchor while stationary so GPS drift does not become running distance.
+                lastLocation = location
+                continue
+            }
 
             guard RunningPacePolicy.isValidRunningSegment(
                 distanceMeters: deltaMeters,
@@ -548,14 +611,18 @@ final class RunningViewModel: ObservableObject {
                 currentHorizontalAccuracy: location.horizontalAccuracy
             ) else { continue }
 
+            // Keep the last accepted point when a segment is rejected. Advancing it on every
+            // rejected 5m fix permanently discarded distance before the next callback.
+            lastLocation = location
+
             let deltaKm = deltaMeters / 1000.0
-            distance += deltaKm
-            activeElapsedSeconds += timeDelta
+            gpsDistance += deltaKm
+            if !usesWatchWorkoutDistance { distance = max(distance, gpsDistance) }
             if activeElevationLocations.isEmpty {
                 activeElevationLocations.append(last)
             }
             activeElevationLocations.append(location)
-            hasDistanceChanged = true
+            hasDistanceChanged = !usesWatchWorkoutDistance
         }
 
         if hasDistanceChanged {
@@ -583,7 +650,7 @@ final class RunningViewModel: ObservableObject {
             id: "validation",
             startedAt: Date(),
             duration: savedElapsedSeconds,
-            movingDuration: Int(activeElapsedSeconds.rounded()),
+            movingDuration: savedElapsedSeconds,
             distance: savedDistance,
             avgPace: rawAveragePace,
             routeCoordinates: [],
@@ -598,6 +665,7 @@ final class RunningViewModel: ObservableObject {
             id: UUID().uuidString,
             startedAt: Date().addingTimeInterval(-Double(savedElapsedSeconds)),
             duration: savedElapsedSeconds,
+            movingDuration: savedElapsedSeconds,
             distance: savedDistance,
             avgPace: savedAveragePace,
             routeCoordinates: savedRouteCoordinates,
@@ -659,6 +727,41 @@ final class RunningViewModel: ObservableObject {
         }
     }
 
+    private func applyWatchMetrics(_ snapshot: WatchRunMetricsSnapshot) {
+        guard snapshot.sessionID == sessionID,
+              snapshot.sentAt > latestWatchMetricsSentAt,
+              snapshot.distanceMeters.isFinite,
+              snapshot.distanceMeters >= 0,
+              snapshot.elapsedSeconds >= 0,
+              state == .running || state == .paused || state == .finished
+        else { return }
+
+        latestWatchMetricsSentAt = snapshot.sentAt
+        latestWatchMetricsReceivedAt = .now
+        if snapshot.state == .ended {
+            watchWorkoutDidEnd = true
+        }
+        guard snapshot.distanceMeters > 0 else { return }
+
+        usesWatchWorkoutDistance = true
+        distance = snapshot.distanceMeters / 1_000
+        elapsedSeconds = snapshot.elapsedSeconds
+
+        switch snapshot.state {
+        case .running:
+            accumulatedElapsedSecondsBeforeResume = snapshot.elapsedSeconds
+            runningStartedAt = snapshot.sentAt
+        case .paused:
+            accumulatedElapsedSecondsBeforeResume = snapshot.elapsedSeconds
+            runningStartedAt = nil
+        case .ended:
+            accumulatedElapsedSecondsBeforeResume = snapshot.elapsedSeconds
+            runningStartedAt = nil
+        }
+
+        updateDisplayedPace()
+    }
+
     private func syncElapsedSeconds(referenceDate: Date = Date()) {
         guard let runningStartedAt else {
             elapsedSeconds = max(accumulatedElapsedSecondsBeforeResume, 0)
@@ -683,13 +786,17 @@ final class RunningViewModel: ObservableObject {
     }
 
     private func completePendingLapsIfNeeded() {
-        while distance >= nextLapDistanceMark {
-            let lapDistance = nextLapDistanceMark - lapStartDistance
-            let lapElapsedSeconds = Int(activeElapsedSeconds) - lapStartElapsedSeconds
+        let crossedKilometers = RunningLapBoundaryPolicy.crossedKilometers(
+            distanceKilometers: distance,
+            startingAt: Int(nextLapDistanceMark)
+        )
+        for kilometer in crossedKilometers {
+            let kilometerMark = Double(kilometer)
+            let lapDistance = kilometerMark - lapStartDistance
+            let lapElapsedSeconds = elapsedSeconds - lapStartElapsedSeconds
 
             if lapDistance > 0, lapElapsedSeconds > 0 {
                 let lapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
-                let kilometer = Int(nextLapDistanceMark.rounded(.down))
                 lastCompletedLapPace = lapPace
                 completedLapPaces.append(
                     RunLapPace(
@@ -697,12 +804,16 @@ final class RunningViewModel: ObservableObject {
                         pace: lapPace
                     )
                 )
-                announceCompletedKilometer(kilometer)
             }
 
-            lapStartDistance = nextLapDistanceMark
-            lapStartElapsedSeconds = Int(activeElapsedSeconds)
-            nextLapDistanceMark += 1.0
+            // A delayed GPS batch can cross multiple kilometer boundaries at once.
+            // Deliver every distance-based announcement even when a split pace cannot
+            // be reconstructed for one of those boundaries.
+            announceCompletedKilometer(kilometer)
+
+            lapStartDistance = kilometerMark
+            lapStartElapsedSeconds = elapsedSeconds
+            nextLapDistanceMark = kilometerMark + 1.0
         }
     }
 

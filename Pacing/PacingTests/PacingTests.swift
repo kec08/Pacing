@@ -203,27 +203,27 @@ final class PacingTests: XCTestCase {
         XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.10, elapsedSeconds: 30))
     }
 
-    func testAveragePaceUsesMovingDuration() {
+    func testAveragePaceUsesWorkoutElapsedDuration() {
         let pace = RunningPacePolicy.averagePace(
-            movingElapsedSeconds: 3_676,
+            elapsedSeconds: 3_676,
             distanceKilometers: 11.44
         )
 
         XCTAssertEqual(pace, 5.356, accuracy: 0.001)
     }
 
-    func testAveragePaceMatchesSavedRecordForSameMovingDuration() {
-        let movingElapsedSeconds = 1_393
+    func testAveragePaceMatchesSavedRecordForSameWorkoutDuration() {
+        let elapsedSeconds = 1_542
         let distanceKilometers = 5.10
         let summaryPace = RunningPacePolicy.averagePace(
-            movingElapsedSeconds: movingElapsedSeconds,
+            elapsedSeconds: elapsedSeconds,
             distanceKilometers: distanceKilometers
         )
         let record = RunRecord(
             id: "same-pace",
             startedAt: .now,
-            duration: 1_542,
-            movingDuration: movingElapsedSeconds,
+            duration: elapsedSeconds,
+            movingDuration: elapsedSeconds,
             distance: distanceKilometers,
             avgPace: 0,
             routeCoordinates: [],
@@ -231,16 +231,28 @@ final class PacingTests: XCTestCase {
         )
 
         XCTAssertEqual(summaryPace, record.displayPace, accuracy: 0.0001)
-        XCTAssertEqual(RunRecord.formattedPace(summaryPace), "4'33\"")
+        XCTAssertEqual(RunRecord.formattedPace(summaryPace), "5'02\"")
+    }
+
+    func testAveragePaceMatchesAppleWorkoutScreenshotMetrics() {
+        let elapsedSeconds = 52 * 60 + 2
+        let distanceKilometers = 10.0
+        let pace = RunningPacePolicy.averagePace(
+            elapsedSeconds: elapsedSeconds,
+            distanceKilometers: distanceKilometers
+        )
+
+        XCTAssertEqual(pace * 60, 312.2, accuracy: 0.1)
+        XCTAssertEqual(RunRecord.formattedPace(pace), "5'12\"")
     }
 
     func testAveragePaceRejectsInsufficientRunData() {
         XCTAssertEqual(
-            RunningPacePolicy.averagePace(movingElapsedSeconds: 120, distanceKilometers: 0.09),
+            RunningPacePolicy.averagePace(elapsedSeconds: 120, distanceKilometers: 0.09),
             0
         )
         XCTAssertEqual(
-            RunningPacePolicy.averagePace(movingElapsedSeconds: 0, distanceKilometers: 1),
+            RunningPacePolicy.averagePace(elapsedSeconds: 0, distanceKilometers: 1),
             0
         )
     }
@@ -261,6 +273,32 @@ final class PacingTests: XCTestCase {
                 previousHorizontalAccuracy: 5,
                 currentHorizontalAccuracy: 5
             )
+        )
+    }
+
+    func testPacePolicyAcceptsShortRunningUpdatesWithReducedGPSAccuracy() {
+        XCTAssertTrue(
+            RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: 5,
+                timeInterval: 2,
+                previousHorizontalAccuracy: 30,
+                currentHorizontalAccuracy: 30
+            )
+        )
+    }
+
+    func testLapBoundaryPolicyReportsAllKilometersCrossedByOneLocationBatch() {
+        XCTAssertEqual(
+            RunningLapBoundaryPolicy.crossedKilometers(distanceKilometers: 2.35, startingAt: 1),
+            [1, 2]
+        )
+        XCTAssertEqual(
+            RunningLapBoundaryPolicy.crossedKilometers(distanceKilometers: 2.35, startingAt: 3),
+            []
+        )
+        XCTAssertEqual(
+            RunningLapBoundaryPolicy.crossedKilometers(distanceKilometers: 0.999, startingAt: 1),
+            []
         )
     }
 
