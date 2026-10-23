@@ -34,7 +34,7 @@ struct LapVoiceAnnouncement: Equatable {
         let paceMinutes = paceSeconds / 60
         let paceRemainingSeconds = paceSeconds % 60
 
-        return "\(kilometer)킬로미터 달렸어요. 구간 기록은 \(elapsedMinutes)분 \(elapsedRemainingSeconds)초, 평균 페이스는 \(paceMinutes)분 \(paceRemainingSeconds)초예요."
+        return "\(kilometer)킬로미터. \(elapsedMinutes)분 \(elapsedRemainingSeconds)초. 킬로미터당 페이스 \(paceMinutes)분 \(paceRemainingSeconds)초."
     }
 }
 
@@ -46,11 +46,11 @@ enum RunningStateVoiceAnnouncement: Equatable {
     var text: String {
         switch self {
         case .started:
-            "러닝을 시작할게요."
+            "러닝을 시작합니다."
         case .paused:
-            "잠시 멈출게요."
+            "운동을 정지합니다."
         case .resumed:
-            "다시 달려볼게요."
+            "운동을 재개합니다."
         }
     }
 }
@@ -91,12 +91,12 @@ struct RunCompletionVoiceAnnouncement: Equatable {
         let paceText: String
         if averagePaceMinutesPerKilometer > 0 {
             let paceSeconds = Int((averagePaceMinutesPerKilometer * 60).rounded())
-            paceText = "평균 페이스는 \(paceSeconds / 60)분 \(paceSeconds % 60)초예요"
+            paceText = "평균 페이스 \(paceSeconds / 60)분 \(paceSeconds % 60)초"
         } else {
-            paceText = "평균 페이스는 아직 확인되지 않았어요"
+            paceText = "평균 페이스 정보 없음"
         }
 
-        return "러닝을 마쳤어요. 총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터, 시간은 \(elapsedText)예요. \(paceText)."
+        return "운동을 완료했습니다. 총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터. 총 시간 \(elapsedText). \(paceText)."
     }
 }
 
@@ -118,7 +118,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     private let synthesizer = AVSpeechSynthesizer()
     private let melo = MeloSpeechEngine.shared
     private var announcementSessionConfiguration: AudioSessionConfiguration?
-    private var pendingTexts: [String] = []
+    private var pendingTexts: [(text: String, synthesisTimeout: TimeInterval)] = []
     private var activeText: String?
     private var activeUtterance: AVSpeechUtterance?
     private var audioPlayer: AVAudioPlayer?
@@ -139,17 +139,17 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {
-        speak(announcement.text)
+        speak(announcement.text, synthesisTimeout: 15)
     }
 
-    private func speak(_ text: String) {
-        pendingTexts.append(text)
+    private func speak(_ text: String, synthesisTimeout: TimeInterval = 1.2) {
+        pendingTexts.append((text, synthesisTimeout))
         startNextIfNeeded()
     }
 
     private func startNextIfNeeded() {
         guard activeText == nil, !pendingTexts.isEmpty else { return }
-        let text = pendingTexts.removeFirst()
+        let (text, synthesisTimeout) = pendingTexts.removeFirst()
         activeText = text
 
         // Fixed state prompts are bundled MeloTTS clips so the first cue starts at once.
@@ -179,10 +179,10 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         }
 
         // A slow inference must never delay or drop a kilometer announcement.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + synthesisTimeout) { [weak self] in
             guard let self, self.generationID == requestID, self.activeText == text else { return }
             self.generationID = nil
-            NSLog("MeloTTS inference exceeded 1.2 seconds; using the system Korean voice")
+            NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", synthesisTimeout)
             self.speakWithSystemVoice(text)
         }
     }
@@ -192,6 +192,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             let player = try AVAudioPlayer(data: audio)
             configureAudioSessionForAnnouncement()
             player.delegate = self
+            player.enableRate = true
+            player.rate = 0.92
             player.prepareToPlay()
             guard player.play() else {
                 speakWithSystemVoice(text)
@@ -217,7 +219,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         configureAudioSessionForAnnouncement()
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredKoreanVoice()
-        utterance.rate = 0.53
+        utterance.rate = 0.48
         utterance.pitchMultiplier = 1.08
         utterance.volume = 1.0
         activeUtterance = utterance

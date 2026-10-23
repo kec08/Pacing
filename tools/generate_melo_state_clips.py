@@ -15,9 +15,9 @@ lexicon = json.loads((ASSETS / 'korean_lexicon.json').read_text())
 session = ort.InferenceSession(str(ASSETS / 'melotts_kr_int8.onnx'), providers=['CPUExecutionProvider'])
 
 for name, text in {
-    'started': '러닝을 시작할게요.',
-    'paused': '잠시 멈출게요.',
-    'resumed': '다시 달려볼게요.',
+    'started': '러닝을 시작합니다.',
+    'paused': '운동을 정지합니다.',
+    'resumed': '운동을 재개합니다.',
 }.items():
     phones = [0] + lexicon[text] + [0]
     tokens = np.array([[value for index, phone in enumerate(phones)
