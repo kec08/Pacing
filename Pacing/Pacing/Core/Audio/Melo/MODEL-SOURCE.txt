@@ -1,12 +1,15 @@
-Korean MeloTTS INT8 ONNX model and symbols:
+Korean MeloTTS INT8 ONNX model and model configuration:
 https://huggingface.co/gnyong/melotts-kr-onnx/tree/main
 Model revision: c110131 (as listed when downloaded 2026-10-23)
 Model SHA-256: 421b94ce7e803fdd0126c7d39d90192b64878794619668cf3ec12611fc860f88
-symbols.json SHA-256: bf8d22eefcbe576116e4c5b6e1dcef1b3d59fa1ed5333007048a901a84aa1bc3
+melotts_kr_config.json SHA-256: 74543376976dfadde45ba34336fa79c7e95509f43a7c2e701b22c0f71fd7695c
 Original model: https://huggingface.co/myshell-ai/MeloTTS-Korean
 License: MIT, see LICENSE-MeloTTS.txt
 
 korean_lexicon.json is generated from g2pkk pronunciations for the app's fixed
-running announcement grammar. Regenerate with tools/generate_melo_lexicon.py.
+running announcement grammar using the model configuration's exact symbol order.
+The separate symbols.json in the model repository has a different symbol order
+and must not be used with this ONNX checkpoint. Regenerate with
+tools/generate_melo_lexicon.py and tools/generate_melo_state_clips.py.
 Generation versions: g2pkk 0.1.2, python-mecab-ko 1.3.7,
 python-mecab-ko-dic 2.1.1.post2.

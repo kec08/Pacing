@@ -9,8 +9,21 @@ from pathlib import Path
 from g2pkk import G2p
 
 ROOT = Path(__file__).resolve().parents[1]
-SYMBOLS = json.loads((ROOT / 'Pacing/Pacing/Core/Audio/Melo/symbols.json').read_text())['symbol_to_id']
+symbols = json.loads((ROOT / 'Pacing/Pacing/Core/Audio/Melo/melotts_kr_config.json').read_text())['symbols']
+SYMBOLS = {symbol: index for index, symbol in enumerate(symbols)}
 G2P = G2p()
+
+
+def korean_number(value):
+    if value == 0:
+        return '영'
+    digits = '일이삼사오육칠팔구'
+    result = ''
+    for place, suffix in ((100, '백'), (10, '십'), (1, '')):
+        digit, value = divmod(value, place)
+        if digit:
+            result += ('' if place > 1 and digit == 1 else digits[digit - 1]) + suffix
+    return result
 LITERALS = [
     '운동을 시작합니다.', '운동을 정지합니다.', '운동을 재개합니다.',
     '.', '. 킬로미터당 페이스',
@@ -26,13 +39,14 @@ def ids(text):
 
 lexicon = {text: ids(text) for text in LITERALS}
 for value in range(1000):
-    lexicon[f'__number_{value}'] = ids(str(value))
-    lexicon[f'{value}킬로미터'] = ids(f'{value}킬로미터')
-    lexicon[f'{value}분'] = ids(f'{value}분')
+    spoken = korean_number(value)
+    lexicon[f'__number_{value}'] = ids(spoken)
+    lexicon[f'{value}킬로미터'] = ids(f'{spoken}킬로미터')
+    lexicon[f'{value}분'] = ids(f'{spoken}분')
 for value in range(100):
-    lexicon[f'{value}시간'] = ids(f'{value}시간')
+    lexicon[f'{value}시간'] = ids(f'{korean_number(value)}시간')
 for value in range(60):
-    lexicon[f'{value}초'] = ids(f'{value}초')
+    lexicon[f'{value}초'] = ids(f'{korean_number(value)}초')
 output = ROOT / 'Pacing/Pacing/Core/Audio/Melo/korean_lexicon.json'
 output.write_text(json.dumps(lexicon, ensure_ascii=False, separators=(',', ':')) + '\n')
 print(f'{len(lexicon)} pronunciations, {output.stat().st_size} bytes')
