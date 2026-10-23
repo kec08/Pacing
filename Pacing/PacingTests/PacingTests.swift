@@ -7,6 +7,7 @@
 
 import XCTest
 @testable import Pacing
+import AVFoundation
 import CoreLocation
 import MapKit
 
@@ -102,6 +103,99 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "운동을 시작합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "운동을 정지합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
+    }
+
+    func testResetKeepsFinishBriefingPlaying() {
+        let voice = VoiceAnnouncerSpy()
+        let viewModel = RunningViewModel(locationManager: LocationManager(), voiceAnnouncer: voice)
+        viewModel.state = .finished
+
+        viewModel.reset()
+
+        XCTAssertEqual(voice.stopCount, 0)
+
+        viewModel.state = .running
+        viewModel.reset()
+        XCTAssertEqual(voice.stopCount, 1)
+    }
+
+    func testMeloLexiconCoversRunningAnnouncementsOffline() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "korean_lexicon", withExtension: "json"))
+        XCTAssertNotNil(Bundle.main.url(forResource: "melotts_kr_int8", withExtension: "onnx"))
+        for name in ["melo_started", "melo_paused", "melo_resumed", "melo_completed"] {
+            let clip = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: "wav"))
+            let player = try AVAudioPlayer(contentsOf: clip)
+            XCTAssertTrue(player.prepareToPlay())
+        }
+        let pronunciations = try JSONDecoder().decode([String: [Int64]].self, from: Data(contentsOf: url))
+        let tokenizer = MeloKoreanTokenizer(pronunciations: pronunciations)
+        let lap = try XCTUnwrap(LapVoiceAnnouncement(
+            kilometer: 2,
+            elapsedSeconds: 652,
+            averagePaceMinutesPerKilometer: 5.45
+        ))
+        let completion = try XCTUnwrap(RunCompletionVoiceAnnouncement(
+            distanceKilometers: 3.25,
+            elapsedSeconds: 3_905,
+            averagePaceMinutesPerKilometer: 5.5
+        ))
+        let noPace = try XCTUnwrap(RunCompletionVoiceAnnouncement(
+            distanceKilometers: 0,
+            elapsedSeconds: 0,
+            averagePaceMinutesPerKilometer: 0
+        ))
+        var prompts = [
+            RunningStateVoiceAnnouncement.started.text,
+            RunningStateVoiceAnnouncement.paused.text,
+            RunningStateVoiceAnnouncement.resumed.text,
+            lap.text,
+            RunCompletionVoiceAnnouncement.openingText,
+            completion.detailsText,
+            noPace.detailsText,
+            completion.text,
+            noPace.text
+        ]
+        for details in [completion.detailsText, noPace.detailsText] {
+            let parts = details.components(separatedBy: ". ")
+            XCTAssertGreaterThan(parts.count, 1)
+            prompts.append(parts[0] + ".")
+            prompts.append(parts.dropFirst().joined(separator: ". "))
+        }
+        for prompt in prompts {
+            let tokens = try XCTUnwrap(tokenizer.tokenIDs(for: prompt), prompt)
+            XCTAssertGreaterThan(tokens.count, 2)
+            XCTAssertEqual(tokens.first, 0)
+            XCTAssertEqual(tokens.last, 0)
+        }
+    }
+
+    func testMeloModelSynthesizesOfflineAudio() {
+        let engine = MeloSpeechEngine.shared
+        engine.prepare()
+        let deadline = Date().addingTimeInterval(30)
+        while !engine.isReady && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertTrue(engine.isReady, "Bundled MeloTTS model must load on iOS")
+
+        let completed = expectation(description: "MeloTTS audio")
+        let startedAt = Date()
+        let lap = LapVoiceAnnouncement(kilometer: 2, elapsedSeconds: 652, averagePaceMinutesPerKilometer: 5.45)!
+        engine.synthesize(lap.text) { data in
+            XCTAssertEqual(data?.prefix(4), Data("RIFF".utf8))
+            XCTAssertGreaterThan(data?.count ?? 0, 44)
+            if let data {
+                do {
+                    let player = try AVAudioPlayer(data: data)
+                    XCTAssertTrue(player.prepareToPlay())
+                } catch {
+                    XCTFail("MeloTTS WAV cannot be decoded: \(error)")
+                }
+            }
+            print("MeloTTS simulator lap inference: \(Date().timeIntervalSince(startedAt)) seconds")
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 30)
     }
 
     func testRunCompletionVoiceAnnouncementIncludesDistanceTimeAndAveragePace() {
@@ -830,4 +924,13 @@ final class PacingTests: XCTestCase {
         )
     }
 
+}
+
+private final class VoiceAnnouncerSpy: RunningVoiceAnnouncing {
+    private(set) var stopCount = 0
+
+    func announce(_ announcement: LapVoiceAnnouncement) {}
+    func announce(_ announcement: RunningStateVoiceAnnouncement) {}
+    func announce(_ announcement: RunCompletionVoiceAnnouncement) {}
+    func stop() { stopCount += 1 }
 }

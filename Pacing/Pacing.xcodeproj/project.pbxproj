@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B6EEF28BF2A5056301B270F9 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = 2BA5E430D68D4BBF4A90C7F1 /* onnxruntime */; };
 		BC5791DF2FED131F006C925A /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791DE2FED131F006C925A /* FirebaseAuth */; };
 		BC5791E12FED131F006C925A /* FirebaseDatabase in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791E02FED131F006C925A /* FirebaseDatabase */; };
 		BC5791E32FED131F006C925A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BC5791E22FED131F006C925A /* FirebaseFirestore */; };
@@ -144,6 +145,7 @@
 				BC5793802FF26808006C925A /* FirebaseMessaging in Frameworks */,
 				BC57937C2FF2CC58006C925A /* NaverThirdPartyLogin in Frameworks */,
 				BC5793732FF2672C006C925A /* KakaoSDKAuth in Frameworks */,
+				B6EEF28BF2A5056301B270F9 /* onnxruntime in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -244,6 +246,7 @@
 				BC5793782FF26808006C925A /* FirebaseFunctions */,
 				BC5793812FF26808006C925A /* FirebaseMessaging */,
 				BC57937B2FF2CC58006C925A /* NaverThirdPartyLogin */,
+				2BA5E430D68D4BBF4A90C7F1 /* onnxruntime */,
 			);
 			productName = Pacing;
 			productReference = BC57901A2FEC4AEF006C925A /* Pacing.app */;
@@ -412,6 +415,7 @@
 				BC57936A2FF2415D006C925A /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 				BC5793712FF2672C006C925A /* XCRemoteSwiftPackageReference "kakao-ios-sdk" */,
 				BC57937A2FF2CC58006C925A /* XCRemoteSwiftPackageReference "naveridlogin-sdk-ios" */,
+				1B02B4098E8DC56B6ADD942A /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BC57901B2FEC4AEF006C925A /* Products */;
@@ -1069,6 +1073,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		1B02B4098E8DC56B6ADD942A /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/microsoft/onnxruntime-swift-package-manager";
+			requirement = {
+				kind = exactVersion;
+				version = 1.24.2;
+			};
+		};
 		BC5791DD2FED131F006C925A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -1104,6 +1116,11 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		2BA5E430D68D4BBF4A90C7F1 /* onnxruntime */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 1B02B4098E8DC56B6ADD942A /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
+			productName = onnxruntime;
+		};
 		BC5791DE2FED131F006C925A /* FirebaseAuth */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BC5791DD2FED131F006C925A /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
