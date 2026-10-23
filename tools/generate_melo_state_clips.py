@@ -18,6 +18,7 @@ for name, text in {
     'started': '러닝을 시작합니다.',
     'paused': '운동을 정지합니다.',
     'resumed': '운동을 재개합니다.',
+    'completed': '운동을 완료했습니다.',
 }.items():
     phones = [0] + lexicon[text] + [0]
     tokens = np.array([[value for index, phone in enumerate(phones)
@@ -32,14 +33,16 @@ for name, text in {
         'bert': np.zeros((1, 1024, length), dtype=np.float32),
         'ja_bert': np.zeros((1, 768, length), dtype=np.float32),
         'noise_scale': np.array(0.6, dtype=np.float32),
-        'length_scale': np.array(1.0, dtype=np.float32),
+        'length_scale': np.array(1.08, dtype=np.float32),
         'noise_scale_w': np.array(0.8, dtype=np.float32),
         'sdp_ratio': np.array(0.2, dtype=np.float32),
     }
     audio = session.run(['audio'], inputs)[0]
+    brightened = audio.copy()
+    brightened[1:] += 0.12 * (audio[1:] - audio[:-1])
     with wave.open(str(ASSETS / f'melo_{name}.wav'), 'wb') as output:
         output.setnchannels(1)
         output.setsampwidth(2)
         output.setframerate(48_000)
-        output.writeframes((np.clip(audio, -1, 1) * 32_767).astype('<i2').tobytes())
+        output.writeframes((np.clip(brightened, -1, 1) * 32_767).astype('<i2').tobytes())
     print(name, round(len(audio) / 48_000, 2), 'seconds')

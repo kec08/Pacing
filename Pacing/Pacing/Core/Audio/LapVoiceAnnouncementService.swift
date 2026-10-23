@@ -56,6 +56,7 @@ enum RunningStateVoiceAnnouncement: Equatable {
 }
 
 struct RunCompletionVoiceAnnouncement: Equatable {
+    static let openingText = "운동을 완료했습니다."
     let distanceKilometers: Double
     let elapsedSeconds: Int
     let averagePaceMinutesPerKilometer: Double
@@ -77,7 +78,7 @@ struct RunCompletionVoiceAnnouncement: Equatable {
         self.averagePaceMinutesPerKilometer = averagePaceMinutesPerKilometer
     }
 
-    var text: String {
+    var detailsText: String {
         let elapsedHours = elapsedSeconds / 3_600
         let elapsedMinutes = (elapsedSeconds % 3_600) / 60
         let elapsedRemainingSeconds = elapsedSeconds % 60
@@ -96,8 +97,10 @@ struct RunCompletionVoiceAnnouncement: Equatable {
             paceText = "평균 페이스 정보 없음"
         }
 
-        return "운동을 완료했습니다. 총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터. 총 시간 \(elapsedText). \(paceText)."
+        return "총 거리 \(String(format: "%.2f", distanceKilometers))킬로미터. 총 시간 \(elapsedText). \(paceText)."
     }
+
+    var text: String { "\(Self.openingText) \(detailsText)" }
 }
 
 protocol RunningVoiceAnnouncing: AnyObject {
@@ -123,6 +126,10 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     private var activeUtterance: AVSpeechUtterance?
     private var audioPlayer: AVAudioPlayer?
     private var generationID: UUID?
+    private var completionPrefetchID: UUID?
+    private var completionDetailsText: String?
+    private var completionDetailsAudio: Data?
+    private var isCompletionPrefetching = false
 
     override init() {
         super.init()
@@ -139,7 +146,25 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {
-        speak(announcement.text, synthesisTimeout: 15)
+        let details = announcement.detailsText
+        let requestID = UUID()
+        completionPrefetchID = requestID
+        completionDetailsText = details
+        completionDetailsAudio = nil
+        isCompletionPrefetching = true
+        melo.synthesize(details) { [weak self] audio in
+            guard let self, self.completionPrefetchID == requestID else { return }
+            self.isCompletionPrefetching = false
+            if self.activeText == details {
+                self.generationID = nil
+                if let audio { self.playMelo(audio, text: details) }
+                else { self.speakWithSystemVoice(details) }
+            } else {
+                self.completionDetailsAudio = audio
+            }
+        }
+        speak(RunCompletionVoiceAnnouncement.openingText)
+        speak(details, synthesisTimeout: 15)
     }
 
     private func speak(_ text: String, synthesisTimeout: TimeInterval = 1.2) {
@@ -151,6 +176,19 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         guard activeText == nil, !pendingTexts.isEmpty else { return }
         let (text, synthesisTimeout) = pendingTexts.removeFirst()
         activeText = text
+        if completionDetailsText == text {
+            if let audio = completionDetailsAudio {
+                completionDetailsAudio = nil
+                playMelo(audio, text: text)
+                return
+            }
+            if isCompletionPrefetching {
+                let requestID = UUID()
+                generationID = requestID
+                scheduleSynthesisFallback(for: text, requestID: requestID, timeout: synthesisTimeout)
+                return
+            }
+        }
 
         // Fixed state prompts are bundled MeloTTS clips so the first cue starts at once.
         if let clip = Self.bundledClip(for: text),
@@ -179,10 +217,15 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         }
 
         // A slow inference must never delay or drop a kilometer announcement.
-        DispatchQueue.main.asyncAfter(deadline: .now() + synthesisTimeout) { [weak self] in
+        scheduleSynthesisFallback(for: text, requestID: requestID, timeout: synthesisTimeout)
+    }
+
+    private func scheduleSynthesisFallback(for text: String, requestID: UUID, timeout: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { [weak self] in
             guard let self, self.generationID == requestID, self.activeText == text else { return }
             self.generationID = nil
-            NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", synthesisTimeout)
+            if text == self.completionDetailsText { self.completionPrefetchID = nil }
+            NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", timeout)
             self.speakWithSystemVoice(text)
         }
     }
@@ -192,16 +235,16 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             let player = try AVAudioPlayer(data: audio)
             configureAudioSessionForAnnouncement()
             player.delegate = self
-            player.enableRate = true
-            player.rate = 0.92
             player.prepareToPlay()
             guard player.play() else {
+                NSLog("MeloTTS playback did not start; using the system Korean voice")
                 speakWithSystemVoice(text)
                 return
             }
             audioPlayer = player
             NotificationCenter.default.post(name: .runningVoiceAnnouncementDidStart, object: nil)
         } catch {
+            NSLog("MeloTTS playback failed: %@", String(describing: error))
             speakWithSystemVoice(text)
         }
     }
@@ -211,6 +254,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         case RunningStateVoiceAnnouncement.started.text: "melo_started"
         case RunningStateVoiceAnnouncement.paused.text: "melo_paused"
         case RunningStateVoiceAnnouncement.resumed.text: "melo_resumed"
+        case RunCompletionVoiceAnnouncement.openingText: "melo_completed"
         default: nil
         }
     }
@@ -220,7 +264,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = preferredKoreanVoice()
         utterance.rate = 0.48
-        utterance.pitchMultiplier = 1.08
+        utterance.pitchMultiplier = 1.12
         utterance.volume = 1.0
         activeUtterance = utterance
         NotificationCenter.default.post(name: .runningVoiceAnnouncementDidStart, object: nil)
@@ -230,6 +274,10 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     func stop() {
         pendingTexts.removeAll()
         generationID = nil
+        completionPrefetchID = nil
+        completionDetailsText = nil
+        completionDetailsAudio = nil
+        isCompletionPrefetching = false
         activeText = nil
         activeUtterance = nil
         audioPlayer?.stop()
@@ -239,12 +287,18 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private func finishCurrentAnnouncement() {
-        guard activeText != nil else { return }
+        guard let finishedText = activeText else { return }
+        if finishedText == completionDetailsText {
+            completionPrefetchID = nil
+            completionDetailsText = nil
+            completionDetailsAudio = nil
+            isCompletionPrefetching = false
+        }
         activeText = nil
         activeUtterance = nil
         audioPlayer = nil
-        restoreAudioSessionAfterAnnouncement()
         startNextIfNeeded()
+        if activeText == nil { restoreAudioSessionAfterAnnouncement() }
     }
 
     private func configureAudioSessionForAnnouncement() {
