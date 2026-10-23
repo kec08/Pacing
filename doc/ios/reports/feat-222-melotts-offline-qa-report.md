@@ -1,0 +1,54 @@
+# MeloTTS 오프라인 음성 안내 QA 보고서
+
+## 상태
+
+iPhone 앱 연결 및 시뮬레이터 음성 데이터 생성 확인. 실기기 청취와 성능 QA 대기.
+
+## 관련 작업
+
+- 이슈: [#222](https://github.com/kec08/Pacing/issues/222)
+- 브랜치: `feat/222-melotts-offline` (`dev`의 PR #223 머지 커밋 기준)
+- PR: 아직 생성하지 않음
+
+## 변경 사항
+
+- iPhone 타깃에 Microsoft ONNX Runtime Swift Package 1.24.2를 추가했다.
+- [MeloTTS 한국어 ONNX 변환본](https://huggingface.co/gnyong/melotts-kr-onnx/tree/main)의 INT8 모델과 MIT 라이선스·출처를 앱에 포함했다. 모델 SHA-256은 `421b94ce7e803fdd0126c7d39d90192b64878794619668cf3ec12611fc860f88`이다.
+- 러닝 상태, 1km 랩, 종료 문장의 한국어 발음 사전을 g2pkk로 생성해 번들에 포함했다. 숫자와 단위를 토큰으로 조립하므로 기기에서 Python이나 인터넷이 필요하지 않다.
+- 모델은 러닝 화면에서 비동기로 준비하며 추론은 별도 큐에서 실행한다. 미준비·지원하지 않는 값·추론 실패·1.2초 초과 시 기존 `AVSpeechSynthesizer`로 대체해 안내를 계속한다.
+- MeloTTS WAV와 기존 음성 모두 동일한 `AVAudioSession` 음악 ducking 및 안내 큐를 사용한다.
+
+## 검증
+
+| 항목 | 결과 |
+| --- | --- |
+| iOS/Watch Debug Simulator `build-for-testing` | 통과 |
+| 모델·발음 사전의 iPhone 앱 번들 포함 | 확인 |
+| iOS 26 Simulator 한국어 안내 토큰 및 모델 WAV 생성·오디오 디코딩 테스트 | 통과 |
+| macOS CPU 1km 예시 합성 | 4.75초 음성 생성, 추론 약 0.26초. iPhone 성능 근거로 사용하지 않음 |
+| iPhone arm64 Debug 빌드 | 통과 (`CODE_SIGNING_ALLOWED=NO`) |
+| iPhone 실기기 발음·첫 발화·음악 덕킹 | 미검증 |
+| `git diff --check` | 최종 커밋 전 확인 |
+
+## 실기기 QA
+
+- [ ] 러닝 시작, 일시정지, 재개, 종료 안내가 한국어로 자연스럽게 들린다.
+- [ ] 1km, 2km, 3km 안내가 각각 빠짐없이 나오고 거리·시간·페이스 숫자를 정확히 읽는다.
+- [ ] 모델 준비 전 또는 추론 지연 시 시스템 음성으로 대체되어 안내가 누락되지 않는다. 콘솔의 `MeloTTS inference`와 대체 로그를 확인한다.
+- [ ] Apple Music과 Bluetooth 이어폰에서 안내 중 곡은 계속 재생되고 음량이 낮아졌다가 복원된다.
+- [ ] 화면 잠금·백그라운드·Watch 연결 상태에서 안내 순서와 러닝 거리 측정이 유지된다.
+- [ ] 앱 크기, 첫 모델 로딩 시간, 메모리, 연속 안내의 발화 시작 지연을 기록한다.
+
+## 제한
+
+- 모델 파일만 약 53.5 MB이며 ONNX Runtime이 앱 크기와 메모리를 추가로 사용한다.
+- iOS 26 Simulator의 모델 로딩을 포함한 1km 합성 테스트 한 건은 약 12.6초였다. 첫 로딩과 추론을 분리한 실기기 측정이 필요하다.
+- 한국어 발음 사전은 러닝 안내의 숫자·단위 범위에 맞춰 생성했다. 지원 범위를 벗어나면 시스템 음성으로 대체한다.
+- iPhone 실기기에서 MeloTTS 출력의 발음·속도·이어폰 라우팅은 아직 확인되지 않았다. 시뮬레이터 WAV 생성만으로 실기기 품질을 보장할 수 없다.
+- 음성 합성은 iPhone에서 수행한다. Watch 앱 자체에는 별도 MeloTTS 추론 엔진을 넣지 않았다.
+# 최종 확인 (2026-10-23)
+
+- 시작·일시정지·재개 MeloTTS 음성 클립을 앱 번들에서 확인하고 iOS 시뮬레이터 디코딩 테스트를 통과했다.
+- iOS/Watch 시뮬레이터 `build-for-testing` 및 iPhone arm64 Debug 빌드가 통과했다.
+- 오프라인 한국어 토큰 변환과 실제 ONNX 1km 안내 음성 생성 테스트 2개가 통과했다.
+- 실기기에서 음질, Bluetooth 출력, 음악 볼륨 감소·복원, 백그라운드 재생과 첫 발화 지연은 개발자 QA가 필요하다.
