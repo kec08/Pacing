@@ -33,7 +33,7 @@ for name, text in {
         'bert': np.zeros((1, 1024, length), dtype=np.float32),
         'ja_bert': np.zeros((1, 768, length), dtype=np.float32),
         'noise_scale': np.array(0.6, dtype=np.float32),
-        'length_scale': np.array(1.08, dtype=np.float32),
+        'length_scale': np.array(1.04, dtype=np.float32),
         'noise_scale_w': np.array(0.8, dtype=np.float32),
         'sdp_ratio': np.array(0.2, dtype=np.float32),
     }
