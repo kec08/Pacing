@@ -100,9 +100,23 @@ final class PacingTests: XCTestCase {
     }
 
     func testRunningStateVoiceAnnouncementsUseExpectedKoreanMessages() {
-        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "러닝을 시작합니다.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "이제 러닝을 시작합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "운동을 정지합니다.")
         XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
+    }
+
+    func testResetKeepsFinishBriefingPlaying() {
+        let voice = VoiceAnnouncerSpy()
+        let viewModel = RunningViewModel(locationManager: LocationManager(), voiceAnnouncer: voice)
+        viewModel.state = .finished
+
+        viewModel.reset()
+
+        XCTAssertEqual(voice.stopCount, 0)
+
+        viewModel.state = .running
+        viewModel.reset()
+        XCTAssertEqual(voice.stopCount, 1)
     }
 
     func testMeloLexiconCoversRunningAnnouncementsOffline() throws {
@@ -904,4 +918,13 @@ final class PacingTests: XCTestCase {
         )
     }
 
+}
+
+private final class VoiceAnnouncerSpy: RunningVoiceAnnouncing {
+    private(set) var stopCount = 0
+
+    func announce(_ announcement: LapVoiceAnnouncement) {}
+    func announce(_ announcement: RunningStateVoiceAnnouncement) {}
+    func announce(_ announcement: RunCompletionVoiceAnnouncement) {}
+    func stop() { stopCount += 1 }
 }

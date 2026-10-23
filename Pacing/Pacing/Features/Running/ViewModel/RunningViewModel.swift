@@ -140,7 +140,7 @@ final class RunningViewModel: ObservableObject {
         heartRateRepository: HeartRateRepository = HealthKitHeartRateRepository(),
         cadenceRepository: CadenceRepository = CoreMotionCadenceRepository(),
         elevationRepository: ElevationRepository = CoreMotionElevationRepository(),
-        voiceAnnouncer: RunningVoiceAnnouncing = LapVoiceAnnouncementService()
+        voiceAnnouncer: RunningVoiceAnnouncing = LapVoiceAnnouncementService.shared
     ) {
         self.locationManager = locationManager
         self.heartRateRepository = heartRateRepository
@@ -238,6 +238,8 @@ final class RunningViewModel: ObservableObject {
         guard locationManager.hasAlwaysAuthorization else {
             return false
         }
+
+        voiceAnnouncer.stop()
 
         locationManager.resetRoute()
         elapsedSeconds = 0
@@ -382,7 +384,7 @@ final class RunningViewModel: ObservableObject {
     func reset() {
         cancelCountdown()
         timer?.cancel()
-        voiceAnnouncer.stop()
+        if state != .finished { voiceAnnouncer.stop() }
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
         locationManager.resetRoute()

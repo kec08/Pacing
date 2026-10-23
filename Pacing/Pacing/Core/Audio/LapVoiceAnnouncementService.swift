@@ -46,7 +46,7 @@ enum RunningStateVoiceAnnouncement: Equatable {
     var text: String {
         switch self {
         case .started:
-            "러닝을 시작합니다."
+            "이제 러닝을 시작합니다."
         case .paused:
             "운동을 정지합니다."
         case .resumed:
@@ -111,6 +111,8 @@ protocol RunningVoiceAnnouncing: AnyObject {
 }
 
 final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
+    // The finish briefing must outlive dismissal of the running view.
+    static let shared = LapVoiceAnnouncementService()
     private struct AudioSessionConfiguration {
         let category: AVAudioSession.Category
         let mode: AVAudioSession.Mode
