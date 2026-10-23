@@ -9,6 +9,17 @@ struct PhoneRunSnapshot: Codable {
     let sentAt: Date
 }
 
+/// HealthKit의 워치 누적 거리/운동시간을 iPhone에 전달하는 실시간 러닝 값입니다.
+struct WatchRunMetricsSnapshot: Codable, Equatable {
+    enum State: String, Codable { case running, paused, ended }
+
+    let sessionID: UUID
+    let state: State
+    let elapsedSeconds: Int
+    let distanceMeters: Double
+    let sentAt: Date
+}
+
 struct PhoneRunHistorySnapshot: Codable, Equatable {
     let monthDistanceKilometers: Double
     let monthRunCount: Int

@@ -10,6 +10,8 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
     private var workoutSession: HKWorkoutSession?
     private var workoutBuilder: HKLiveWorkoutBuilder?
 
+    var hasActiveWorkoutSession: Bool { workoutSession != nil }
+
     init(healthStore: HKHealthStore = HKHealthStore()) {
         self.healthStore = healthStore
     }
@@ -71,7 +73,12 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
         workoutSession.end()
         do {
             try await endCollection(workoutBuilder)
-            _ = try await finishWorkout(workoutBuilder)
+            if let workout = try await finishWorkout(workoutBuilder) {
+                if let distance = workout.totalDistance?.doubleValue(for: .meter()), distance.isFinite, distance > 0 {
+                    liveMetrics.distanceMeters = distance
+                }
+                liveMetrics.elapsed = workout.duration
+            }
             self.workoutSession = nil
             self.workoutBuilder = nil
         } catch {
@@ -151,7 +158,9 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
         guard let workoutBuilder else { return }
         let heartRate = quantityValue(for: .heartRate, unit: .count().unitDivided(by: .minute()), builder: workoutBuilder)
         let energy = quantityValue(for: .activeEnergyBurned, unit: .kilocalorie(), builder: workoutBuilder)
-        let distance = quantityValue(for: .distanceWalkingRunning, unit: .meter(), builder: workoutBuilder) ?? 0
+        let distanceStatistics = workoutBuilder.statistics(for: HKQuantityType(.distanceWalkingRunning))
+        let distance = distanceStatistics?.sumQuantity()?.doubleValue(for: .meter())
+            ?? liveMetrics.distanceMeters
 
         liveMetrics.heartRateBeatsPerMinute = heartRate
         liveMetrics.activeEnergyKilocalories = energy
