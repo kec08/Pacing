@@ -53,6 +53,7 @@ struct WatchRunMetrics: Equatable {
     var elapsed: TimeInterval = 0
     var distanceMeters: Double = 0
     var currentPaceSecondsPerKilometer: Double?
+    var averagePaceSecondsPerKilometer: Double?
     var heartRateBeatsPerMinute: Double?
     var activeEnergyKilocalories: Double?
     var elevationGainMeters: Double?
@@ -150,6 +151,12 @@ extension WatchRunMetrics {
     }
 
     var formattedAveragePace: String {
+        if let averagePaceSecondsPerKilometer {
+            guard averagePaceSecondsPerKilometer.isFinite,
+                  averagePaceSecondsPerKilometer > 0 else { return "--'--\"" }
+            let seconds = Int(averagePaceSecondsPerKilometer.rounded())
+            return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
+        }
         guard distanceMeters > 0, elapsed > 0 else { return "--'--\"" }
         let secondsPerKilometer = elapsed / (distanceMeters / 1_000)
         guard secondsPerKilometer.isFinite, secondsPerKilometer > 0 else { return "--'--\"" }

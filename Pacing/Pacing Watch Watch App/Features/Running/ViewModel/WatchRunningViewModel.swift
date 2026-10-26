@@ -18,6 +18,7 @@ final class WatchRunningViewModel: ObservableObject {
     private var latestPhoneEndAt: Date?
     private var dismissedPhoneEndAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
+    private var latestPhoneSnapshotAt = Date.distantPast
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
     private var cancellables = Set<AnyCancellable>()
@@ -38,7 +39,10 @@ final class WatchRunningViewModel: ObservableObject {
         workoutRepository.$liveMetrics
             .receive(on: DispatchQueue.main)
             .sink { [weak self] liveMetrics in
-                self?.metrics.distanceMeters = liveMetrics.distanceMeters
+                if let self, Date.now.timeIntervalSince(self.latestPhoneSnapshotAt) >= 15 {
+                    self.metrics.distanceMeters = liveMetrics.distanceMeters
+                    self.metrics.averagePaceSecondsPerKilometer = nil
+                }
                 self?.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
                 self?.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
                 if self?.state == .ending, liveMetrics.elapsed > 0 {
@@ -169,10 +173,10 @@ final class WatchRunningViewModel: ObservableObject {
     }
 
     private func updateMetrics(from snapshot: PhoneRunSnapshot) {
+        latestPhoneSnapshotAt = .now
         metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
-        if !workoutRepository.hasActiveWorkoutSession {
-            metrics.distanceMeters = snapshot.distanceKilometers * 1_000
-        }
+        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        metrics.averagePaceSecondsPerKilometer = (snapshot.averagePaceMinutesPerKilometer ?? 0) * 60
         metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
             ? snapshot.paceMinutesPerKilometer * 60
             : nil
@@ -367,6 +371,7 @@ final class WatchRunningViewModel: ObservableObject {
     }
 
     private func resetMetrics() {
+        latestPhoneSnapshotAt = .distantPast
         metrics = .empty
         elapsedBeforeCurrentSegment = 0
     }

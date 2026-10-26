@@ -3,6 +3,37 @@ import XCTest
 
 @MainActor
 final class WatchRunningViewModelTests: XCTestCase {
+    func testPhoneSnapshotUsesPhoneAveragePaceAndDistance() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        let snapshot = PhoneRunSnapshot(
+            state: .running,
+            elapsedSeconds: 222,
+            distanceKilometers: 0.5,
+            paceMinutesPerKilometer: 6,
+            averagePaceMinutesPerKilometer: 5.4,
+            sentAt: .now
+        )
+
+        viewModel.applyPhoneSnapshot(snapshot)
+
+        XCTAssertEqual(viewModel.metrics.formattedDistance, "0.50")
+        XCTAssertEqual(viewModel.metrics.formattedAveragePace, "5'24\"")
+    }
+
+    func testPhoneSnapshotWithoutValidAveragePaceShowsPlaceholder() {
+        let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
+        viewModel.applyPhoneSnapshot(PhoneRunSnapshot(
+            state: .running,
+            elapsedSeconds: 222,
+            distanceKilometers: 0.06,
+            paceMinutesPerKilometer: 0,
+            averagePaceMinutesPerKilometer: nil,
+            sentAt: .now
+        ))
+
+        XCTAssertEqual(viewModel.metrics.formattedAveragePace, "--'--\"")
+    }
+
     func testPreviewModeStartsCountdownWithoutHealthKitSession() {
         let viewModel = WatchRunningViewModel(usesPreviewMetrics: true)
 
@@ -44,6 +75,7 @@ final class WatchRunningViewModelTests: XCTestCase {
             elapsedSeconds: 120,
             distanceKilometers: 1,
             paceMinutesPerKilometer: 5,
+            averagePaceMinutesPerKilometer: nil,
             sentAt: endedAt
         )
 
@@ -60,6 +92,7 @@ final class WatchRunningViewModelTests: XCTestCase {
                 elapsedSeconds: 60,
                 distanceKilometers: 0.5,
                 paceMinutesPerKilometer: 5,
+                averagePaceMinutesPerKilometer: nil,
                 sentAt: startedAt
             )
         )
@@ -70,6 +103,7 @@ final class WatchRunningViewModelTests: XCTestCase {
                 elapsedSeconds: 120,
                 distanceKilometers: 1,
                 paceMinutesPerKilometer: 5,
+                averagePaceMinutesPerKilometer: nil,
                 sentAt: Date(timeIntervalSince1970: 1_000)
             )
         )
@@ -86,6 +120,7 @@ final class WatchRunningViewModelTests: XCTestCase {
                 elapsedSeconds: 60,
                 distanceKilometers: 0.5,
                 paceMinutesPerKilometer: 5,
+                averagePaceMinutesPerKilometer: nil,
                 sentAt: Date(timeIntervalSince1970: 900)
             )
         )

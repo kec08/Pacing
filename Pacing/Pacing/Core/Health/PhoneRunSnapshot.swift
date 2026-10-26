@@ -7,6 +7,7 @@ struct PhoneRunSnapshot: Codable {
     let elapsedSeconds: Int
     let distanceKilometers: Double
     let paceMinutesPerKilometer: Double
+    let averagePaceMinutesPerKilometer: Double?
     let sentAt: Date
 }
 
