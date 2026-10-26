@@ -746,7 +746,7 @@ final class RunningViewModel: ObservableObject {
         guard snapshot.distanceMeters > 0 else { return }
 
         usesWatchWorkoutDistance = true
-        distance = snapshot.distanceMeters / 1_000
+        distance = max(distance, gpsDistance, snapshot.distanceMeters / 1_000)
         elapsedSeconds = snapshot.elapsedSeconds
 
         switch snapshot.state {
@@ -762,6 +762,12 @@ final class RunningViewModel: ObservableObject {
         }
 
         updateDisplayedPace()
+        let phoneState: PhoneRunSnapshot.State = switch state {
+        case .running, .idle: .running
+        case .paused: .paused
+        case .finished: .ended
+        }
+        publishRunSnapshot(state: phoneState, persist: false)
     }
 
     private func syncElapsedSeconds(referenceDate: Date = Date()) {
@@ -781,6 +787,17 @@ final class RunningViewModel: ObservableObject {
                 elapsedSeconds: elapsedSeconds,
                 distanceKilometers: distance,
                 paceMinutesPerKilometer: currentPace,
+                averagePaceMinutesPerKilometer: avgPace > 0 ? avgPace : nil,
+                currentPaceText: formattedPace,
+                averagePaceText: formattedAvgPace,
+                lapPaces: completedLapPaces.map {
+                    let minutes = Int($0.pace)
+                    let seconds = Int(($0.pace - Double(minutes)) * 60)
+                    return PhoneRunLapPace(
+                        kilometer: $0.kilometer,
+                        paceText: String(format: "%d'%02d\"", minutes, seconds)
+                    )
+                },
                 sentAt: .now
             ),
             persist: persist

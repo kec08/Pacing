@@ -77,13 +77,9 @@ struct WatchRunSummaryView: View {
                     HStack {
                         Text("\(split.kilometer)")
                             .foregroundStyle(PacingWatchTheme.textSecondary)
-                        Text(formatPace(split.paceSecondsPerKilometer))
+                        Text(split.paceText)
                             .fontWeight(.semibold)
                         Spacer()
-                        if let difference = split.differenceSeconds {
-                            Text(formatDifference(difference))
-                                .foregroundStyle(PacingWatchTheme.textSecondary)
-                        }
                     }
                     .font(.caption)
                     .padding(.horizontal, 10)
@@ -106,16 +102,6 @@ struct WatchRunSummaryView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
-    }
-
-    private func formatPace(_ seconds: TimeInterval) -> String {
-        let rounded = Int(seconds.rounded())
-        return String(format: "%d'%02d\"", rounded / 60, rounded % 60)
-    }
-
-    private func formatDifference(_ seconds: TimeInterval) -> String {
-        let rounded = Int(seconds.rounded())
-        return String(format: "%+d\"", rounded)
     }
 }
 
