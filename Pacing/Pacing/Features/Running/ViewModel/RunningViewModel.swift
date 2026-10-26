@@ -744,7 +744,7 @@ final class RunningViewModel: ObservableObject {
         guard snapshot.distanceMeters > 0 else { return }
 
         usesWatchWorkoutDistance = true
-        distance = snapshot.distanceMeters / 1_000
+        distance = max(distance, gpsDistance, snapshot.distanceMeters / 1_000)
         elapsedSeconds = snapshot.elapsedSeconds
 
         switch snapshot.state {
@@ -779,6 +779,7 @@ final class RunningViewModel: ObservableObject {
                 elapsedSeconds: elapsedSeconds,
                 distanceKilometers: distance,
                 paceMinutesPerKilometer: currentPace,
+                averagePaceMinutesPerKilometer: avgPace > 0 ? avgPace : nil,
                 sentAt: .now
             ),
             persist: persist
