@@ -54,6 +54,8 @@ struct WatchRunMetrics: Equatable {
     var distanceMeters: Double = 0
     var currentPaceSecondsPerKilometer: Double?
     var averagePaceSecondsPerKilometer: Double?
+    var currentPaceText: String?
+    var averagePaceText: String?
     var heartRateBeatsPerMinute: Double?
     var activeEnergyKilocalories: Double?
     var elevationGainMeters: Double?
@@ -73,8 +75,7 @@ struct WatchRunRoutePoint: Equatable {
 /// 1 km 단위 구간 기록입니다. 운동 기록 저장소가 제공하면 종료 요약에 표시합니다.
 struct WatchRunSplit: Identifiable, Equatable {
     let kilometer: Int
-    let paceSecondsPerKilometer: TimeInterval
-    let differenceSeconds: TimeInterval?
+    let paceText: String
 
     var id: Int { kilometer }
 }
@@ -83,6 +84,7 @@ enum WatchRunDisplayMetric: CaseIterable, Hashable {
     case elapsed
     case distance
     case averagePace
+    case currentPace
     case heartRate
     case calories
     case elevationGain
@@ -92,6 +94,7 @@ enum WatchRunDisplayMetric: CaseIterable, Hashable {
         case .elapsed: "시간"
         case .distance: "킬로미터"
         case .averagePace: "평균 페이스"
+        case .currentPace: "현재 페이스"
         case .heartRate: "BPM"
         case .calories: "칼로리"
         case .elevationGain: "고도 상승"
@@ -142,26 +145,28 @@ extension WatchRunMetrics {
     }
 
     var formattedPace: String {
+        if let currentPaceText { return currentPaceText }
         guard let currentPaceSecondsPerKilometer, currentPaceSecondsPerKilometer > 0 else {
             return "--'--\""
         }
 
-        let seconds = Int(currentPaceSecondsPerKilometer.rounded())
+        let seconds = Int(currentPaceSecondsPerKilometer)
         return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
     }
 
     var formattedAveragePace: String {
+        if let averagePaceText { return averagePaceText }
         if let averagePaceSecondsPerKilometer {
             guard averagePaceSecondsPerKilometer.isFinite,
                   averagePaceSecondsPerKilometer > 0 else { return "--'--\"" }
-            let seconds = Int(averagePaceSecondsPerKilometer.rounded())
+            let seconds = Int(averagePaceSecondsPerKilometer)
             return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
         }
         guard distanceMeters > 0, elapsed > 0 else { return "--'--\"" }
         let secondsPerKilometer = elapsed / (distanceMeters / 1_000)
         guard secondsPerKilometer.isFinite, secondsPerKilometer > 0 else { return "--'--\"" }
 
-        let seconds = Int(secondsPerKilometer.rounded())
+        let seconds = Int(secondsPerKilometer)
         return String(format: "%d'%02d\"", seconds / 60, seconds % 60)
     }
 
@@ -183,6 +188,7 @@ extension WatchRunMetrics {
         case .elapsed: formattedElapsed
         case .distance: formattedDistance
         case .averagePace: formattedAveragePace
+        case .currentPace: formattedPace
         case .heartRate: formattedHeartRate
         case .calories: formattedCalories
         case .elevationGain: formattedElevationGain
