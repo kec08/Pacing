@@ -616,6 +616,7 @@ final class RunningViewModel: ObservableObject {
             // Keep the last accepted point when a segment is rejected. Advancing it on every
             // rejected 5m fix permanently discarded distance before the next callback.
             lastLocation = location
+            locationManager.appendAcceptedRouteSegment(from: [last, location])
 
             let deltaKm = deltaMeters / 1000.0
             gpsDistance += deltaKm

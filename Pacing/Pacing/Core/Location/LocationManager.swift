@@ -200,7 +200,6 @@ extension LocationManager: CLLocationManagerDelegate {
 
         self.recordedLocations.append(contentsOf: recordedLocations)
         recentRecordedLocations = recordedLocations
-        appendRouteCoordinates(from: recordedLocations)
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
@@ -212,7 +211,7 @@ extension LocationManager: CLLocationManagerDelegate {
         }
     }
 
-    private func appendRouteCoordinates(from locations: [CLLocation]) {
+    func appendAcceptedRouteSegment(from locations: [CLLocation]) {
         for location in locations {
             let coordinate = location.coordinate
 
