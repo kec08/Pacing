@@ -40,6 +40,7 @@ final class LocationManager: NSObject, ObservableObject {
 
     private let manager = CLLocationManager()
     private var isRecordingRoute = false
+    private var recordingStartedAt: Date?
     private var notificationObservers: [NSObjectProtocol] = []
 
     override init() {
@@ -86,6 +87,7 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     func startTracking() {
+        recordingStartedAt = .now
         isRecordingRoute = true
         configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
@@ -93,6 +95,7 @@ final class LocationManager: NSObject, ObservableObject {
 
     func stopTracking() {
         isRecordingRoute = false
+        recordingStartedAt = nil
         recentRecordedLocations = []
         configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
@@ -100,6 +103,7 @@ final class LocationManager: NSObject, ObservableObject {
 
     func resetRoute() {
         isRecordingRoute = false
+        recordingStartedAt = nil
         routeCoordinates = []
         recentRecordedLocations = []
         recordedLocations = []
@@ -158,13 +162,15 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     private func filteredRouteLocations(from locations: [CLLocation]) -> [CLLocation] {
-        // 백그라운드에서는 위치가 배치로 도착하고 정확도가 다소 흔들릴 수 있어 허용 범위를 완화한다.
-        let maxHorizontalAccuracy = UIApplication.shared.applicationState == .active ? 30.0 : 65.0
-
         return locations.filter { location in
-            location.horizontalAccuracy >= 0 &&
+            // 화면 복귀 후 전달된 백그라운드 배치도 측정 시점에 맞는 정확도로 평가한다.
+            let isLiveForeground = UIApplication.shared.applicationState == .active &&
+                location.timestamp.timeIntervalSinceNow > -5
+            let maxHorizontalAccuracy = isLiveForeground ? 30.0 : 65.0
+            return location.horizontalAccuracy >= 0 &&
             location.horizontalAccuracy <= maxHorizontalAccuracy &&
-            abs(location.timestamp.timeIntervalSinceNow) < 180
+            location.timestamp >= (recordingStartedAt ?? .distantPast).addingTimeInterval(-15) &&
+            location.timestamp.timeIntervalSinceNow <= 10
         }
     }
 }
