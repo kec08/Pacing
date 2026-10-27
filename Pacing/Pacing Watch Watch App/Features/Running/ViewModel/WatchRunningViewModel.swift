@@ -131,6 +131,7 @@ final class WatchRunningViewModel: ObservableObject {
     func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) -> Bool {
         switch snapshot.state {
         case .running:
+            if let sessionID = snapshot.sessionID { self.sessionID = sessionID }
             updateMetrics(from: snapshot)
             dismissedPhoneEndAt = nil
             // iPhone 스냅샷과 Watch 자체 타이머가 서로 다른 시작 시각을 기준으로

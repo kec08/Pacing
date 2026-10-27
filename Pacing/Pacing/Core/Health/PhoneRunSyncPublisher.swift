@@ -23,7 +23,11 @@ final class PhoneRunSyncPublisher: NSObject {
         guard let data = try? JSONEncoder().encode(snapshot),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
-        if persist { try? session.updateApplicationContext(["phoneRun": payload]) }
+        if persist {
+            var context = session.applicationContext
+            context["phoneRun"] = payload
+            try? session.updateApplicationContext(context)
+        }
         if session.isReachable { session.sendMessage(["phoneRun": payload], replyHandler: nil) }
     }
 

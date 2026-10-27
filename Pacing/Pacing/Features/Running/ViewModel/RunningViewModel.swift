@@ -781,7 +781,8 @@ final class RunningViewModel: ObservableObject {
                 elapsedSeconds: elapsedSeconds,
                 distanceKilometers: distance,
                 paceMinutesPerKilometer: currentPace,
-                sentAt: .now
+                sentAt: .now,
+                sessionID: sessionID
             ),
             persist: persist
         )

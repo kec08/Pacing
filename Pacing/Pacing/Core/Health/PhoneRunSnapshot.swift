@@ -8,6 +8,7 @@ struct PhoneRunSnapshot: Codable {
     let distanceKilometers: Double
     let paceMinutesPerKilometer: Double
     let sentAt: Date
+    var sessionID: UUID? = nil
 }
 
 /// Apple Watch HealthKit workout builder의 누적 거리/경과 시간을 iPhone 러닝에 전달합니다.
