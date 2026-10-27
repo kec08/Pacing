@@ -47,10 +47,17 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             workoutBuilder = builder
             liveMetrics = .empty
 
-            try await session.startMirroringToCompanionDevice()
-            try await beginCollection(builder, startDate: startDate)
             session.startActivity(with: startDate)
+            try await beginCollection(builder, startDate: startDate)
+            Task {
+                do {
+                    try await session.startMirroringToCompanionDevice()
+                } catch {
+                    NSLog("[Pacing] Watch 운동 미러링 연결 실패: %@", error.localizedDescription)
+                }
+            }
         } catch {
+            workoutSession?.end()
             workoutSession = nil
             workoutBuilder = nil
             throw WatchRunError.sessionStartFailed
@@ -74,8 +81,9 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
         do {
             try await endCollection(workoutBuilder)
             if let workout = try await finishWorkout(workoutBuilder) {
-                if let distance = workout.totalDistance?.doubleValue(for: .meter()), distance.isFinite, distance > 0 {
-                    liveMetrics.distanceMeters = distance
+                if let distance = workout.statistics(for: HKQuantityType(.distanceWalkingRunning))?
+                    .sumQuantity()?.doubleValue(for: .meter()), distance.isFinite, distance > 0 {
+                    liveMetrics.distanceMeters = max(liveMetrics.distanceMeters, distance)
                 }
                 liveMetrics.elapsed = workout.duration
             }
@@ -164,7 +172,7 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
 
         liveMetrics.heartRateBeatsPerMinute = heartRate
         liveMetrics.activeEnergyKilocalories = energy
-        liveMetrics.distanceMeters = distance
+        liveMetrics.distanceMeters = max(liveMetrics.distanceMeters, distance)
     }
 
     private func quantityValue(
