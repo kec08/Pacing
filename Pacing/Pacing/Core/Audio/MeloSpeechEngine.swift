@@ -1,8 +1,24 @@
 import Foundation
 import OnnxRuntimeBindings
+import UIKit
 
 /// Runs the bundled Korean MeloTTS ONNX model off the main thread.
 final class MeloSpeechEngine {
+    private final class BackgroundTask {
+        private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+        init() {
+            identifier = UIApplication.shared.beginBackgroundTask(withName: "MeloTTS synthesis") { [weak self] in
+                self?.end()
+            }
+        }
+
+        func end() {
+            guard identifier != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(identifier)
+            identifier = .invalid
+        }
+    }
     static let shared = MeloSpeechEngine()
 
     private let queue = DispatchQueue(label: "pacing.melotts", qos: .userInitiated)
@@ -48,6 +64,7 @@ final class MeloSpeechEngine {
     }
 
     func synthesize(_ text: String, completion: @escaping (Data?) -> Void) {
+        let backgroundTask = BackgroundTask()
         queue.async { [self] in
             let audio: Data?
             do {
@@ -61,7 +78,10 @@ final class MeloSpeechEngine {
                 NSLog("MeloTTS synthesis failed: %@", String(describing: error))
                 audio = nil
             }
-            DispatchQueue.main.async { completion(audio) }
+            DispatchQueue.main.async {
+                backgroundTask.end()
+                completion(audio)
+            }
         }
     }
 
