@@ -631,12 +631,13 @@ final class RunningViewModel: ObservableObject {
 
             let deltaKm = deltaMeters / 1000.0
             gpsDistance += deltaKm
-            if !usesWatchWorkoutDistance { distance = max(distance, gpsDistance) }
+            let previousDistance = distance
+            distance = max(distance, gpsDistance)
             if activeElevationLocations.isEmpty {
                 activeElevationLocations.append(last)
             }
             activeElevationLocations.append(location)
-            hasDistanceChanged = !usesWatchWorkoutDistance
+            hasDistanceChanged = hasDistanceChanged || distance > previousDistance
         }
 
         if hasDistanceChanged {
@@ -754,7 +755,8 @@ final class RunningViewModel: ObservableObject {
         guard snapshot.distanceMeters > 0 else { return }
 
         usesWatchWorkoutDistance = true
-        distance = snapshot.distanceMeters / 1_000
+        // 두 기기는 같은 러닝을 측정하므로 합산하지 않고, 작은 Watch 값이 iPhone GPS를 덮지 않게 한다.
+        distance = max(distance, gpsDistance, snapshot.distanceMeters / 1_000)
         elapsedSeconds = snapshot.elapsedSeconds
 
         switch snapshot.state {
