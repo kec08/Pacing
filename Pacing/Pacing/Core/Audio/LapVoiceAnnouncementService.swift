@@ -151,48 +151,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {
-        let details = announcement.detailsText
-        let parts = details.components(separatedBy: ". ")
-        guard parts.count > 1 else {
-            speak(RunCompletionVoiceAnnouncement.openingText)
-            speak(details, synthesisTimeout: 15)
-            return
-        }
-        let first = parts[0] + "."
-        let remaining = parts.dropFirst().joined(separator: ". ")
-        let requestID = UUID()
-        completionPrefetchID = requestID
-        completionDetailsText = first
-        completionDetailsAudio = nil
-        completionRemainingText = remaining
-        completionRemainingAudio = nil
-        isCompletionPrefetching = true
-        isCompletionRemainingPrefetching = true
-        melo.synthesize(first) { [weak self] audio in
-            guard let self, self.completionPrefetchID == requestID else { return }
-            self.isCompletionPrefetching = false
-            if self.activeText == first {
-                self.generationID = nil
-                if let audio { self.playMelo(audio, text: first) }
-                else { self.speakWithSystemVoice(first) }
-            } else {
-                self.completionDetailsAudio = audio
-            }
-        }
-        melo.synthesize(remaining) { [weak self] audio in
-            guard let self, self.completionPrefetchID == requestID else { return }
-            self.isCompletionRemainingPrefetching = false
-            if self.activeText == remaining {
-                self.generationID = nil
-                if let audio { self.playMelo(audio, text: remaining) }
-                else { self.speakWithSystemVoice(remaining) }
-            } else {
-                self.completionRemainingAudio = audio
-            }
-        }
-        speak(RunCompletionVoiceAnnouncement.openingText)
-        speak(first, synthesisTimeout: 15)
-        speak(remaining, synthesisTimeout: 15)
+        // 완료 브리핑을 하나의 MeloTTS 입력으로 합성해 문장 사이의 끊김과 음색 전환을 제거한다.
+        speak(announcement.text, synthesisTimeout: 15)
     }
 
     private func speak(_ text: String, synthesisTimeout: TimeInterval = 15) {
@@ -229,14 +189,6 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 scheduleSynthesisFallback(for: text, requestID: requestID, timeout: synthesisTimeout)
                 return
             }
-        }
-
-        // Fixed state prompts are bundled MeloTTS clips so the first cue starts at once.
-        if let clip = Self.bundledClip(for: text),
-           let url = Bundle.main.url(forResource: clip, withExtension: "wav"),
-           let audio = try? Data(contentsOf: url) {
-            playMelo(audio, text: text)
-            return
         }
 
         let requestID = UUID()

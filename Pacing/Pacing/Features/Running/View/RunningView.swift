@@ -12,6 +12,7 @@ private enum MusicSheetPanel {
 }
 
 private enum RunningMetric: CaseIterable, Hashable {
+    case time
     case distance
     case elevation
     case pace
@@ -67,6 +68,7 @@ struct RunningView: View {
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
     @State private var metricSlots: [RunningMetric] = [.distance, .pace, .averagePace]
+    @State private var topMetric: RunningMetric = .time
     @State private var listenSheetDetent: PresentationDetent = .medium
     @State private var countdownScale: CGFloat = 1
 
@@ -580,15 +582,22 @@ struct RunningView: View {
 
     private var runningStatsOverlay: some View {
         VStack(spacing: 0) {
-            // 시간 (크게, 중앙)
-            VStack(spacing: 2) {
-                Text(viewModel.formattedTime)
-                    .font(.system(size: 56, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.textPrimary)
-                Text("시간")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.textSecondary)
+            // 상단 지표도 하단 지표와 동일하게 탭으로 순환한다.
+            Button {
+                topMetric = nextMetric(after: topMetric, excluding: Set(metricSlots))
+            } label: {
+                VStack(spacing: 2) {
+                    Text(metricValue(for: topMetric))
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.textPrimary)
+                    Text(metricLabel(for: topMetric))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .padding(.top, 20)
             .padding(.bottom, 16)
@@ -656,6 +665,7 @@ struct RunningView: View {
 
     private func metricValue(for metric: RunningMetric) -> String {
         switch metric {
+        case .time: return viewModel.formattedTime
         case .distance: return viewModel.formattedDistance
         case .elevation: return viewModel.formattedElevationGain
         case .pace: return viewModel.formattedPace
@@ -668,6 +678,7 @@ struct RunningView: View {
 
     private func metricLabel(for metric: RunningMetric) -> String {
         switch metric {
+        case .time: return "시간"
         case .distance: return "km"
         case .elevation: return "고도 상승"
         case .pace: return "페이스"

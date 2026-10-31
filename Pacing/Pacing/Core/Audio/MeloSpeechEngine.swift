@@ -108,7 +108,7 @@ final class MeloSpeechEngine {
             "tone": try tensor(blankAwareTone, type: .int64, shape: textShape),
             "language": try tensor(blankAwareLanguage, type: .int64, shape: textShape),
             "noise_scale": try tensor([Float(0.6)], type: .float, shape: []),
-            "length_scale": try tensor([Float(1.04)], type: .float, shape: []),
+            "length_scale": try tensor([Float(0.98)], type: .float, shape: []),
             "noise_scale_w": try tensor([Float(0.8)], type: .float, shape: []),
             "sdp_ratio": try tensor([Float(0.2)], type: .float, shape: [])
         ].merging([
@@ -160,7 +160,7 @@ final class MeloSpeechEngine {
         for index in 0..<count {
             let sample = source[index]
             guard sample.isFinite else { throw MeloError.invalidOutput }
-            let brightened = sample + 0.12 * (sample - previous)
+            let brightened = sample + 0.18 * (sample - previous)
             previous = sample
             let value = Int16((max(-1, min(1, brightened)) * 32_767).rounded())
             data.appendLittleEndian(UInt16(bitPattern: value))
