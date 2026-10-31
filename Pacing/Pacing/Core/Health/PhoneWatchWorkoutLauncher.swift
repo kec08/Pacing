@@ -24,7 +24,15 @@ final class PhoneWatchWorkoutLauncher {
                 toShare: [HKObjectType.workoutType()],
                 read: []
             )
-            try await healthStore.startWatchApp(toHandle: configuration)
+do {
+    try await healthStore.startWatchApp(toHandle: configuration)
+    NSLog("[Pacing] Watch 러닝 앱 자동 실행 요청 완료")
+} catch {
+    // WatchConnectivity가 잠깐 준비 중인 경우 한 번만 재시도해 앱 자동 실행 누락을 줄인다.
+    try? await Task.sleep(nanoseconds: 500_000_000)
+    try await healthStore.startWatchApp(toHandle: configuration)
+    NSLog("[Pacing] Watch 러닝 앱 자동 실행 재시도 완료")
+}
         } catch {
             NSLog("[Pacing] Watch 러닝 앱 실행 실패: %@", error.localizedDescription)
         }

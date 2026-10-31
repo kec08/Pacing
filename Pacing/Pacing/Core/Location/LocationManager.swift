@@ -41,6 +41,7 @@ final class LocationManager: NSObject, ObservableObject {
     private let manager = CLLocationManager()
     private var isRecordingRoute = false
     private var recordingStartedAt: Date?
+    private var lastDisplayedLocation: CLLocation?
     private var notificationObservers: [NSObjectProtocol] = []
 
     override init() {
@@ -97,6 +98,7 @@ final class LocationManager: NSObject, ObservableObject {
         isRecordingRoute = false
         recordingStartedAt = nil
         recentRecordedLocations = []
+        lastDisplayedLocation = currentLocation
         configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
@@ -107,6 +109,7 @@ final class LocationManager: NSObject, ObservableObject {
         routeCoordinates = []
         recentRecordedLocations = []
         recordedLocations = []
+        lastDisplayedLocation = nil
         configureBackgroundLocationSupport()
     }
 
@@ -185,7 +188,12 @@ extension LocationManager: CLLocationManagerDelegate {
         let validLocations = locations.filter { $0.horizontalAccuracy >= 0 }
         guard !validLocations.isEmpty else { return }
 
-        currentLocation = validLocations.last
+        if let candidate = validLocations.last,
+           candidate.horizontalAccuracy <= 65,
+           isPlausibleDisplayLocation(candidate) {
+            lastDisplayedLocation = candidate
+            currentLocation = candidate
+        }
 
         guard isRecordingRoute else {
             recentRecordedLocations = []
@@ -200,6 +208,14 @@ extension LocationManager: CLLocationManagerDelegate {
 
         self.recordedLocations.append(contentsOf: recordedLocations)
         recentRecordedLocations = recordedLocations
+    }
+
+    private func isPlausibleDisplayLocation(_ candidate: CLLocation) -> Bool {
+        guard let previous = lastDisplayedLocation else { return true }
+        let elapsed = candidate.timestamp.timeIntervalSince(previous.timestamp)
+        guard elapsed > 0 else { return false }
+        let maxSpeed = isRecordingRoute ? 15.0 : 8.0
+        return candidate.distance(from: previous) / elapsed <= maxSpeed
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

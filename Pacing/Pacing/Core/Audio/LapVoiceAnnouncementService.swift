@@ -191,6 +191,14 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             }
         }
 
+        // 시작·정지·재개는 지연 없이 안내해야 하므로 검증된 MeloTTS 번들을 즉시 재생한다.
+        if let clip = Self.bundledClip(for: text),
+           let url = Bundle.main.url(forResource: clip, withExtension: "wav"),
+           let audio = try? Data(contentsOf: url) {
+            playMelo(audio, text: text)
+            return
+        }
+
         let requestID = UUID()
         generationID = requestID
         melo.synthesize(text) { [weak self] audio in
