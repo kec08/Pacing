@@ -135,6 +135,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     private var completionRemainingText: String?
     private var completionRemainingAudio: Data?
     private var isCompletionRemainingPrefetching = false
+private var completionText: String?
 
     override init() {
         super.init()
@@ -152,7 +153,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
 
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {
         // 완료 브리핑을 하나의 MeloTTS 입력으로 합성해 문장 사이의 끊김과 음색 전환을 제거한다.
-        speak(announcement.text, synthesisTimeout: 15)
+        completionText = announcement.text
+        speak(announcement.text, synthesisTimeout: 60)
     }
 
     private func speak(_ text: String, synthesisTimeout: TimeInterval = 15) {
@@ -206,6 +208,8 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             self.generationID = nil
             if let audio {
                 self.playMelo(audio, text: text)
+            } else if text == self.completionText {
+                NSLog("MeloTTS completion synthesis failed; system voice fallback skipped")
             } else {
                 self.speakWithSystemVoice(text)
             }
@@ -224,8 +228,12 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 self.isCompletionPrefetching = false
                 self.isCompletionRemainingPrefetching = false
             }
-            NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", timeout)
-            self.speakWithSystemVoice(text)
+            if text == self.completionText {
+                NSLog("MeloTTS completion synthesis exceeded %.1f seconds; system voice fallback skipped", timeout)
+            } else {
+                NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", timeout)
+                self.speakWithSystemVoice(text)
+            }
         }
     }
 
@@ -280,6 +288,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         completionRemainingText = nil
         completionRemainingAudio = nil
         isCompletionRemainingPrefetching = false
+completionText = nil
         activeText = nil
         activeUtterance = nil
         audioPlayer?.stop()

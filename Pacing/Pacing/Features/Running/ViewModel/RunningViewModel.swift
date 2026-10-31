@@ -273,12 +273,12 @@ final class RunningViewModel: ObservableObject {
         healthAuthorizationTask = Task { await heartRateRepository.requestReadAuthorization() }
         locationManager.startTracking()
         state = .running
-        voiceAnnouncer.announce(.started)
         if launchWatch {
             Task { @MainActor in
                 await PhoneWatchWorkoutLauncher.shared.launchRunningWorkout()
             }
         }
+voiceAnnouncer.announce(.started)
         PhoneRunSyncPublisher.shared.send(
             PhoneRunCommand(action: .start, sender: .phone, sessionID: sessionID, startAt: startedAt)
         )
