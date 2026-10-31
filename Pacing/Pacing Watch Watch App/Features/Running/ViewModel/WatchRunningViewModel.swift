@@ -69,6 +69,16 @@ final class WatchRunningViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
+        workoutRepository.$sessionError
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] error in
+                guard let self, let error, self.state == .running || self.state == .paused else { return }
+                self.timer?.cancel()
+                self.locationRepository.pauseTracking()
+                self.state = .failed(error)
+            }
+            .store(in: &cancellables)
+
         self.locationRepository.$routePoints
             .receive(on: DispatchQueue.main)
             .sink { [weak self] points in

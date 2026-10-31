@@ -5,6 +5,7 @@ import HealthKit
 @MainActor
 final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
     @Published private(set) var liveMetrics = WatchRunMetrics.empty
+    @Published private(set) var sessionError: WatchRunError?
 
     private let healthStore: HKHealthStore
     private var workoutSession: HKWorkoutSession?
@@ -46,6 +47,7 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             workoutSession = session
             workoutBuilder = builder
             liveMetrics = .empty
+            sessionError = nil
 
             session.startActivity(with: startDate)
             try await beginCollection(builder, startDate: startDate)
@@ -193,9 +195,12 @@ extension HealthKitWatchWorkoutRepository: HKWorkoutSessionDelegate {
     ) {}
 
     nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        NSLog("[Pacing] Watch 운동 세션 실패: %@", error.localizedDescription)
         Task { @MainActor [weak self] in
-            self?.workoutSession = nil
-            self?.workoutBuilder = nil
+            guard let self, self.workoutSession === workoutSession else { return }
+            self.workoutSession = nil
+            self.workoutBuilder = nil
+            self.sessionError = .sessionUnavailable
         }
     }
 }
