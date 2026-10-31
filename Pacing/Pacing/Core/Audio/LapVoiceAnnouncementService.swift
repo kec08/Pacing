@@ -363,15 +363,13 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 policy: .default,
                 options: [
                     .duckOthers,
-                    .interruptSpokenAudioAndMixWithOthers,
-                    .allowBluetoothHFP,
-                    .allowBluetoothA2DP
+                    .interruptSpokenAudioAndMixWithOthers
                 ]
             )
             try session.setActive(true)
             announcementSessionConfiguration = previousConfiguration
         } catch {
-            // Audio session failure must not interrupt running measurement or the fallback voice.
+            NSLog("[Pacing] 음성 안내 오디오 세션 설정 실패: %@", error.localizedDescription)
         }
     }
 
