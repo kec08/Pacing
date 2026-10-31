@@ -18,6 +18,8 @@ final class WatchRunningViewModel: ObservableObject {
     private var latestPhoneEndAt: Date?
     private var dismissedPhoneEndAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
+    private var paceReference: (meters: Double, date: Date)?
+    private var latestPaceAt: Date?
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
     private var cancellables = Set<AnyCancellable>()
@@ -38,14 +40,31 @@ final class WatchRunningViewModel: ObservableObject {
         workoutRepository.$liveMetrics
             .receive(on: DispatchQueue.main)
             .sink { [weak self] liveMetrics in
-                self?.metrics.distanceMeters = liveMetrics.distanceMeters
-                self?.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
-                self?.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
-                if self?.state == .ending, liveMetrics.elapsed > 0 {
-                    self?.metrics.elapsed = liveMetrics.elapsed
+                guard let self else { return }
+                if self.workoutRepository.hasActiveWorkoutSession, liveMetrics.distanceMeters > 0 {
+                    let now = Date()
+                    if let reference = self.paceReference {
+                        let seconds = now.timeIntervalSince(reference.date)
+                        let meters = liveMetrics.distanceMeters - reference.meters
+                        if seconds > 30 || meters < 0 {
+                            self.paceReference = (liveMetrics.distanceMeters, now)
+                        } else if meters >= 20, seconds >= 3 {
+                            self.metrics.currentPaceSecondsPerKilometer = seconds / (meters / 1_000)
+                            self.latestPaceAt = now
+                            self.paceReference = (liveMetrics.distanceMeters, now)
+                        }
+                    } else {
+                        self.paceReference = (liveMetrics.distanceMeters, now)
+                    }
                 }
-                if self?.state == .running || self?.state == .paused || self?.state == .ending {
-                    self?.publishWatchMetrics()
+                self.metrics.distanceMeters = liveMetrics.distanceMeters
+                self.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
+                self.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
+                if self.state == .ending, liveMetrics.elapsed > 0 {
+                    self.metrics.elapsed = liveMetrics.elapsed
+                }
+                if self.state == .running || self.state == .paused || self.state == .ending {
+                    self.publishWatchMetrics()
                 }
             }
             .store(in: &cancellables)
@@ -174,9 +193,11 @@ final class WatchRunningViewModel: ObservableObject {
         if !workoutRepository.hasActiveWorkoutSession {
             metrics.distanceMeters = snapshot.distanceKilometers * 1_000
         }
-        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
-            ? snapshot.paceMinutesPerKilometer * 60
-            : nil
+        if !workoutRepository.hasActiveWorkoutSession {
+            metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
+                ? snapshot.paceMinutesPerKilometer * 60
+                : nil
+        }
     }
 
     /// iPhone 종료도 Watch의 종료 요약을 유지한다. 사용자가 요약의 완료를 탭할 때만 홈으로 복귀한다.
@@ -345,6 +366,10 @@ final class WatchRunningViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 self?.syncElapsed()
+                if let latestPaceAt = self?.latestPaceAt,
+                   Date().timeIntervalSince(latestPaceAt) > 20 {
+                    self?.metrics.currentPaceSecondsPerKilometer = nil
+                }
                 self?.publishWatchMetrics()
             }
     }
@@ -370,5 +395,7 @@ final class WatchRunningViewModel: ObservableObject {
     private func resetMetrics() {
         metrics = .empty
         elapsedBeforeCurrentSegment = 0
+        paceReference = nil
+        latestPaceAt = nil
     }
 }
