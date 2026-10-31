@@ -584,6 +584,7 @@ struct RunningView: View {
         VStack(spacing: 0) {
             // 상단 지표도 하단 지표와 동일하게 탭으로 순환한다.
             Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 topMetric = nextMetric(after: topMetric, excluding: Set(metricSlots))
             } label: {
                 VStack(spacing: 2) {
