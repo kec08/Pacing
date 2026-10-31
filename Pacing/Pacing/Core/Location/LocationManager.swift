@@ -203,12 +203,18 @@ extension LocationManager: CLLocationManagerDelegate {
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        guard let clError = error as? CLError else { return }
+        guard let clError = error as? CLError else {
+            NSLog("[Pacing] 위치 측정 실패: %@", error.localizedDescription)
+            return
+        }
 
         // 일시적인 위치 미확정 오류는 다음 업데이트를 기다린다.
         if clError.code == .locationUnknown {
             return
         }
+        NSLog("[Pacing] 위치 측정 실패: code=%ld recording=%d background=%d",
+              clError.code.rawValue, isRecordingRoute ? 1 : 0,
+              manager.allowsBackgroundLocationUpdates ? 1 : 0)
     }
 
     func appendAcceptedRouteSegment(from locations: [CLLocation]) {
