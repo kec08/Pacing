@@ -386,6 +386,11 @@ final class WatchRunningViewModel: ObservableObject {
 
     private func publishWatchMetrics(state snapshotState: WatchRunMetricsSnapshot.State? = nil) {
         let resolvedState = snapshotState ?? (state == .paused ? .paused : (state == .ended ? .ended : .running))
+        // 백그라운드에서는 화면 타이머가 멈출 수 있지만 HealthKit 콜백은 계속 도착한다.
+        // 전송 직전에 시작 시각 기준으로 보정해 아이폰에 오래된 경과 시간이 전달되지 않게 한다.
+        if resolvedState == .running {
+            syncElapsed()
+        }
         WatchRunCommandPublisher.shared.publish(
             WatchRunMetricsSnapshot(
                 sessionID: sessionID,
