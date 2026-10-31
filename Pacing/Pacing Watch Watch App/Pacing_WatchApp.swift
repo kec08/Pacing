@@ -9,32 +9,14 @@ import SwiftUI
 import HealthKit
 import WatchKit
 
-@MainActor
-final class WatchWorkoutLaunchStore {
-    static let shared = WatchWorkoutLaunchStore()
-    private var pendingConfiguration: HKWorkoutConfiguration?
-
-    func store(_ configuration: HKWorkoutConfiguration) {
-        pendingConfiguration = configuration
-        NotificationCenter.default.post(name: .phoneStartedRunning, object: configuration)
-    }
-
-    func takePendingConfiguration() -> HKWorkoutConfiguration? {
-        defer { pendingConfiguration = nil }
-        return pendingConfiguration
-    }
-}
-
 final class WatchApplicationDelegate: NSObject, WKApplicationDelegate {
     func handle(_ workoutConfiguration: HKWorkoutConfiguration) {
         Task { @MainActor in
-            WatchWorkoutLaunchStore.shared.store(workoutConfiguration)
+            // iPhone에서 백그라운드로 깨운 직후 UI가 아직 만들어지지 않았더라도
+            // 운동 세션을 즉시 시작해야 Watch가 러닝 화면을 전면에 유지한다.
+            WatchAppViewModel.shared.startWorkoutFromPhone(configuration: workoutConfiguration)
         }
     }
-}
-
-extension Notification.Name {
-    static let phoneStartedRunning = Notification.Name("phoneStartedRunning")
 }
 
 @main

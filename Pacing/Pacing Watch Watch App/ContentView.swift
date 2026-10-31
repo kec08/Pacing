@@ -10,9 +10,13 @@ import ImageIO
 import SwiftUI
 
 struct ContentView: View {
-    @StateObject private var viewModel = WatchAppViewModel()
+    @StateObject private var viewModel: WatchAppViewModel
     @StateObject private var runningMusicPresentation = WatchRunningMusicPresentation()
     @StateObject private var listenTogetherViewModel = WatchListenTogetherViewModel()
+
+    init(viewModel: WatchAppViewModel = .shared) {
+        _viewModel = StateObject(wrappedValue: viewModel)
+    }
 
     var body: some View {
         ZStack {
@@ -108,6 +112,8 @@ enum WatchRunTab: Int, CaseIterable, Hashable, Identifiable {
 /// 실제 HealthKit 운동 세션을 연결하기 전, 화면의 공통 상태를 관리합니다.
 @MainActor
 final class WatchAppViewModel: ObservableObject {
+    static let shared = WatchAppViewModel()
+
     @Published var selectedTab: WatchTab = .running
     let runningViewModel = WatchRunningViewModel()
     @Published var selectedRunTab: WatchRunTab = .controls
@@ -139,18 +145,11 @@ final class WatchAppViewModel: ObservableObject {
             }
             .store(in: &cancellables)
 
-        NotificationCenter.default.publisher(for: .phoneStartedRunning)
-            .compactMap { $0.object as? HKWorkoutConfiguration }
-            .sink { [weak self] configuration in
-                self?.selectedTab = .running
-                self?.runningViewModel.startFromPhone(configuration: configuration)
-            }
-            .store(in: &cancellables)
+    }
 
-        if let configuration = WatchWorkoutLaunchStore.shared.takePendingConfiguration() {
-            selectedTab = .running
-            runningViewModel.startFromPhone(configuration: configuration)
-        }
+    func startWorkoutFromPhone(configuration: HKWorkoutConfiguration) {
+        selectedTab = .running
+        runningViewModel.startFromPhone(configuration: configuration)
     }
 
     private func applyRunState(_ state: WatchRunState) {
