@@ -116,7 +116,8 @@ final class RunningViewModel: ObservableObject {
     private var nextLapDistanceMark: Double = 1.0
     private var lapStartDistance: Double = 0
     private var lapStartElapsedSeconds: Int = 0
-    private var lastCompletedLapPace: Double = 0
+    private var recentPaceSegments: [(end: Date, meters: Double, seconds: TimeInterval)] = []
+    private var latestPaceAt: Date?
     private var runningStartedAt: Date?
     private var healthRunStartedAt: Date?
     private var accumulatedElapsedSecondsBeforeResume: Int = 0
@@ -301,6 +302,7 @@ final class RunningViewModel: ObservableObject {
         voiceAnnouncer.stop()
         voiceAnnouncer.announce(.paused)
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
+        recentPaceSegments = []
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
@@ -319,6 +321,7 @@ final class RunningViewModel: ObservableObject {
         )
         publishRunSnapshot(state: .running, persist: true)
         lastLocation = nil
+        recentPaceSegments = []
         locationManager.startTracking()
         startTimer()
         cadenceAccumulator.resetBaseline(at: resumedAt)
@@ -434,7 +437,7 @@ final class RunningViewModel: ObservableObject {
     }
 
     var formattedPace: String {
-        guard currentPace > 0 else { return "--'--\"" }
+        guard hasRecentPace else { return "--'--\"" }
         let min = Int(currentPace)
         let sec = Int((currentPace - Double(min)) * 60)
         return String(format: "%d'%02d\"", min, sec)
@@ -617,6 +620,14 @@ final class RunningViewModel: ObservableObject {
             // rejected 5m fix permanently discarded distance before the next callback.
             lastLocation = location
             locationManager.appendAcceptedRouteSegment(from: [last, location])
+            recentPaceSegments.append((location.timestamp, deltaMeters, timeDelta))
+            recentPaceSegments.removeAll { location.timestamp.timeIntervalSince($0.end) > 30 }
+            let recentMeters = recentPaceSegments.reduce(0) { $0 + $1.meters }
+            let recentSeconds = recentPaceSegments.reduce(0) { $0 + $1.seconds }
+            if recentMeters >= 20, recentSeconds >= 3 {
+                currentPace = recentSeconds / 60 / (recentMeters / 1_000)
+                latestPaceAt = location.timestamp
+            }
 
             let deltaKm = deltaMeters / 1000.0
             gpsDistance += deltaKm
@@ -705,10 +716,11 @@ final class RunningViewModel: ObservableObject {
     }
 
     private func resetLapState() {
+        recentPaceSegments = []
+        latestPaceAt = nil
         nextLapDistanceMark = 1.0
         lapStartDistance = 0
         lapStartElapsedSeconds = 0
-        lastCompletedLapPace = 0
         completedLapPaces = []
     }
 
@@ -723,11 +735,6 @@ final class RunningViewModel: ObservableObject {
 
         completePendingLapsIfNeeded()
 
-        if lastCompletedLapPace > 0 {
-            currentPace = lastCompletedLapPace
-        } else {
-            currentPace = avgPace
-        }
     }
 
     private func applyWatchMetrics(_ snapshot: WatchRunMetricsSnapshot) {
@@ -781,12 +788,17 @@ final class RunningViewModel: ObservableObject {
                 state: state,
                 elapsedSeconds: elapsedSeconds,
                 distanceKilometers: distance,
-                paceMinutesPerKilometer: currentPace,
+                paceMinutesPerKilometer: hasRecentPace ? currentPace : 0,
                 sentAt: .now,
                 sessionID: sessionID
             ),
             persist: persist
         )
+    }
+
+    private var hasRecentPace: Bool {
+        guard currentPace > 0, let latestPaceAt else { return false }
+        return Date().timeIntervalSince(latestPaceAt) < 20
     }
 
     private func completePendingLapsIfNeeded() {
@@ -801,7 +813,6 @@ final class RunningViewModel: ObservableObject {
 
             if lapDistance > 0, lapElapsedSeconds > 0 {
                 let lapPace = Double(lapElapsedSeconds) / 60.0 / lapDistance
-                lastCompletedLapPace = lapPace
                 completedLapPaces.append(
                     RunLapPace(
                         kilometer: kilometer,
