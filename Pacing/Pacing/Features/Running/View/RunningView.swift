@@ -15,6 +15,7 @@ private enum RunningMetric: CaseIterable, Hashable {
     case distance
     case elevation
     case pace
+    case averagePace
     case heartRate
     case cadence
     case calories
@@ -65,7 +66,7 @@ struct RunningView: View {
     @State private var pendingInitialCameraCoordinate: CLLocationCoordinate2D?
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
-    @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
+    @State private var metricSlots: [RunningMetric] = [.distance, .pace, .averagePace]
     @State private var listenSheetDetent: PresentationDetent = .medium
     @State private var countdownScale: CGFloat = 1
 
@@ -658,6 +659,7 @@ struct RunningView: View {
         case .distance: return viewModel.formattedDistance
         case .elevation: return viewModel.formattedElevationGain
         case .pace: return viewModel.formattedPace
+        case .averagePace: return viewModel.formattedAvgPace
         case .heartRate: return "--"
         case .cadence: return viewModel.formattedCadence
         case .calories: return viewModel.formattedCalories
@@ -669,6 +671,7 @@ struct RunningView: View {
         case .distance: return "km"
         case .elevation: return "고도 상승"
         case .pace: return "페이스"
+        case .averagePace: return "평균 페이스"
         case .heartRate: return "BPM"
         case .cadence: return "케이던스"
         case .calories: return "칼로리"
@@ -2452,7 +2455,7 @@ struct RunningView: View {
     }
 
     private func startCountdown() {
-        metricSlots = [.distance, .pace, .calories]
+        metricSlots = [.distance, .pace, .averagePace]
         guard viewModel.startCountdown() else {
             showAlwaysLocationPermissionAlert = true
             return
