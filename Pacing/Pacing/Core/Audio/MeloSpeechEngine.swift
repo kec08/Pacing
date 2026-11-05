@@ -72,7 +72,7 @@ final class MeloSpeechEngine {
                       let tokens = tokenizer.tokenIDs(for: text)
                 else { throw MeloError.unsupportedText }
                 let startedAt = CFAbsoluteTimeGetCurrent()
-                audio = try makeWAV(tokens: tokens, session: session)
+                audio = try makeWAV(tokens: tokens, session: session, lengthScale: lengthScale)
                 NSLog("MeloTTS inference: %.3f seconds", CFAbsoluteTimeGetCurrent() - startedAt)
             } catch {
                 NSLog("MeloTTS synthesis failed: %@", String(describing: error))
@@ -85,7 +85,7 @@ final class MeloSpeechEngine {
         }
     }
 
-    private func makeWAV(tokens: [Int64], session: ORTSession) throws -> Data {
+    private func makeWAV(tokens: [Int64], session: ORTSession, lengthScale: Float) throws -> Data {
         let length = tokens.count
         guard length > 0, length < 2_048 else { throw MeloError.unsupportedText }
         var buffers: [NSMutableData] = []

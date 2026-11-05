@@ -352,14 +352,13 @@ completionText = nil
     }
 
     private func restoreAudioSessionAfterAnnouncement() {
-        // MusicKit shares the app audio session. Deactivation can stop the song.
         if let configuration = announcementSessionConfiguration {
-            try? AVAudioSession.sharedInstance().setCategory(
-                configuration.category,
-                mode: configuration.mode,
-                policy: configuration.policy,
-                options: configuration.options
-            )
+            let session = AVAudioSession.sharedInstance()
+            // Ducking is released only when the prompt session deactivates.
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            try? session.setCategory(configuration.category, mode: configuration.mode,
+                                     policy: configuration.policy, options: configuration.options)
+            try? session.setActive(true)
             announcementSessionConfiguration = nil
         }
         NotificationCenter.default.post(name: .runningVoiceAnnouncementDidFinish, object: nil)

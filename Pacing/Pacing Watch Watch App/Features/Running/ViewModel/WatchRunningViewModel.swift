@@ -42,7 +42,7 @@ final class WatchRunningViewModel: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] liveMetrics in
                 guard let self else { return }
-                if self.workoutRepository.hasActiveWorkoutSession, liveMetrics.distanceMeters > 0 {
+                if !self.usesPhoneMetrics, self.workoutRepository.hasActiveWorkoutSession, liveMetrics.distanceMeters > 0 {
                     let now = Date()
                     if let reference = self.paceReference {
                         let seconds = now.timeIntervalSince(reference.date)
@@ -63,7 +63,7 @@ final class WatchRunningViewModel: ObservableObject {
                 }
                 self.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
                 self.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
-                if self.state == .ending, liveMetrics.elapsed > 0 {
+                if !self.usesPhoneMetrics, self.state == .ending, liveMetrics.elapsed > 0 {
                     self.metrics.elapsed = liveMetrics.elapsed
                 }
                 if self.state == .running || self.state == .paused || self.state == .ending {
@@ -308,8 +308,10 @@ final class WatchRunningViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await workoutRepository.end()
-                metrics.distanceMeters = workoutRepository.liveMetrics.distanceMeters
-                if workoutRepository.liveMetrics.elapsed > 0 {
+                if !usesPhoneMetrics {
+                    metrics.distanceMeters = workoutRepository.liveMetrics.distanceMeters
+                }
+                if !usesPhoneMetrics, workoutRepository.liveMetrics.elapsed > 0 {
                     metrics.elapsed = workoutRepository.liveMetrics.elapsed
                 }
                 self.completeRun()
