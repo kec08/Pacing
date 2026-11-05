@@ -125,11 +125,11 @@ final class PhoneRunSyncReceiver: NSObject {
 
 extension PhoneRunSyncReceiver: WCSessionDelegate {
     func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
-        consume(session.applicationContext, acceptsRunSnapshot: false)
+        consume(session.applicationContext, acceptsRunSnapshot: true)
         requestContentRefresh()
     }
     func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
-        consume(applicationContext, acceptsRunSnapshot: false)
+        consume(applicationContext, acceptsRunSnapshot: true)
     }
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
         consume(message, acceptsRunSnapshot: true)

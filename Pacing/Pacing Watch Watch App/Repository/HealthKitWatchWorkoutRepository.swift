@@ -5,6 +5,7 @@ import HealthKit
 @MainActor
 final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
     @Published private(set) var liveMetrics = WatchRunMetrics.empty
+    @Published private(set) var sessionError: WatchRunError?
 
     private let healthStore: HKHealthStore
     private var workoutSession: HKWorkoutSession?
@@ -46,11 +47,19 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
             workoutSession = session
             workoutBuilder = builder
             liveMetrics = .empty
+            sessionError = nil
 
-            try await session.startMirroringToCompanionDevice()
-            try await beginCollection(builder, startDate: startDate)
             session.startActivity(with: startDate)
+            try await beginCollection(builder, startDate: startDate)
+            Task {
+                do {
+                    try await session.startMirroringToCompanionDevice()
+                } catch {
+                    NSLog("[Pacing] Watch 운동 미러링 연결 실패: %@", error.localizedDescription)
+                }
+            }
         } catch {
+            workoutSession?.end()
             workoutSession = nil
             workoutBuilder = nil
             throw WatchRunError.sessionStartFailed
@@ -74,8 +83,9 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
         do {
             try await endCollection(workoutBuilder)
             if let workout = try await finishWorkout(workoutBuilder) {
-                if let distance = workout.totalDistance?.doubleValue(for: .meter()), distance.isFinite, distance > 0 {
-                    liveMetrics.distanceMeters = distance
+                if let distance = workout.statistics(for: HKQuantityType(.distanceWalkingRunning))?
+                    .sumQuantity()?.doubleValue(for: .meter()), distance.isFinite, distance > 0 {
+                    liveMetrics.distanceMeters = max(liveMetrics.distanceMeters, distance)
                 }
                 liveMetrics.elapsed = workout.duration
             }
@@ -164,7 +174,7 @@ final class HealthKitWatchWorkoutRepository: NSObject, ObservableObject {
 
         liveMetrics.heartRateBeatsPerMinute = heartRate
         liveMetrics.activeEnergyKilocalories = energy
-        liveMetrics.distanceMeters = distance
+        liveMetrics.distanceMeters = max(liveMetrics.distanceMeters, distance)
     }
 
     private func quantityValue(
@@ -185,9 +195,12 @@ extension HealthKitWatchWorkoutRepository: HKWorkoutSessionDelegate {
     ) {}
 
     nonisolated func workoutSession(_ workoutSession: HKWorkoutSession, didFailWithError error: Error) {
+        NSLog("[Pacing] Watch 운동 세션 실패: %@", error.localizedDescription)
         Task { @MainActor [weak self] in
-            self?.workoutSession = nil
-            self?.workoutBuilder = nil
+            guard let self, self.workoutSession === workoutSession else { return }
+            self.workoutSession = nil
+            self.workoutBuilder = nil
+            self.sessionError = .sessionUnavailable
         }
     }
 }

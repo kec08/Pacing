@@ -18,7 +18,9 @@ final class WatchRunningViewModel: ObservableObject {
     private var latestPhoneEndAt: Date?
     private var dismissedPhoneEndAt: Date?
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
-    private var latestPhoneSnapshotAt = Date.distantPast
+    private var paceReference: (meters: Double, date: Date)?
+    private var latestPaceAt: Date?
+    private var usesPhoneMetrics = false
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
     private var cancellables = Set<AnyCancellable>()
@@ -39,22 +41,44 @@ final class WatchRunningViewModel: ObservableObject {
         workoutRepository.$liveMetrics
             .receive(on: DispatchQueue.main)
             .sink { [weak self] liveMetrics in
-                if let self, self.state != .paused, !self.hasRecentPhoneSnapshot {
+                guard let self else { return }
+                if !self.usesPhoneMetrics, self.workoutRepository.hasActiveWorkoutSession, liveMetrics.distanceMeters > 0 {
+                    let now = Date()
+                    if let reference = self.paceReference {
+                        let seconds = now.timeIntervalSince(reference.date)
+                        let meters = liveMetrics.distanceMeters - reference.meters
+                        if seconds > 30 || meters < 0 {
+                            self.paceReference = (liveMetrics.distanceMeters, now)
+                        } else if meters >= 20, seconds >= 3 {
+                            self.metrics.currentPaceSecondsPerKilometer = seconds / (meters / 1_000)
+                            self.latestPaceAt = now
+                            self.paceReference = (liveMetrics.distanceMeters, now)
+                        }
+                    } else {
+                        self.paceReference = (liveMetrics.distanceMeters, now)
+                    }
+                }
+                if !self.usesPhoneMetrics {
                     self.metrics.distanceMeters = liveMetrics.distanceMeters
-                    self.metrics.currentPaceSecondsPerKilometer = nil
-                    self.metrics.averagePaceSecondsPerKilometer = nil
-                    self.metrics.currentPaceText = nil
-                    self.metrics.averagePaceText = nil
                 }
-                self?.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
-                self?.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
-                if self?.state == .ending, self?.hasRecentPhoneSnapshot == false,
-                   liveMetrics.elapsed > 0 {
-                    self?.metrics.elapsed = liveMetrics.elapsed
+                self.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
+                self.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
+                if !self.usesPhoneMetrics, self.state == .ending, liveMetrics.elapsed > 0 {
+                    self.metrics.elapsed = liveMetrics.elapsed
                 }
-                if self?.state == .running || self?.state == .paused || self?.state == .ending {
-                    self?.publishWatchMetrics()
+                if self.state == .running || self.state == .paused || self.state == .ending {
+                    self.publishWatchMetrics()
                 }
+            }
+            .store(in: &cancellables)
+
+        workoutRepository.$sessionError
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] error in
+                guard let self, let error, self.state == .running || self.state == .paused else { return }
+                self.timer?.cancel()
+                self.locationRepository.pauseTracking()
+                self.state = .failed(error)
             }
             .store(in: &cancellables)
 
@@ -68,6 +92,8 @@ final class WatchRunningViewModel: ObservableObject {
 
     func start() {
         guard state == .idle || state == .ended || isFailure else { return }
+
+        usesPhoneMetrics = false
 
         let startAt = Date.now.addingTimeInterval(3)
         state = .countdown(3)
@@ -93,6 +119,7 @@ final class WatchRunningViewModel: ObservableObject {
     func startFromPhone(configuration: HKWorkoutConfiguration) {
         let canRecoverFromPhoneSnapshot = state == .running && !workoutRepository.hasActiveWorkoutSession
         guard state == .idle || state == .ended || isFailure || canRecoverFromPhoneSnapshot else { return }
+        usesPhoneMetrics = true
         countdownTask?.cancel()
         resetMetrics()
         state = .starting
@@ -139,6 +166,7 @@ final class WatchRunningViewModel: ObservableObject {
     func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) -> Bool {
         switch snapshot.state {
         case .running:
+            if let sessionID = snapshot.sessionID { self.sessionID = sessionID }
             updateMetrics(from: snapshot)
             dismissedPhoneEndAt = nil
             // iPhone 스냅샷과 Watch 자체 타이머가 서로 다른 시작 시각을 기준으로
@@ -177,7 +205,6 @@ final class WatchRunningViewModel: ObservableObject {
     }
 
     private func updateMetrics(from snapshot: PhoneRunSnapshot) {
-        latestPhoneSnapshotAt = .now
         metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
         metrics.distanceMeters = snapshot.distanceKilometers * 1_000
         metrics.averagePaceSecondsPerKilometer = (snapshot.averagePaceMinutesPerKilometer ?? 0) * 60
@@ -287,11 +314,11 @@ final class WatchRunningViewModel: ObservableObject {
             guard let self else { return }
             do {
                 try await workoutRepository.end()
-                if !hasRecentPhoneSnapshot {
+                if !usesPhoneMetrics {
                     metrics.distanceMeters = workoutRepository.liveMetrics.distanceMeters
-                    if workoutRepository.liveMetrics.elapsed > 0 {
-                        metrics.elapsed = workoutRepository.liveMetrics.elapsed
-                    }
+                }
+                if !usesPhoneMetrics, workoutRepository.liveMetrics.elapsed > 0 {
+                    metrics.elapsed = workoutRepository.liveMetrics.elapsed
                 }
                 self.completeRun()
             } catch let error as WatchRunError {
@@ -359,12 +386,21 @@ final class WatchRunningViewModel: ObservableObject {
             .autoconnect()
             .sink { [weak self] _ in
                 self?.syncElapsed()
+                if let latestPaceAt = self?.latestPaceAt,
+                   Date().timeIntervalSince(latestPaceAt) > 20 {
+                    self?.metrics.currentPaceSecondsPerKilometer = nil
+                }
                 self?.publishWatchMetrics()
             }
     }
 
     private func publishWatchMetrics(state snapshotState: WatchRunMetricsSnapshot.State? = nil) {
         let resolvedState = snapshotState ?? (state == .paused ? .paused : (state == .ended ? .ended : .running))
+        // 백그라운드에서는 화면 타이머가 멈출 수 있지만 HealthKit 콜백은 계속 도착한다.
+        // 전송 직전에 시작 시각 기준으로 보정해 아이폰에 오래된 경과 시간이 전달되지 않게 한다.
+        if resolvedState == .running {
+            syncElapsed()
+        }
         WatchRunCommandPublisher.shared.publish(
             WatchRunMetricsSnapshot(
                 sessionID: sessionID,
@@ -382,12 +418,10 @@ final class WatchRunningViewModel: ObservableObject {
     }
 
     private func resetMetrics() {
-        latestPhoneSnapshotAt = .distantPast
         metrics = .empty
         elapsedBeforeCurrentSegment = 0
+        paceReference = nil
+        latestPaceAt = nil
     }
 
-    private var hasRecentPhoneSnapshot: Bool {
-        Date.now.timeIntervalSince(latestPhoneSnapshotAt) < 15
-    }
 }

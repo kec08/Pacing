@@ -40,6 +40,8 @@ final class LocationManager: NSObject, ObservableObject {
 
     private let manager = CLLocationManager()
     private var isRecordingRoute = false
+    private var recordingStartedAt: Date?
+    private var lastDisplayedLocation: CLLocation?
     private var notificationObservers: [NSObjectProtocol] = []
 
     override init() {
@@ -86,6 +88,7 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     func startTracking() {
+        recordingStartedAt = .now
         isRecordingRoute = true
         configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
@@ -93,16 +96,20 @@ final class LocationManager: NSObject, ObservableObject {
 
     func stopTracking() {
         isRecordingRoute = false
+        recordingStartedAt = nil
         recentRecordedLocations = []
+        lastDisplayedLocation = currentLocation
         configureBackgroundLocationSupport()
         startUpdatingLocationIfAuthorized()
     }
 
     func resetRoute() {
         isRecordingRoute = false
+        recordingStartedAt = nil
         routeCoordinates = []
         recentRecordedLocations = []
         recordedLocations = []
+        lastDisplayedLocation = nil
         configureBackgroundLocationSupport()
     }
 
@@ -158,13 +165,15 @@ final class LocationManager: NSObject, ObservableObject {
     }
 
     private func filteredRouteLocations(from locations: [CLLocation]) -> [CLLocation] {
-        // 백그라운드에서는 위치가 배치로 도착하고 정확도가 다소 흔들릴 수 있어 허용 범위를 완화한다.
-        let maxHorizontalAccuracy = UIApplication.shared.applicationState == .active ? 30.0 : 65.0
-
         return locations.filter { location in
-            location.horizontalAccuracy >= 0 &&
+            // 화면 복귀 후 전달된 백그라운드 배치도 측정 시점에 맞는 정확도로 평가한다.
+            let isLiveForeground = UIApplication.shared.applicationState == .active &&
+                location.timestamp.timeIntervalSinceNow > -5
+            let maxHorizontalAccuracy = isLiveForeground ? 30.0 : 65.0
+            return location.horizontalAccuracy >= 0 &&
             location.horizontalAccuracy <= maxHorizontalAccuracy &&
-            abs(location.timestamp.timeIntervalSinceNow) < 180
+            location.timestamp >= (recordingStartedAt ?? .distantPast).addingTimeInterval(-15) &&
+            location.timestamp.timeIntervalSinceNow <= 10
         }
     }
 }
@@ -179,7 +188,12 @@ extension LocationManager: CLLocationManagerDelegate {
         let validLocations = locations.filter { $0.horizontalAccuracy >= 0 }
         guard !validLocations.isEmpty else { return }
 
-        currentLocation = validLocations.last
+        if let candidate = validLocations.last,
+           candidate.horizontalAccuracy <= 65,
+           isPlausibleDisplayLocation(candidate) {
+            lastDisplayedLocation = candidate
+            currentLocation = candidate
+        }
 
         guard isRecordingRoute else {
             recentRecordedLocations = []
@@ -194,19 +208,32 @@ extension LocationManager: CLLocationManagerDelegate {
 
         self.recordedLocations.append(contentsOf: recordedLocations)
         recentRecordedLocations = recordedLocations
-        appendRouteCoordinates(from: recordedLocations)
+    }
+
+    private func isPlausibleDisplayLocation(_ candidate: CLLocation) -> Bool {
+        guard let previous = lastDisplayedLocation else { return true }
+        let elapsed = candidate.timestamp.timeIntervalSince(previous.timestamp)
+        guard elapsed > 0 else { return false }
+        let maxSpeed = isRecordingRoute ? 15.0 : 8.0
+        return candidate.distance(from: previous) / elapsed <= maxSpeed
     }
 
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        guard let clError = error as? CLError else { return }
+        guard let clError = error as? CLError else {
+            NSLog("[Pacing] 위치 측정 실패: %@", error.localizedDescription)
+            return
+        }
 
         // 일시적인 위치 미확정 오류는 다음 업데이트를 기다린다.
         if clError.code == .locationUnknown {
             return
         }
+        NSLog("[Pacing] 위치 측정 실패: code=%ld recording=%d background=%d",
+              clError.code.rawValue, isRecordingRoute ? 1 : 0,
+              manager.allowsBackgroundLocationUpdates ? 1 : 0)
     }
 
-    private func appendRouteCoordinates(from locations: [CLLocation]) {
+    func appendAcceptedRouteSegment(from locations: [CLLocation]) {
         for location in locations {
             let coordinate = location.coordinate
 

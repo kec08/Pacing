@@ -1,8 +1,24 @@
 import Foundation
 import OnnxRuntimeBindings
+import UIKit
 
 /// Runs the bundled Korean MeloTTS ONNX model off the main thread.
 final class MeloSpeechEngine {
+    private final class BackgroundTask {
+        private var identifier: UIBackgroundTaskIdentifier = .invalid
+
+        init() {
+            identifier = UIApplication.shared.beginBackgroundTask(withName: "MeloTTS synthesis") { [weak self] in
+                self?.end()
+            }
+        }
+
+        func end() {
+            guard identifier != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(identifier)
+            identifier = .invalid
+        }
+    }
     static let shared = MeloSpeechEngine()
 
     private let queue = DispatchQueue(label: "pacing.melotts", qos: .userInitiated)
@@ -47,7 +63,8 @@ final class MeloSpeechEngine {
         }
     }
 
-    func synthesize(_ text: String, completion: @escaping (Data?) -> Void) {
+    func synthesize(_ text: String, lengthScale: Float = 0.98, completion: @escaping (Data?) -> Void) {
+        let backgroundTask = BackgroundTask()
         queue.async { [self] in
             let audio: Data?
             do {
@@ -55,17 +72,20 @@ final class MeloSpeechEngine {
                       let tokens = tokenizer.tokenIDs(for: text)
                 else { throw MeloError.unsupportedText }
                 let startedAt = CFAbsoluteTimeGetCurrent()
-                audio = try makeWAV(tokens: tokens, session: session)
+                audio = try makeWAV(tokens: tokens, session: session, lengthScale: lengthScale)
                 NSLog("MeloTTS inference: %.3f seconds", CFAbsoluteTimeGetCurrent() - startedAt)
             } catch {
                 NSLog("MeloTTS synthesis failed: %@", String(describing: error))
                 audio = nil
             }
-            DispatchQueue.main.async { completion(audio) }
+            DispatchQueue.main.async {
+                backgroundTask.end()
+                completion(audio)
+            }
         }
     }
 
-    private func makeWAV(tokens: [Int64], session: ORTSession) throws -> Data {
+    private func makeWAV(tokens: [Int64], session: ORTSession, lengthScale: Float) throws -> Data {
         let length = tokens.count
         guard length > 0, length < 2_048 else { throw MeloError.unsupportedText }
         var buffers: [NSMutableData] = []
@@ -88,7 +108,7 @@ final class MeloSpeechEngine {
             "tone": try tensor(blankAwareTone, type: .int64, shape: textShape),
             "language": try tensor(blankAwareLanguage, type: .int64, shape: textShape),
             "noise_scale": try tensor([Float(0.6)], type: .float, shape: []),
-            "length_scale": try tensor([Float(1.04)], type: .float, shape: []),
+            "length_scale": try tensor([lengthScale], type: .float, shape: []),
             "noise_scale_w": try tensor([Float(0.8)], type: .float, shape: []),
             "sdp_ratio": try tensor([Float(0.2)], type: .float, shape: [])
         ].merging([
@@ -140,7 +160,7 @@ final class MeloSpeechEngine {
         for index in 0..<count {
             let sample = source[index]
             guard sample.isFinite else { throw MeloError.invalidOutput }
-            let brightened = sample + 0.12 * (sample - previous)
+            let brightened = sample + 0.18 * (sample - previous)
             previous = sample
             let value = Int16((max(-1, min(1, brightened)) * 32_767).rounded())
             data.appendLittleEndian(UInt16(bitPattern: value))

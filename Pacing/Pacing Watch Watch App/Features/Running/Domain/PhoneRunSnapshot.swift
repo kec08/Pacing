@@ -11,6 +11,7 @@ struct PhoneRunSnapshot: Codable {
     let averagePaceText: String?
     let lapPaces: [PhoneRunLapPace]?
     let sentAt: Date
+    var sessionID: UUID? = nil
 }
 
 struct PhoneRunLapPace: Codable {

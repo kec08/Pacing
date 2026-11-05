@@ -135,6 +135,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     private var completionRemainingText: String?
     private var completionRemainingAudio: Data?
     private var isCompletionRemainingPrefetching = false
+private var completionText: String?
 
     override init() {
         super.init()
@@ -151,48 +152,9 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {
-        let details = announcement.detailsText
-        let parts = details.components(separatedBy: ". ")
-        guard parts.count > 1 else {
-            speak(RunCompletionVoiceAnnouncement.openingText)
-            speak(details, synthesisTimeout: 15)
-            return
-        }
-        let first = parts[0] + "."
-        let remaining = parts.dropFirst().joined(separator: ". ")
-        let requestID = UUID()
-        completionPrefetchID = requestID
-        completionDetailsText = first
-        completionDetailsAudio = nil
-        completionRemainingText = remaining
-        completionRemainingAudio = nil
-        isCompletionPrefetching = true
-        isCompletionRemainingPrefetching = true
-        melo.synthesize(first) { [weak self] audio in
-            guard let self, self.completionPrefetchID == requestID else { return }
-            self.isCompletionPrefetching = false
-            if self.activeText == first {
-                self.generationID = nil
-                if let audio { self.playMelo(audio, text: first) }
-                else { self.speakWithSystemVoice(first) }
-            } else {
-                self.completionDetailsAudio = audio
-            }
-        }
-        melo.synthesize(remaining) { [weak self] audio in
-            guard let self, self.completionPrefetchID == requestID else { return }
-            self.isCompletionRemainingPrefetching = false
-            if self.activeText == remaining {
-                self.generationID = nil
-                if let audio { self.playMelo(audio, text: remaining) }
-                else { self.speakWithSystemVoice(remaining) }
-            } else {
-                self.completionRemainingAudio = audio
-            }
-        }
-        speak(RunCompletionVoiceAnnouncement.openingText)
-        speak(first, synthesisTimeout: 15)
-        speak(remaining, synthesisTimeout: 15)
+        // 완료 브리핑을 하나의 MeloTTS 입력으로 합성해 문장 사이의 끊김과 음색 전환을 제거한다.
+        completionText = announcement.text
+        speak(announcement.text, synthesisTimeout: 60)
     }
 
     private func speak(_ text: String, synthesisTimeout: TimeInterval = 15) {
@@ -231,7 +193,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
             }
         }
 
-        // Fixed state prompts are bundled MeloTTS clips so the first cue starts at once.
+        // 시작·정지·재개는 지연 없이 안내해야 하므로 검증된 MeloTTS 번들을 즉시 재생한다.
         if let clip = Self.bundledClip(for: text),
            let url = Bundle.main.url(forResource: clip, withExtension: "wav"),
            let audio = try? Data(contentsOf: url) {
@@ -241,11 +203,14 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
 
         let requestID = UUID()
         generationID = requestID
-        melo.synthesize(text) { [weak self] audio in
+        let lengthScale: Float = text.contains("킬로미터") && text.contains("페이스") ? 1.06 : 0.98
+        melo.synthesize(text, lengthScale: lengthScale) { [weak self] audio in
             guard let self, self.generationID == requestID, self.activeText == text else { return }
             self.generationID = nil
             if let audio {
                 self.playMelo(audio, text: text)
+            } else if text == self.completionText {
+                NSLog("MeloTTS completion synthesis failed; system voice fallback skipped")
             } else {
                 self.speakWithSystemVoice(text)
             }
@@ -264,8 +229,12 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 self.isCompletionPrefetching = false
                 self.isCompletionRemainingPrefetching = false
             }
-            NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", timeout)
-            self.speakWithSystemVoice(text)
+            if text == self.completionText {
+                NSLog("MeloTTS completion synthesis exceeded %.1f seconds; system voice fallback skipped", timeout)
+            } else {
+                NSLog("MeloTTS inference exceeded %.1f seconds; using the system Korean voice", timeout)
+                self.speakWithSystemVoice(text)
+            }
         }
     }
 
@@ -320,6 +289,7 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
         completionRemainingText = nil
         completionRemainingAudio = nil
         isCompletionRemainingPrefetching = false
+completionText = nil
         activeText = nil
         activeUtterance = nil
         audioPlayer?.stop()
@@ -363,15 +333,13 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
                 policy: .default,
                 options: [
                     .duckOthers,
-                    .interruptSpokenAudioAndMixWithOthers,
-                    .allowBluetoothHFP,
-                    .allowBluetoothA2DP
+                    .interruptSpokenAudioAndMixWithOthers
                 ]
             )
             try session.setActive(true)
             announcementSessionConfiguration = previousConfiguration
         } catch {
-            // Audio session failure must not interrupt running measurement or the fallback voice.
+            NSLog("[Pacing] 음성 안내 오디오 세션 설정 실패: %@", error.localizedDescription)
         }
     }
 
@@ -384,14 +352,13 @@ final class LapVoiceAnnouncementService: NSObject, RunningVoiceAnnouncing {
     }
 
     private func restoreAudioSessionAfterAnnouncement() {
-        // MusicKit shares the app audio session. Deactivation can stop the song.
         if let configuration = announcementSessionConfiguration {
-            try? AVAudioSession.sharedInstance().setCategory(
-                configuration.category,
-                mode: configuration.mode,
-                policy: configuration.policy,
-                options: configuration.options
-            )
+            let session = AVAudioSession.sharedInstance()
+            // Ducking is released only when the prompt session deactivates.
+            try? session.setActive(false, options: .notifyOthersOnDeactivation)
+            try? session.setCategory(configuration.category, mode: configuration.mode,
+                                     policy: configuration.policy, options: configuration.options)
+            try? session.setActive(true)
             announcementSessionConfiguration = nil
         }
         NotificationCenter.default.post(name: .runningVoiceAnnouncementDidFinish, object: nil)

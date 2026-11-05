@@ -23,7 +23,13 @@ final class PhoneRunSyncPublisher: NSObject {
         guard let data = try? JSONEncoder().encode(snapshot),
               let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { return }
-        if persist { try? session.updateApplicationContext(["phoneRun": payload]) }
+        // Watch가 백그라운드에 있어도 iPhone 기준 지표를 계속 받을 수 있도록
+        // 러닝 중 스냅샷은 applicationContext의 최신 값으로 유지한다.
+        if persist || snapshot.state == .running {
+            var context = session.applicationContext
+            context["phoneRun"] = payload
+            try? session.updateApplicationContext(context)
+        }
         if session.isReachable { session.sendMessage(["phoneRun": payload], replyHandler: nil) }
     }
 
