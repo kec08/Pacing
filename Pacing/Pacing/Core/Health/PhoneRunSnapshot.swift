@@ -7,8 +7,17 @@ struct PhoneRunSnapshot: Codable {
     let elapsedSeconds: Int
     let distanceKilometers: Double
     let paceMinutesPerKilometer: Double
+    let averagePaceMinutesPerKilometer: Double?
+    let currentPaceText: String?
+    let averagePaceText: String?
+    let lapPaces: [PhoneRunLapPace]?
     let sentAt: Date
     var sessionID: UUID? = nil
+}
+
+struct PhoneRunLapPace: Codable {
+    let kilometer: Int
+    let paceText: String
 }
 
 /// Apple Watch HealthKit workout builder의 누적 거리/경과 시간을 iPhone 러닝에 전달합니다.

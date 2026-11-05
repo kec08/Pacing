@@ -13,7 +13,8 @@ final class WatchRunDomainTests: XCTestCase {
     func testDisplayMetricCyclesInDashboardOrder() {
         XCTAssertEqual(WatchRunDisplayMetric.elapsed.next(), .distance)
         XCTAssertEqual(WatchRunDisplayMetric.distance.next(), .averagePace)
-        XCTAssertEqual(WatchRunDisplayMetric.averagePace.next(), .heartRate)
+        XCTAssertEqual(WatchRunDisplayMetric.averagePace.next(), .currentPace)
+        XCTAssertEqual(WatchRunDisplayMetric.currentPace.next(), .heartRate)
         XCTAssertEqual(WatchRunDisplayMetric.heartRate.next(), .calories)
         XCTAssertEqual(WatchRunDisplayMetric.calories.next(), .elevationGain)
         XCTAssertEqual(WatchRunDisplayMetric.elevationGain.next(), .elapsed)
@@ -31,6 +32,7 @@ final class WatchRunDomainTests: XCTestCase {
         XCTAssertEqual(metrics.formattedElapsed, "1:01:01")
         XCTAssertEqual(metrics.formattedDistance, "1.23")
         XCTAssertEqual(metrics.formattedPace, "5'21\"")
+        XCTAssertEqual(metrics.formattedValue(for: .currentPace), "5'21\"")
     }
 
     func testRunHistorySnapshotKeepsMonthlySummaryAndRecentRunDetails() throws {
