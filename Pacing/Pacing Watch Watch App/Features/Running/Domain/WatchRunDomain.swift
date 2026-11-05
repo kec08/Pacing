@@ -44,7 +44,7 @@ enum WatchRunError: Error, Equatable {
         case .sessionEndFailed:
             "운동을 저장하지 못했어요. 다음 러닝은 계속 시작할 수 있어요."
         case .mirroredSessionUnavailable:
-            "iPhone의 러닝 세션을 Watch에 연결하지 못했어요."
+            ""
         }
     }
 }

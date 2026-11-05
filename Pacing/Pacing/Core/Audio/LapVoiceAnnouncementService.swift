@@ -203,7 +203,8 @@ private var completionText: String?
 
         let requestID = UUID()
         generationID = requestID
-        melo.synthesize(text) { [weak self] audio in
+        let lengthScale: Float = text.contains("킬로미터") && text.contains("페이스") ? 1.06 : 0.98
+        melo.synthesize(text, lengthScale: lengthScale) { [weak self] audio in
             guard let self, self.generationID == requestID, self.activeText == text else { return }
             self.generationID = nil
             if let audio {

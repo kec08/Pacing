@@ -20,6 +20,7 @@ final class WatchRunningViewModel: ObservableObject {
     private var elapsedBeforeCurrentSegment: TimeInterval = 0
     private var paceReference: (meters: Double, date: Date)?
     private var latestPaceAt: Date?
+    private var usesPhoneMetrics = false
     private let workoutRepository: HealthKitWatchWorkoutRepository
     private let locationRepository: WatchRunLocationRepository
     private var cancellables = Set<AnyCancellable>()
@@ -57,7 +58,9 @@ final class WatchRunningViewModel: ObservableObject {
                         self.paceReference = (liveMetrics.distanceMeters, now)
                     }
                 }
-                self.metrics.distanceMeters = liveMetrics.distanceMeters
+                if !self.usesPhoneMetrics {
+                    self.metrics.distanceMeters = liveMetrics.distanceMeters
+                }
                 self.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
                 self.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
                 if self.state == .ending, liveMetrics.elapsed > 0 {
@@ -90,6 +93,8 @@ final class WatchRunningViewModel: ObservableObject {
     func start() {
         guard state == .idle || state == .ended || isFailure else { return }
 
+        usesPhoneMetrics = false
+
         let startAt = Date.now.addingTimeInterval(3)
         state = .countdown(3)
         sessionID = UUID()
@@ -114,6 +119,7 @@ final class WatchRunningViewModel: ObservableObject {
     func startFromPhone(configuration: HKWorkoutConfiguration) {
         let canRecoverFromPhoneSnapshot = state == .running && !workoutRepository.hasActiveWorkoutSession
         guard state == .idle || state == .ended || isFailure || canRecoverFromPhoneSnapshot else { return }
+        usesPhoneMetrics = true
         countdownTask?.cancel()
         resetMetrics()
         state = .starting
@@ -200,14 +206,10 @@ final class WatchRunningViewModel: ObservableObject {
 
     private func updateMetrics(from snapshot: PhoneRunSnapshot) {
         metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
-        if !workoutRepository.hasActiveWorkoutSession {
-            metrics.distanceMeters = snapshot.distanceKilometers * 1_000
-        }
-        if !workoutRepository.hasActiveWorkoutSession {
-            metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
-                ? snapshot.paceMinutesPerKilometer * 60
-                : nil
-        }
+        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
+            ? snapshot.paceMinutesPerKilometer * 60
+            : nil
     }
 
     /// iPhone 종료도 Watch의 종료 요약을 유지한다. 사용자가 요약의 완료를 탭할 때만 홈으로 복귀한다.

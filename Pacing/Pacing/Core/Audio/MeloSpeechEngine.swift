@@ -63,7 +63,7 @@ final class MeloSpeechEngine {
         }
     }
 
-    func synthesize(_ text: String, completion: @escaping (Data?) -> Void) {
+    func synthesize(_ text: String, lengthScale: Float = 0.98, completion: @escaping (Data?) -> Void) {
         let backgroundTask = BackgroundTask()
         queue.async { [self] in
             let audio: Data?
@@ -108,7 +108,7 @@ final class MeloSpeechEngine {
             "tone": try tensor(blankAwareTone, type: .int64, shape: textShape),
             "language": try tensor(blankAwareLanguage, type: .int64, shape: textShape),
             "noise_scale": try tensor([Float(0.6)], type: .float, shape: []),
-            "length_scale": try tensor([Float(0.98)], type: .float, shape: []),
+            "length_scale": try tensor([lengthScale], type: .float, shape: []),
             "noise_scale_w": try tensor([Float(0.8)], type: .float, shape: []),
             "sdp_ratio": try tensor([Float(0.2)], type: .float, shape: [])
         ].merging([
