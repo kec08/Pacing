@@ -58,6 +58,7 @@ final class AuthViewModel: ObservableObject {
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
+            appState.isAuthLoading = true
             await restoreProfile(appState: appState)
             // 이메일 로그인은 인증·프로필 복원 중에도 현재 로그인 화면의 로딩 UI를
             // 유지한 뒤, 복원이 끝난 시점에만 메인 화면으로 전환한다.
@@ -71,7 +72,6 @@ final class AuthViewModel: ObservableObject {
     private func createEmailAccount(email: String, password: String, appState: AppState) async {
         isLoading = true
         errorMessage = nil
-        appState.isAuthLoading = true
         defer {
             isLoading = false
             appState.isAuthLoading = false
@@ -82,6 +82,7 @@ final class AuthViewModel: ObservableObject {
                 withEmail: email.trimmingCharacters(in: .whitespacesAndNewlines),
                 password: password
             )
+            appState.isAuthLoading = true
             appState.isLoggedIn = true
             appState.isProfileComplete = false
         } catch {
@@ -125,8 +126,8 @@ final class AuthViewModel: ObservableObject {
             defer { appleNonceStore.removeAll() }
             do {
                 try await Auth.auth().signIn(with: firebaseCredential)
-                appState.isLoggedIn = true
                 appState.isAuthLoading = true
+                appState.isLoggedIn = true
                 await restoreProfile(appState: appState)
                 appState.isAuthLoading = false
             } catch {
@@ -142,8 +143,8 @@ final class AuthViewModel: ObservableObject {
         isLoading = true
         do {
             try await Auth.auth().signInAnonymously()
-            appState.isLoggedIn = true
             appState.isAuthLoading = true
+            appState.isLoggedIn = true
             await restoreProfile(appState: appState)
             appState.isAuthLoading = false
         } catch {
@@ -186,8 +187,8 @@ final class AuthViewModel: ObservableObject {
                 accessToken: result.user.accessToken.tokenString
             )
             try await Auth.auth().signIn(with: credential)
-            appState.isLoggedIn = true
             appState.isAuthLoading = true
+            appState.isLoggedIn = true
             await restoreProfile(appState: appState)
             appState.isAuthLoading = false
         } catch {
@@ -229,6 +230,7 @@ final class AuthViewModel: ObservableObject {
     // MARK: - 로그아웃
     func signOut(appState: AppState) {
         try? Auth.auth().signOut()
+        NaverCredentialStore.remove()
         appState.isLoggedIn = false
         appState.isProfileComplete = false
         // 다른 계정 로그인 시 이전 프로필 잔상 방지
@@ -312,13 +314,16 @@ final class AuthViewModel: ObservableObject {
 
             let functions = Functions.functions(region: "asia-northeast3")
             let result = try await functions.httpsCallable("naverLogin").call(["code": code, "state": state])
-            guard let data        = result.data as? [String: Any],
-                  let customToken = data["customToken"] as? String
+            guard let data         = result.data as? [String: Any],
+                  let customToken  = data["customToken"] as? String,
+                  let refreshToken = data["refreshToken"] as? String,
+                  !refreshToken.isEmpty
             else { errorMessage = "네이버 로그인 응답이 올바르지 않아요."; return }
 
+            try NaverCredentialStore.save(refreshToken: refreshToken)
             try await Auth.auth().signIn(withCustomToken: customToken)
-            appState.isLoggedIn = true
             appState.isAuthLoading = true
+            appState.isLoggedIn = true
             await restoreProfile(appState: appState)
         } catch {
             let nsErr = error as NSError
@@ -343,8 +348,8 @@ final class AuthViewModel: ObservableObject {
                 return
             }
             try await Auth.auth().signIn(withCustomToken: customToken)
-            appState.isLoggedIn = true
             appState.isAuthLoading = true
+            appState.isLoggedIn = true
             await restoreProfile(appState: appState)
             appState.isAuthLoading = false
         } catch {

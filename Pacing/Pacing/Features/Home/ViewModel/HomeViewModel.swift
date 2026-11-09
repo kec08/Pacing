@@ -81,6 +81,7 @@ final class HomeViewModel: ObservableObject {
             let records = try await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100)
             recentRuns = Array(records.prefix(3))
             weeklyStats = calcWeeklyStats(from: records)
+            PhoneRunSyncPublisher.shared.publishRunHistory(records: records)
         } catch {
             recentRuns = []
             weeklyStats = WeeklyStats(totalDistance: 0, totalDuration: 0, avgPace: 0)

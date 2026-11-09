@@ -96,9 +96,22 @@ struct SharedPlaylistDetailView: View {
                 .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.center)
 
-            Text(viewModel.ownerDescription)
-                .font(.system(size: 18, weight: .medium))
-                .foregroundStyle(Color.textSecondary)
+            if let owner = viewModel.sharedPlaylistOwner {
+                NavigationLink {
+                    FriendProfileView(friend: owner, initialRelationship: .friend)
+                } label: {
+                    Text(owner.nickname)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Color.main500)
+                        .padding(.vertical, 6)
+                        .padding(.horizontal, 10)
+                }
+                .accessibilityLabel("\(owner.nickname) 프로필 보기")
+            } else {
+                Text(viewModel.ownerDescription)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.textSecondary)
+            }
 
             Text("\(viewModel.updatedDescription)에 업데이트")
                 .font(.system(size: 14))

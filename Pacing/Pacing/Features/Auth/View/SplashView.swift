@@ -10,7 +10,7 @@ struct SplashView: View {
 
     var body: some View {
         Group {
-            if isLoading || appState.isAuthLoading {
+            if isLoading {
                 ZStack {
                     splashGradient
                         .opacity(isExiting ? 0 : 1)
@@ -24,14 +24,23 @@ struct SplashView: View {
                         .opacity(isExiting ? 0 : 1)
                         .accessibilityLabel("Pacing")
                 }
-            } else if appState.isLoggedIn {
-                if appState.isProfileComplete {
-                    MainTabView()
-                } else {
-                    ProfileSetupView()
-                }
+            } else if appState.isAuthLoading {
+                AuthenticationLoadingView()
             } else {
-                LoginView()
+                ZStack {
+                    if appState.isLoggedIn {
+                        if appState.isProfileComplete {
+                            MainTabView()
+                        } else {
+                            ProfileSetupView()
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    } else {
+                        LoginView()
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
+                .animation(.easeInOut(duration: 0.3), value: appState.isLoggedIn)
             }
         }
         .onAppear {

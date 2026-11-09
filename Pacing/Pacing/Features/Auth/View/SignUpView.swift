@@ -12,8 +12,9 @@ struct SignUpView: View {
     @State private var isConfirmationVisible = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+        ZStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
                 Text("Pacing 회원가입")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(Color.textPrimary)
@@ -56,26 +57,26 @@ struct SignUpView: View {
                 }
 
                 Button(action: signUp) {
-                    Group {
-                        if authViewModel.isLoading {
-                            ProgressView().tint(.white)
-                        } else {
-                            Text("회원가입하고 시작하기")
-                        }
-                    }
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 54)
-                    .background(Color.main500)
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    Text("회원가입하고 시작하기")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 54)
+                        .background(Color.main500)
+                        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 .disabled(authViewModel.isLoading)
                 .padding(.top, 32)
                 .accessibilityHint("이메일 계정을 만들고 프로필 설정을 시작합니다")
             }
-            .padding(.horizontal, 24)
-            .padding(.bottom, 36)
+                .padding(.horizontal, 24)
+                .padding(.bottom, 36)
+            }
+
+            if authViewModel.isLoading || appState.isAuthLoading {
+                AuthenticationLoadingView()
+                    .transition(.opacity)
+            }
         }
         .background(Color.backgroundPrimary)
         .navigationTitle("회원가입")

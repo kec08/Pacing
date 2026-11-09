@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import CoreLocation
 
 struct RunLapPace: Identifiable, Equatable {

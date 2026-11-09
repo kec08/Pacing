@@ -35,7 +35,7 @@ App Store Connect 심사 오류 중 앱 번들에서 수정 가능한 HealthKit 
 
 ## 관련 파일
 
-- `doc/fe/plans/fix-1.2.2-app-store-submission-plan.md`
+- `doc/ios/plans/fix-1.2.2-app-store-submission-plan.md`
 - `Pacing/Pacing/Info.plist`
 - `Pacing/Pacing.xcodeproj/project.pbxproj`
 - `Pacing/PacingTests/PacingTests.swift`

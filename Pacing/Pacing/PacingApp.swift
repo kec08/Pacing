@@ -6,7 +6,10 @@
 //
 
 import SwiftUI
+import Combine
 import FirebaseCore
+import FirebaseMessaging
+import HealthKit
 import NaverThirdPartyLogin
 #if canImport(GoogleSignIn)
 import GoogleSignIn
@@ -16,11 +19,21 @@ import KakaoSDKCommon
 import KakaoSDKAuth
 #endif
 
-final class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     private let naverDelegate = NaverLoginDelegate()
+    private let healthStore = HKHealthStore()
     func application(_ application: UIApplication,
                      didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         FirebaseApp.configure()
+        NotificationService.shared.configure()
+        UNUserNotificationCenter.current().delegate = self
+
+        // 러닝 시작 전에도 Watch에서 보내는 시작·정지·재개·종료 명령을 받을 수 있어야 합니다.
+        _ = PhoneRunSyncPublisher.shared
+
+        healthStore.workoutSessionMirroringStartHandler = { session in
+            NSLog("[Pacing] Watch 운동 세션 미러링 수신: %@", session)
+        }
 
         #if canImport(KakaoSDKCommon)
         KakaoSDK.initSDK(appKey: "73e4e7c46ea882a0d78a306b29553c17")
@@ -37,6 +50,28 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 
         return true
     }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        NotificationService.shared.didRegisterAPNSToken(deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NotificationService.shared.didFailToRegisterForRemoteNotifications(with: error)
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound, .badge]
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        await MainActor.run { AppNotificationBridge.shared.userInfo = response.notification.request.content.userInfo }
+    }
+}
+
+@MainActor
+final class AppNotificationBridge: ObservableObject {
+    static let shared = AppNotificationBridge()
+    @Published var userInfo: [AnyHashable: Any]?
 }
 
 @main
@@ -58,6 +93,7 @@ struct PacingApp: App {
                     #endif
                     NaverThirdPartyLoginConnection.getSharedInstance()?.receiveAccessToken(url)
                 }
+                .onReceive(AppNotificationBridge.shared.$userInfo.compactMap { $0 }) { appState.routeNotification($0) }
         }
     }
 }

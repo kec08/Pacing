@@ -52,6 +52,15 @@ service cloud.firestore {
         allow create, update, delete: if isOwner(userId);
       }
 
+      match /notificationDevices/{installationId} {
+        allow read: if false;
+        allow create, update, delete: if isOwner(userId);
+      }
+
+      match /notificationPreferences/{preferenceId} {
+        allow read, write: if false;
+      }
+
       match /savedSharedPlaylists/{playlistId} {
         allow read, write: if isOwner(userId);
       }

@@ -41,6 +41,7 @@ struct OnboardingPermissionView: View {
             VStack(spacing: 12) {
                 Button {
                     locationManager.requestAlwaysAuthorization()
+                    Task { await NotificationService.shared.requestAuthorization() }
                     navigateToMusic = true
                 } label: {
                     Text("허용하기")
@@ -53,6 +54,7 @@ struct OnboardingPermissionView: View {
                 }
 
                 Button {
+                    Task { await NotificationService.shared.requestAuthorization() }
                     navigateToMusic = true
                 } label: {
                     Text("나중에 하기")

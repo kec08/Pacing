@@ -7,10 +7,227 @@
 
 import XCTest
 @testable import Pacing
+import AVFoundation
 import CoreLocation
 import MapKit
 
 final class PacingTests: XCTestCase {
+    func testListenTogetherRequestNotificationRoutesToRunning() {
+        XCTAssertEqual(
+            NotificationRouter.destination(from: ["type": "listenTogetherRequest"]),
+            .running
+        )
+    }
+
+    func testUnknownNotificationDoesNotRoute() {
+        XCTAssertNil(NotificationRouter.destination(from: ["type": "unknown"]))
+    }
+
+    func testInitialRunningMapCameraUsesTheSameDistanceAsMyLocationButton() {
+        XCTAssertEqual(
+            RunningMapCameraPolicy.initialCameraDistance(locationFocusDistance: 1_000),
+            1_000
+        )
+    }
+
+    func testCountdownStartsOnlyOnceFromIdleOrFinishedWithAlwaysLocationPermission() {
+        XCTAssertTrue(
+            RunningCountdownPolicy.canStart(
+                state: .idle,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertTrue(
+            RunningCountdownPolicy.canStart(
+                state: .finished,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertFalse(
+            RunningCountdownPolicy.canStart(
+                state: .running,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertFalse(
+            RunningCountdownPolicy.canStart(
+                state: .idle,
+                hasAlwaysLocationAuthorization: false,
+                isCountdownActive: false
+            )
+        )
+        XCTAssertFalse(
+            RunningCountdownPolicy.canStart(
+                state: .idle,
+                hasAlwaysLocationAuthorization: true,
+                isCountdownActive: true
+            )
+        )
+    }
+
+    func testLapVoiceAnnouncementUsesKilometerTimeAndAveragePaceOrder() {
+        let announcement = LapVoiceAnnouncement(
+            kilometer: 2,
+            elapsedSeconds: 652,
+            averagePaceMinutesPerKilometer: 5.45
+        )
+
+        XCTAssertEqual(
+            announcement?.text,
+            "2킬로미터. 10분 52초. 킬로미터당 페이스 5분 27초."
+        )
+    }
+
+    func testLapVoiceAnnouncementRejectsInvalidMetrics() {
+        XCTAssertNil(LapVoiceAnnouncement(
+            kilometer: 0,
+            elapsedSeconds: 100,
+            averagePaceMinutesPerKilometer: 5
+        ))
+        XCTAssertNil(LapVoiceAnnouncement(
+            kilometer: 1,
+            elapsedSeconds: 0,
+            averagePaceMinutesPerKilometer: 5
+        ))
+        XCTAssertNil(LapVoiceAnnouncement(
+            kilometer: 1,
+            elapsedSeconds: 100,
+            averagePaceMinutesPerKilometer: .infinity
+        ))
+    }
+
+    func testRunningStateVoiceAnnouncementsUseExpectedKoreanMessages() {
+        XCTAssertEqual(RunningStateVoiceAnnouncement.started.text, "운동을 시작합니다.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.paused.text, "운동을 정지합니다.")
+        XCTAssertEqual(RunningStateVoiceAnnouncement.resumed.text, "운동을 재개합니다.")
+    }
+
+    func testResetKeepsFinishBriefingPlaying() {
+        let voice = VoiceAnnouncerSpy()
+        let viewModel = RunningViewModel(locationManager: LocationManager(), voiceAnnouncer: voice)
+        viewModel.state = .finished
+
+        viewModel.reset()
+
+        XCTAssertEqual(voice.stopCount, 0)
+
+        viewModel.state = .running
+        viewModel.reset()
+        XCTAssertEqual(voice.stopCount, 1)
+    }
+
+    func testMeloLexiconCoversRunningAnnouncementsOffline() throws {
+        let url = try XCTUnwrap(Bundle.main.url(forResource: "korean_lexicon", withExtension: "json"))
+        XCTAssertNotNil(Bundle.main.url(forResource: "melotts_kr_int8", withExtension: "onnx"))
+        for name in ["melo_started", "melo_paused", "melo_resumed", "melo_completed"] {
+            let clip = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: "wav"))
+            let player = try AVAudioPlayer(contentsOf: clip)
+            XCTAssertTrue(player.prepareToPlay())
+        }
+        let pronunciations = try JSONDecoder().decode([String: [Int64]].self, from: Data(contentsOf: url))
+        let tokenizer = MeloKoreanTokenizer(pronunciations: pronunciations)
+        let lap = try XCTUnwrap(LapVoiceAnnouncement(
+            kilometer: 2,
+            elapsedSeconds: 652,
+            averagePaceMinutesPerKilometer: 5.45
+        ))
+        let completion = try XCTUnwrap(RunCompletionVoiceAnnouncement(
+            distanceKilometers: 3.25,
+            elapsedSeconds: 3_905,
+            averagePaceMinutesPerKilometer: 5.5
+        ))
+        let noPace = try XCTUnwrap(RunCompletionVoiceAnnouncement(
+            distanceKilometers: 0,
+            elapsedSeconds: 0,
+            averagePaceMinutesPerKilometer: 0
+        ))
+        var prompts = [
+            RunningStateVoiceAnnouncement.started.text,
+            RunningStateVoiceAnnouncement.paused.text,
+            RunningStateVoiceAnnouncement.resumed.text,
+            lap.text,
+            RunCompletionVoiceAnnouncement.openingText,
+            completion.detailsText,
+            noPace.detailsText,
+            completion.text,
+            noPace.text
+        ]
+        for details in [completion.detailsText, noPace.detailsText] {
+            let parts = details.components(separatedBy: ". ")
+            XCTAssertGreaterThan(parts.count, 1)
+            prompts.append(parts[0] + ".")
+            prompts.append(parts.dropFirst().joined(separator: ". "))
+        }
+        for prompt in prompts {
+            let tokens = try XCTUnwrap(tokenizer.tokenIDs(for: prompt), prompt)
+            XCTAssertGreaterThan(tokens.count, 2)
+            XCTAssertEqual(tokens.first, 0)
+            XCTAssertEqual(tokens.last, 0)
+        }
+    }
+
+    func testMeloModelSynthesizesOfflineAudio() {
+        let engine = MeloSpeechEngine.shared
+        engine.prepare()
+        let deadline = Date().addingTimeInterval(30)
+        while !engine.isReady && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertTrue(engine.isReady, "Bundled MeloTTS model must load on iOS")
+
+        let completed = expectation(description: "MeloTTS audio")
+        let startedAt = Date()
+        let lap = LapVoiceAnnouncement(kilometer: 2, elapsedSeconds: 652, averagePaceMinutesPerKilometer: 5.45)!
+        engine.synthesize(lap.text) { data in
+            XCTAssertEqual(data?.prefix(4), Data("RIFF".utf8))
+            XCTAssertGreaterThan(data?.count ?? 0, 44)
+            if let data {
+                do {
+                    let player = try AVAudioPlayer(data: data)
+                    XCTAssertTrue(player.prepareToPlay())
+                } catch {
+                    XCTFail("MeloTTS WAV cannot be decoded: \(error)")
+                }
+            }
+            print("MeloTTS simulator lap inference: \(Date().timeIntervalSince(startedAt)) seconds")
+            completed.fulfill()
+        }
+        wait(for: [completed], timeout: 30)
+    }
+
+    func testRunCompletionVoiceAnnouncementIncludesDistanceTimeAndAveragePace() {
+        let announcement = RunCompletionVoiceAnnouncement(
+            distanceKilometers: 3.25,
+            elapsedSeconds: 3_905,
+            averagePaceMinutesPerKilometer: 5.5
+        )
+
+        XCTAssertEqual(
+            announcement?.text,
+            "운동을 완료했습니다. 총 거리 3.25킬로미터. 총 시간 1시간 5분 5초. 평균 페이스 5분 30초."
+        )
+    }
+
+    func testRunCompletionVoiceAnnouncementAllowsMissingPaceButRejectsInvalidMetrics() {
+        let noPaceAnnouncement = RunCompletionVoiceAnnouncement(
+            distanceKilometers: 0,
+            elapsedSeconds: 0,
+            averagePaceMinutesPerKilometer: 0
+        )
+        XCTAssertEqual(
+            noPaceAnnouncement?.text,
+            "운동을 완료했습니다. 총 거리 0.00킬로미터. 총 시간 0분 0초. 평균 페이스 정보 없음."
+        )
+        XCTAssertNil(RunCompletionVoiceAnnouncement(
+            distanceKilometers: -.infinity,
+            elapsedSeconds: 100,
+            averagePaceMinutesPerKilometer: 5
+        ))
+    }
+
     func testWeeklyDateRangeStartsOnMondayAndExcludesPreviousSunday() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
@@ -80,6 +297,60 @@ final class PacingTests: XCTestCase {
         XCTAssertTrue(RunningPacePolicy.canDisplayPace(distanceKilometers: 0.10, elapsedSeconds: 30))
     }
 
+    func testAveragePaceUsesWorkoutElapsedDuration() {
+        let pace = RunningPacePolicy.averagePace(
+            elapsedSeconds: 3_676,
+            distanceKilometers: 11.44
+        )
+
+        XCTAssertEqual(pace, 5.356, accuracy: 0.001)
+    }
+
+    func testAveragePaceMatchesSavedRecordForSameWorkoutDuration() {
+        let elapsedSeconds = 1_542
+        let distanceKilometers = 5.10
+        let summaryPace = RunningPacePolicy.averagePace(
+            elapsedSeconds: elapsedSeconds,
+            distanceKilometers: distanceKilometers
+        )
+        let record = RunRecord(
+            id: "same-pace",
+            startedAt: .now,
+            duration: elapsedSeconds,
+            movingDuration: elapsedSeconds,
+            distance: distanceKilometers,
+            avgPace: 0,
+            routeCoordinates: [],
+            lapPaces: []
+        )
+
+        XCTAssertEqual(summaryPace, record.displayPace, accuracy: 0.0001)
+        XCTAssertEqual(RunRecord.formattedPace(summaryPace), "5'02\"")
+    }
+
+    func testAveragePaceMatchesAppleWorkoutScreenshotMetrics() {
+        let elapsedSeconds = 52 * 60 + 2
+        let distanceKilometers = 10.0
+        let pace = RunningPacePolicy.averagePace(
+            elapsedSeconds: elapsedSeconds,
+            distanceKilometers: distanceKilometers
+        )
+
+        XCTAssertEqual(pace * 60, 312.2, accuracy: 0.1)
+        XCTAssertEqual(RunRecord.formattedPace(pace), "5'12\"")
+    }
+
+    func testAveragePaceRejectsInsufficientRunData() {
+        XCTAssertEqual(
+            RunningPacePolicy.averagePace(elapsedSeconds: 120, distanceKilometers: 0.09),
+            0
+        )
+        XCTAssertEqual(
+            RunningPacePolicy.averagePace(elapsedSeconds: 0, distanceKilometers: 1),
+            0
+        )
+    }
+
     func testPacePolicyRejectsStationaryGPSDriftAndAcceptsRunningSegment() {
         XCTAssertFalse(
             RunningPacePolicy.isValidRunningSegment(
@@ -96,6 +367,32 @@ final class PacingTests: XCTestCase {
                 previousHorizontalAccuracy: 5,
                 currentHorizontalAccuracy: 5
             )
+        )
+    }
+
+    func testPacePolicyAcceptsShortRunningUpdatesWithReducedGPSAccuracy() {
+        XCTAssertTrue(
+            RunningPacePolicy.isValidRunningSegment(
+                distanceMeters: 5,
+                timeInterval: 2,
+                previousHorizontalAccuracy: 30,
+                currentHorizontalAccuracy: 30
+            )
+        )
+    }
+
+    func testLapBoundaryPolicyReportsAllKilometersCrossedByOneLocationBatch() {
+        XCTAssertEqual(
+            RunningLapBoundaryPolicy.crossedKilometers(distanceKilometers: 2.35, startingAt: 1),
+            [1, 2]
+        )
+        XCTAssertEqual(
+            RunningLapBoundaryPolicy.crossedKilometers(distanceKilometers: 2.35, startingAt: 3),
+            []
+        )
+        XCTAssertEqual(
+            RunningLapBoundaryPolicy.crossedKilometers(distanceKilometers: 0.999, startingAt: 1),
+            []
         )
     }
 
@@ -128,6 +425,66 @@ final class PacingTests: XCTestCase {
         XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 20, accuracy: 0.001)
     }
 
+    func testBarometerElevationAccumulatesConfirmedSeparateClimbs() {
+        let start = Date(timeIntervalSince1970: 4_000)
+        let altitudes = [
+            0.0, 5.0, 10.0, 15.0, 0.0,
+            5.0, 10.0, 15.0, 0.0,
+            5.0, 10.0, 15.0, 0.0
+        ]
+        let samples = altitudes.enumerated().map { index, altitude in
+            ElevationSample(
+                timestamp: start.addingTimeInterval(Double(index) * 5),
+                altitudeMeters: altitude
+            )
+        }
+
+        XCTAssertEqual(ElevationGainCalculator.gain(from: samples) ?? -1, 45, accuracy: 0.001)
+    }
+
+    func testBarometerElevationIgnoresSmallPressureNoise() {
+        let start = Date(timeIntervalSince1970: 4_100)
+        let samples = [0.0, 0.7, -0.5, 0.8, 0.2, -0.4].enumerated().map { index, altitude in
+            ElevationSample(
+                timestamp: start.addingTimeInterval(Double(index) * 5),
+                altitudeMeters: altitude
+            )
+        }
+
+        XCTAssertEqual(ElevationGainCalculator.gain(from: samples) ?? -1, 0, accuracy: 0.001)
+    }
+
+    func testSevenPointFiveKilometerDriftScenarioUsesBarometerTwelveMeterGain() {
+        let start = Date(timeIntervalSince1970: 4_200)
+        // 절대 GPS 고도가 반복적으로 크게 흔들리는 평지 러닝 재현 샘플입니다.
+        let driftingGPSAltitudes = Array(repeating: [100.0, 115.0, 130.0, 145.0, 80.0], count: 9)
+            .flatMap { $0 }
+        let gpsLocations = driftingGPSAltitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(
+                    latitude: 37 + Double(index) * 0.00155,
+                    longitude: 127
+                ),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+        let barometerSamples = [0.0, 3.0, 6.0, 9.0, 12.0].enumerated().map { index, altitude in
+            ElevationSample(
+                timestamp: start.addingTimeInterval(Double(index) * 60),
+                altitudeMeters: altitude
+            )
+        }
+
+        let legacyGPSGain = RunMetricsCalculator.elevationGain(from: gpsLocations)
+        let barometerGain = ElevationGainCalculator.gain(from: barometerSamples)
+
+        XCTAssertGreaterThan(legacyGPSGain ?? 0, 140)
+        XCTAssertEqual(barometerGain ?? -1, 12, accuracy: 0.001)
+    }
+
     func testElevationGainIgnoresRepeatedAltitudeNoise() {
         let start = Date(timeIntervalSince1970: 2_500)
         let altitudes = [100.0, 106.0, 101.0, 107.0, 102.0, 106.0, 100.0]
@@ -142,6 +499,57 @@ final class PacingTests: XCTestCase {
         }
 
         XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
+    func testElevationGainIgnoresRepeatedTenMeterFlatlandOscillation() {
+        let start = Date(timeIntervalSince1970: 2_750)
+        let altitudes = [100.0, 106.0, 111.0, 104.0, 99.0, 105.0, 110.0, 103.0, 98.0]
+        let locations = altitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37 + Double(index) * 0.0001, longitude: 127),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
+    func testElevationGainDoesNotAccumulateRepeatedTwoStepGPSRises() {
+        let start = Date(timeIntervalSince1970: 2_775)
+        let altitudes = [
+            100.0, 105.0, 110.0, 115.0, 100.0,
+            105.0, 110.0, 115.0, 100.0,
+            105.0, 110.0, 115.0, 100.0
+        ]
+        let locations = altitudes.enumerated().map { index, altitude in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37 + Double(index) * 0.0001, longitude: 127),
+                altitude: altitude,
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 0, accuracy: 0.001)
+    }
+
+    func testElevationGainKeepsAConfirmedSustainedClimb() {
+        let start = Date(timeIntervalSince1970: 2_800)
+        let locations = (0..<6).map { index in
+            CLLocation(
+                coordinate: CLLocationCoordinate2D(latitude: 37 + Double(index) * 0.0001, longitude: 127),
+                altitude: 100 + Double(index * 4),
+                horizontalAccuracy: 5,
+                verticalAccuracy: 5,
+                timestamp: start.addingTimeInterval(Double(index) * 5)
+            )
+        }
+
+        XCTAssertEqual(RunMetricsCalculator.elevationGain(from: locations) ?? -1, 20, accuracy: 0.001)
     }
 
     func testElevationGainIsBoundedByDistanceBasedSanityLimit() {
@@ -516,4 +924,13 @@ final class PacingTests: XCTestCase {
         )
     }
 
+}
+
+private final class VoiceAnnouncerSpy: RunningVoiceAnnouncing {
+    private(set) var stopCount = 0
+
+    func announce(_ announcement: LapVoiceAnnouncement) {}
+    func announce(_ announcement: RunningStateVoiceAnnouncement) {}
+    func announce(_ announcement: RunCompletionVoiceAnnouncement) {}
+    func stop() { stopCount += 1 }
 }

@@ -339,6 +339,7 @@ final class MyViewModel: ObservableObject {
 
     func logout(appState: AppState) {
         try? Auth.auth().signOut()
+        NaverCredentialStore.remove()
         clearLocalSession(appState: appState)
     }
 
@@ -351,11 +352,30 @@ final class MyViewModel: ObservableObject {
 
         do {
             let functions = Functions.functions(region: "asia-northeast3")
-            _ = try await functions.httpsCallable("deleteAccount").call()
+            let requestData = NaverCredentialStore.refreshToken().map { ["naverRefreshToken": $0] } ?? [:]
+            _ = try await functions.httpsCallable("deleteAccount").call(requestData)
             try? Auth.auth().signOut()
+            NaverCredentialStore.remove()
             clearLocalSession(appState: appState)
         } catch {
-            accountDeletionError = "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
+            accountDeletionError = Self.accountDeletionErrorMessage(for: error)
+        }
+    }
+
+    private static func accountDeletionErrorMessage(for error: Error) -> String {
+        guard let code = FunctionsErrorCode(rawValue: (error as NSError).code) else {
+            return "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
+        }
+
+        switch code {
+        case .unauthenticated:
+            return "로그인 정보가 만료되었어요. 다시 로그인한 뒤 탈퇴해주세요."
+        case .failedPrecondition:
+            return "네이버 로그인 정보를 확인할 수 없어요. 다시 로그인한 뒤 탈퇴해주세요."
+        case .unavailable:
+            return "네이버 연결 해제 서비스를 사용할 수 없어요. 잠시 후 다시 시도해주세요."
+        default:
+            return "계정을 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
         }
     }
 

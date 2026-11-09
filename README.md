@@ -42,6 +42,15 @@
 
 GPS 경로와 페이스를 남기고, Apple Music으로 나에게 맞는 음악을 고르며, 친구와 주변 러너의 음악을 발견할 수 있습니다. 기록을 혼자 쌓는 데서 끝나지 않고, 같은 음악으로 서로의 러닝을 연결하는 경험을 지향합니다.
 
+## 1.3.0에서 달라진 점
+
+- **Apple Watch 앱**: Watch에서 러닝을 시작·일시정지·종료하고 거리, 현재·평균 페이스, 심박수와 최근 러닝 기록을 확인할 수 있습니다. iPhone과 러닝 상태·지표를 동기화합니다. ([#159](https://github.com/kec08/Pacing/pull/161), [#165](https://github.com/kec08/Pacing/pull/166), [#171](https://github.com/kec08/Pacing/pull/172), [#191](https://github.com/kec08/Pacing/pull/192), [#225](https://github.com/kec08/Pacing/pull/226))
+- **Watch 음악·같이 듣기**: 재생 제어, 앨범 아트와 같이 듣기 상태를 Watch에서 확인할 수 있습니다. ([#173](https://github.com/kec08/Pacing/pull/174), [#185](https://github.com/kec08/Pacing/pull/186), [#211](https://github.com/kec08/Pacing/pull/212))
+- **러닝 음성 안내**: 시작·일시정지·재개, 1km 구간, 종료 시 거리·시간·평균 페이스를 한국어 음성으로 안내합니다. 안내 음성은 오프라인에서도 동작합니다. ([#189](https://github.com/kec08/Pacing/pull/190), [#201](https://github.com/kec08/Pacing/pull/202), [#222](https://github.com/kec08/Pacing/pull/224))
+- **러닝 기록 사진 공유**: 활동 상세에서 거리·기록·경로 양식을 골라 사진에 담고 공유할 수 있습니다. ([#218](https://github.com/kec08/Pacing/pull/219), [#220](https://github.com/kec08/Pacing/pull/221))
+- **푸시 알림**: 친구 요청, 친구의 러닝 시작, 같이 듣기 요청과 러닝 리마인더를 받을 수 있습니다. ([#203](https://github.com/kec08/Pacing/pull/204), [#209](https://github.com/kec08/Pacing/pull/210), [#215](https://github.com/kec08/Pacing/pull/216))
+- **러닝 기록 정확도**: 거리 표시와 1km 구간 기록, 종료 요약의 평균 페이스를 보완했습니다. ([#213](https://github.com/kec08/Pacing/pull/214), [#223](https://github.com/kec08/Pacing/pull/223), [#225](https://github.com/kec08/Pacing/pull/226))
+
 ## 주요 기능
 
 ### 1. 위치 기반 러닝 기록

@@ -1,15 +1,164 @@
 const { setGlobalOptions } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onValueCreated } = require("firebase-functions/v2/database");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
 const axios = require("axios");
 
 setGlobalOptions({ maxInstances: 10, region: "asia-northeast3" });
 
-admin.initializeApp();
+admin.initializeApp({
+  // Functions 런타임에서는 프로젝트 설정이 자동 주입되지만, 로컬 트리거 로딩과
+  // Emulator 검증에서도 같은 Realtime Database 인스턴스를 식별할 수 있어야 한다.
+  databaseURL: process.env.FIREBASE_DATABASE_URL || "https://pacing-a8639-default-rtdb.firebaseio.com",
+});
 
 const firestore = admin.firestore();
 const realtimeDatabase = admin.database();
+
+const messaging = admin.messaging();
+
+async function deviceTokensFor(uid) {
+  const snapshot = await firestore.collection("users").doc(uid).collection("notificationDevices").get();
+  return snapshot.docs.map((document) => ({ id: document.id, token: document.get("token") })).filter(({ token }) => typeof token === "string" && token);
+}
+
+function usableNickname(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+async function nicknameFor(uid, fallback = "러너") {
+  try {
+    const profile = await firestore.collection("users").doc(uid).get();
+    return usableNickname(profile.get("nickname")) || usableNickname(fallback) || "러너";
+  } catch (error) {
+    logger.warn("Push notification sender profile lookup failed", { uid, errorCode: error.code });
+    return usableNickname(fallback) || "러너";
+  }
+}
+
+async function sendNotification(uid, { title, body, data }) {
+  const devices = await deviceTokensFor(uid);
+  const notificationType = data.type || "unknown";
+  if (devices.length === 0) {
+    logger.warn("Push notification skipped because no registered device token exists", { uid, notificationType });
+    return { successCount: 0, failureCount: 0, deviceCount: 0 };
+  }
+
+  let successCount = 0;
+  let failureCount = 0;
+  for (let index = 0; index < devices.length; index += 500) {
+    const chunk = devices.slice(index, index + 500);
+    const response = await messaging.sendEachForMulticast({
+      tokens: chunk.map((device) => device.token),
+      notification: { title, body },
+      data: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, String(value)])),
+      apns: { payload: { aps: { sound: "default" } } },
+    });
+    successCount += response.successCount;
+    failureCount += response.failureCount;
+    const errorCodes = response.responses.map((result) => result.error?.code).filter(Boolean);
+    logger.info("Push notification delivery result", {
+      uid,
+      notificationType,
+      deviceCount: chunk.length,
+      successCount: response.successCount,
+      failureCount: response.failureCount,
+      errorCodes,
+    });
+    await Promise.all(response.responses.map((result, offset) => {
+      const code = result.error?.code;
+      if (code !== "messaging/registration-token-not-registered" && code !== "messaging/invalid-registration-token") return undefined;
+      return firestore.collection("users").doc(uid).collection("notificationDevices").doc(chunk[offset].id).delete();
+    }));
+  }
+
+  return { successCount, failureCount, deviceCount: devices.length };
+}
+
+exports.notifyFriendRequest = onDocumentCreated("friendRequests/{requestID}", async (event) => {
+  const request = event.data?.data();
+  if (!request || request.status !== "pending" || !request.fromUID || !request.toUID) return;
+  const senderNickname = await nicknameFor(request.fromUID);
+  await sendNotification(request.toUID, {
+    title: "새로운 친구 요청",
+    body: `${senderNickname}님이 친구 요청을 보냈어요.`,
+    data: { type: "friendRequest", requestID: event.params.requestID, senderUID: request.fromUID },
+  });
+});
+
+// Realtime Database 기본 인스턴스는 us-central1에 있으므로 이벤트 트리거도
+// 같은 리전에 둔다. Functions의 기본 리전(asia-northeast3)을 사용하면 생성
+// 이벤트를 수신하지 못한다.
+exports.notifyFriendRunStarted = onValueCreated({
+  ref: "/activeRunners/{uid}",
+  instance: "pacing-a8639-default-rtdb",
+  region: "us-central1",
+}, async (event) => {
+  const runner = event.data?.val();
+  const uid = event.params.uid;
+  if (!runner || !uid) return;
+  const [runnerNickname, friends] = await Promise.all([
+    nicknameFor(uid, runner.nickname),
+    firestore.collection("users").doc(uid).collection("friends").get(),
+  ]);
+  await Promise.all(friends.docs.map((friend) => sendNotification(friend.id, {
+    title: "친구가 러닝을 시작했어요",
+    body: `${runnerNickname}님과 같이 달려볼까요?`,
+    data: { type: "friendRunStarted", senderUID: uid },
+  })));
+});
+
+// 같이 듣기 요청은 수신자별 inbox 경로에 새 항목이 생길 때만 알린다.
+// listenSessions의 재생 위치 갱신을 구독하면 매초 중복 푸시가 발생할 수 있으므로
+// 세션 원본이 아닌 incomingRequests 생성 이벤트를 트리거로 사용한다.
+exports.notifyListenTogetherRequest = onValueCreated({
+  ref: "/incomingRequests/{recipientUID}/{sessionID}",
+  instance: "pacing-a8639-default-rtdb",
+  region: "us-central1",
+}, async (event) => {
+  const request = event.data?.val();
+  const recipientUID = event.params.recipientUID;
+  const sessionID = event.params.sessionID;
+  if (!request || !recipientUID || !sessionID || request.status !== "pending" || !request.guestUID) return;
+
+  const guestNickname = await nicknameFor(request.guestUID, request.guestNickname);
+  await sendNotification(recipientUID, {
+    title: "같이 듣기 요청",
+    body: `${guestNickname}님이 같이 듣기를 요청했어요.`,
+    data: { type: "listenTogetherRequest", sessionID, senderUID: request.guestUID },
+  });
+});
+
+exports.resetInactivityReminder = onDocumentCreated("users/{uid}/runHistory/{recordID}", async (event) => {
+  await firestore.collection("users").doc(event.params.uid)
+    .collection("notificationPreferences").doc("default")
+    .set({ lastInactivityMilestoneDays: 0, lastInactivityReminderAt: admin.firestore.FieldValue.delete() }, { merge: true });
+});
+
+exports.sendEveningRunReminders = onSchedule({ schedule: "0 20 * * *", timeZone: "Asia/Seoul" }, async () => {
+  const now = admin.firestore.Timestamp.now();
+  const users = await firestore.collection("users").get();
+  await Promise.all(users.docs.map(async (user) => {
+    const [history, preference] = await Promise.all([
+      user.ref.collection("runHistory").orderBy("startedAt", "desc").limit(1).get(),
+      user.ref.collection("notificationPreferences").doc("default").get(),
+    ]);
+    const lastRun = history.docs[0]?.get("startedAt");
+    const idleDays = lastRun?.toDate ? Math.floor((now.toDate() - lastRun.toDate()) / 86_400_000) : 0;
+    const lastMilestone = preference.get("lastInactivityMilestoneDays") || 0;
+    const milestones = [3, 7, 14];
+    const milestone = milestones.find((day) => idleDays >= day && day > lastMilestone) || (idleDays >= 21 && idleDays - lastMilestone >= 7 ? idleDays : 0);
+    if (milestone) {
+      await sendNotification(user.id, { title: "잠시 쉬었다면, 오늘은 가볍게 다시 달려볼까요?", body: "가벼운 러닝으로 다시 페이스를 찾아봐요.", data: { type: "inactivityReminder" } });
+      await preference.ref.set({ lastInactivityReminderAt: now, lastInactivityMilestoneDays: milestone }, { merge: true });
+      return;
+    }
+    await sendNotification(user.id, { title: "오늘도 페이싱과 달려볼까요?", body: "좋아하는 노래와 함께 오늘 하루를 기분 좋게 마무리해요.", data: { type: "dailyReminder" } });
+  }));
+});
 
 function profileVisibilityAllows(profile, viewerUID, friendUIDs) {
   if (!profile || profile.id === viewerUID) return true;
@@ -141,17 +290,63 @@ async function deleteListenSessionsForUser(uid) {
   await realtimeDatabase.ref().update(updates);
 }
 
+function isNaverUser(authToken) {
+  return authToken?.provider === "naver";
+}
+
+async function revokeNaverToken(refreshToken, uid) {
+  try {
+    const response = await axios.post(
+      "https://nid.naver.com/oauth2.0/revoke",
+      new URLSearchParams({
+        client_id: "hxrh7_6fG3iRc6tKxOuY",
+        client_secret: "l6C67zJ5g2",
+        token: refreshToken,
+        token_type_hint: "refresh_token",
+      }).toString(),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } },
+    );
+
+    if (response.status !== 200) {
+      logger.error("Naver token revocation returned an unexpected status", { uid, status: response.status });
+      throw new HttpsError("unavailable", "네이버 로그인 연결을 해제하지 못했어요.");
+    }
+    logger.info("Naver token revoked", { uid, status: response.status });
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+
+    const status = error.response?.status;
+    logger.error("Naver token revocation failed", { uid, status, errorCode: error.code });
+    if (status === 401) {
+      throw new HttpsError("failed-precondition", "네이버 로그인 정보를 다시 확인해주세요.");
+    }
+    throw new HttpsError("unavailable", "네이버 로그인 연결을 해제하지 못했어요.");
+  }
+}
+
 /**
  * Permanently deletes the authenticated user's Pacing account and all Pacing data.
- * OAuth provider accounts (Apple, Google, Kakao, Naver) are not affected.
+ * The Naver OAuth connection is revoked before Pacing data is removed.
  */
-exports.deleteAccount = onCall(async (request) => {
+// Firestore recursiveDelete와 Realtime Database 정리를 같은 요청에서 수행하므로,
+// 기본 256MiB를 초과하지 않도록 이 함수에만 메모리를 늘린다.
+exports.deleteAccount = onCall({ memory: "512MiB" }, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) {
     throw new HttpsError("unauthenticated", "로그인한 사용자만 계정을 삭제할 수 있어요.");
   }
 
+  const isNaverAccount = isNaverUser(request.auth.token);
+  const naverRefreshToken = request.data?.naverRefreshToken;
+  if (isNaverAccount && (typeof naverRefreshToken !== "string" || !naverRefreshToken)) {
+    throw new HttpsError("failed-precondition", "네이버 로그인 정보를 다시 확인해주세요.");
+  }
+
   try {
+    if (isNaverAccount) {
+      await revokeNaverToken(naverRefreshToken, uid);
+    }
+
     const userRef = firestore.collection("users").doc(uid);
     const [sentRequests, receivedRequests, ownedPlaylists, ownFriends] = await Promise.all([
       firestore.collection("friendRequests").where("fromUID", "==", uid).get(),
@@ -182,6 +377,7 @@ exports.deleteAccount = onCall(async (request) => {
     logger.info("Pacing account deleted", { uid });
     return { deleted: true };
   } catch (error) {
+    if (error instanceof HttpsError) throw error;
     logger.error("Pacing account deletion failed", {
       uid,
       errorCode: error?.code,
@@ -268,6 +464,30 @@ exports.acceptFriendRequest = onCall(async (request) => {
   }
 });
 
+/** Creates or reopens one directional friend request on the server. */
+exports.sendFriendRequest = onCall(async (request) => {
+  const fromUID = request.auth?.uid;
+  const toUID = request.data?.toUID;
+  if (!fromUID) throw new HttpsError("unauthenticated", "로그인한 사용자만 친구 요청을 보낼 수 있어요.");
+  if (!toUID || typeof toUID !== "string" || toUID === fromUID) {
+    throw new HttpsError("invalid-argument", "올바른 친구가 필요해요.");
+  }
+
+  const requestRef = firestore.collection("friendRequests").doc(`${fromUID}_${toUID}`);
+  await firestore.runTransaction(async (transaction) => {
+    const [target, existing] = await transaction.getAll(firestore.collection("users").doc(toUID), requestRef);
+    if (!target.exists) throw new HttpsError("not-found", "친구를 찾을 수 없어요.");
+    if (existing.exists && existing.get("status") === "pending") return;
+    transaction.set(requestRef, {
+      fromUID,
+      toUID,
+      status: "pending",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
+  });
+  return { requested: true };
+});
+
 exports.naverLogin = onCall(async (request) => {
   logger.info("naverLogin called");
 
@@ -278,6 +498,7 @@ exports.naverLogin = onCall(async (request) => {
 
   // 인증 코드 → 액세스 토큰 교환
   let accessToken;
+  let refreshToken;
   try {
     const tokenRes = await axios.get("https://nid.naver.com/oauth2.0/token", {
       params: {
@@ -290,7 +511,8 @@ exports.naverLogin = onCall(async (request) => {
       },
     });
     accessToken = tokenRes.data.access_token;
-    if (!accessToken) throw new Error("access_token 없음");
+    refreshToken = tokenRes.data.refresh_token;
+    if (!accessToken || !refreshToken) throw new Error("Naver token response is incomplete");
     logger.info("Naver token obtained");
   } catch (e) {
     logger.error("Naver token error:", e.response?.data || e.message);
@@ -321,7 +543,7 @@ exports.naverLogin = onCall(async (request) => {
       profileImage,
     });
     logger.info("Custom token created for:", naverUID);
-    return { customToken, nickname, profileImage };
+    return { customToken, nickname, profileImage, refreshToken };
   } catch (e) {
     logger.error("Custom token error:", e.message);
     throw new HttpsError("internal", "Custom Token 생성에 실패했어요.");

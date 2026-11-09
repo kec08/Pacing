@@ -63,17 +63,19 @@ enum RunMetricsCalculator {
 
     /// 유효한 수직 정확도를 가진 위치 샘플만 사용해 누적 상승 고도를 계산합니다.
     ///
-    /// GPS 고도는 한 샘플만으로 크게 튈 수 있으므로 5개 샘플의 중앙값으로
-    /// 완화한 뒤, 연속된 상승 추세가 확인된 변화만 누적합니다.
+    /// GPS 고도는 한 샘플만으로 크게 튈 수 있으므로 중앙값으로 완화한 뒤,
+    /// 충분한 높이와 하강 폭이 확인된 저점-정점 상승 구간만 누적합니다.
     static func elevationGain(
         from locations: [CLLocation],
-        maximumVerticalAccuracy: CLLocationAccuracy = 10,
-        minimumPositiveDelta: CLLocationDistance = 5,
-        maximumPositiveDelta: CLLocationDistance = 12,
-        minimumConsecutiveRises: Int = 2,
+        maximumVerticalAccuracy: CLLocationAccuracy = 5,
+        minimumConfirmedClimb: CLLocationDistance = 12,
+        minimumDescentForNewBaseline: CLLocationDistance = 8,
         maximumGainPerKilometer: CLLocationDistance = 30
     ) -> CLLocationDistance? {
-        guard minimumConsecutiveRises > 0, maximumGainPerKilometer > 0 else { return nil }
+        guard minimumConfirmedClimb > 0,
+              minimumDescentForNewBaseline > 0,
+              maximumGainPerKilometer > 0
+        else { return nil }
         let valid = locations.filter {
             $0.verticalAccuracy > 0
                 && $0.verticalAccuracy <= maximumVerticalAccuracy
@@ -93,31 +95,34 @@ enum RunMetricsCalculator {
                 .sorted()[((upperBound - lowerBound) / 2)]
         }
 
-        var gain = 0.0
         var horizontalDistance = 0.0
-        var previousAltitude = smoothedAltitudes[0]
-        var pendingGain = 0.0
-        var consecutiveRises = 0
+        var gain = 0.0
+        var valley = smoothedAltitudes[0]
+        var peak = valley
 
         for (locationPair, altitude) in zip(zip(valid, valid.dropFirst()), smoothedAltitudes.dropFirst()) {
             horizontalDistance += locationPair.1.distance(from: locationPair.0)
-            let delta = altitude - previousAltitude
-            if delta >= minimumPositiveDelta, delta <= maximumPositiveDelta {
-                pendingGain += delta
-                consecutiveRises += 1
-                if consecutiveRises >= minimumConsecutiveRises {
-                    gain += pendingGain
-                    pendingGain = 0
-                    consecutiveRises = 0
-                }
-            } else if delta <= -minimumPositiveDelta {
-                pendingGain = 0
-                consecutiveRises = 0
+            if altitude > peak {
+                peak = altitude
+                continue
             }
-            previousAltitude = altitude
+
+            // 실제로 내려왔다는 확신이 있을 때만 다음 상승의 기준점을 바꾼다.
+            // 이 구간에서 이전 저점부터 정점까지 충분히 올랐다면 한 번만 누적한다.
+            guard peak - altitude >= minimumDescentForNewBaseline else { continue }
+            if peak - valley >= minimumConfirmedClimb {
+                gain += peak - valley
+            }
+            valley = altitude
+            peak = altitude
         }
 
-        guard horizontalDistance > 0 else { return 0 }
+        // 종료 시점까지 계속 오르는 경로도 상승값으로 확정한다.
+        if peak - valley >= minimumConfirmedClimb {
+            gain += peak - valley
+        }
+
+        guard horizontalDistance > 0 else { return gain }
         let maximumReasonableGain = horizontalDistance / 1_000.0 * maximumGainPerKilometer
         return min(gain, maximumReasonableGain)
     }

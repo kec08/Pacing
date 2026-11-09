@@ -1,0 +1,427 @@
+import Combine
+import Foundation
+import HealthKit
+import WatchKit
+
+@MainActor
+final class WatchRunningViewModel: ObservableObject {
+    @Published private(set) var state: WatchRunState = .idle
+    @Published private(set) var metrics = WatchRunMetrics.empty
+    @Published var displayMetric: WatchRunDisplayMetric = .averagePace
+    @Published private(set) var secondaryMetrics: [WatchRunDisplayMetric] = [.distance, .currentPace]
+
+    private var timer: AnyCancellable?
+    private var countdownTask: Task<Void, Never>?
+    private var startedAt: Date?
+    private var sessionID = UUID()
+    private var pendingStartAt: Date?
+    private var latestPhoneEndAt: Date?
+    private var dismissedPhoneEndAt: Date?
+    private var elapsedBeforeCurrentSegment: TimeInterval = 0
+    private var paceReference: (meters: Double, date: Date)?
+    private var latestPaceAt: Date?
+    private var usesPhoneMetrics = false
+    private let workoutRepository: HealthKitWatchWorkoutRepository
+    private let locationRepository: WatchRunLocationRepository
+    private var cancellables = Set<AnyCancellable>()
+    /// Xcode Preview에는 HealthKit 운동 세션을 지원하는 Watch 런타임이 없으므로
+    /// 화면 상태만 검증할 수 있는 안전한 타이머 경로를 사용한다.
+    private let usesPreviewMetrics: Bool
+
+    init(
+        workoutRepository: HealthKitWatchWorkoutRepository? = nil,
+        locationRepository: WatchRunLocationRepository? = nil,
+        usesPreviewMetrics: Bool = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+    ) {
+        let workoutRepository = workoutRepository ?? HealthKitWatchWorkoutRepository()
+        self.workoutRepository = workoutRepository
+        self.locationRepository = locationRepository ?? WatchRunLocationRepository()
+        self.usesPreviewMetrics = usesPreviewMetrics
+
+        workoutRepository.$liveMetrics
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] liveMetrics in
+                guard let self else { return }
+                if !self.usesPhoneMetrics, self.workoutRepository.hasActiveWorkoutSession, liveMetrics.distanceMeters > 0 {
+                    let now = Date()
+                    if let reference = self.paceReference {
+                        let seconds = now.timeIntervalSince(reference.date)
+                        let meters = liveMetrics.distanceMeters - reference.meters
+                        if seconds > 30 || meters < 0 {
+                            self.paceReference = (liveMetrics.distanceMeters, now)
+                        } else if meters >= 20, seconds >= 3 {
+                            self.metrics.currentPaceSecondsPerKilometer = seconds / (meters / 1_000)
+                            self.latestPaceAt = now
+                            self.paceReference = (liveMetrics.distanceMeters, now)
+                        }
+                    } else {
+                        self.paceReference = (liveMetrics.distanceMeters, now)
+                    }
+                }
+                if !self.usesPhoneMetrics {
+                    self.metrics.distanceMeters = liveMetrics.distanceMeters
+                }
+                self.metrics.heartRateBeatsPerMinute = liveMetrics.heartRateBeatsPerMinute
+                self.metrics.activeEnergyKilocalories = liveMetrics.activeEnergyKilocalories
+                if !self.usesPhoneMetrics, self.state == .ending, liveMetrics.elapsed > 0 {
+                    self.metrics.elapsed = liveMetrics.elapsed
+                }
+                if self.state == .running || self.state == .paused || self.state == .ending {
+                    self.publishWatchMetrics()
+                }
+            }
+            .store(in: &cancellables)
+
+        workoutRepository.$sessionError
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] error in
+                guard let self, let error, self.state == .running || self.state == .paused else { return }
+                self.timer?.cancel()
+                self.locationRepository.pauseTracking()
+                self.state = .failed(error)
+            }
+            .store(in: &cancellables)
+
+        self.locationRepository.$routePoints
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] points in
+                self?.metrics.routePoints = points
+            }
+            .store(in: &cancellables)
+    }
+
+    func start() {
+        guard state == .idle || state == .ended || isFailure else { return }
+
+        usesPhoneMetrics = false
+
+        let startAt = Date.now.addingTimeInterval(3)
+        state = .countdown(3)
+        sessionID = UUID()
+        WatchRunCommandPublisher.shared.send(
+            PhoneRunCommand(action: .start, sender: .watch, sessionID: sessionID, startAt: startAt)
+        )
+        resetMetrics()
+
+        countdownTask?.cancel()
+        countdownTask = Task { [weak self] in
+            for count in stride(from: 3, through: 1, by: -1) {
+                guard !Task.isCancelled, let self else { return }
+                self.state = .countdown(count)
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+
+            guard !Task.isCancelled, let self else { return }
+            self.startWorkoutAfterCountdown()
+        }
+    }
+
+    func startFromPhone(configuration: HKWorkoutConfiguration) {
+        let canRecoverFromPhoneSnapshot = state == .running && !workoutRepository.hasActiveWorkoutSession
+        guard state == .idle || state == .ended || isFailure || canRecoverFromPhoneSnapshot else { return }
+        usesPhoneMetrics = true
+        countdownTask?.cancel()
+        resetMetrics()
+        state = .starting
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let workoutStartDate = pendingStartAt ?? .now
+                try await workoutRepository.start(configuration: configuration, startDate: workoutStartDate)
+                startedAt = workoutStartDate
+                pendingStartAt = nil
+                state = .running
+                locationRepository.startTracking()
+                startTimer()
+                publishWatchMetrics()
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionStartFailed)
+            }
+        }
+    }
+
+    func applyPhoneCommand(_ command: PhoneRunCommand) {
+        guard command.sender == .phone else { return }
+        sessionID = command.sessionID
+
+        switch command.action {
+        case .start:
+            pendingStartAt = command.startAt
+            return
+        case .pause:
+            guard state == .running else { return }
+            pauseOrResume(sendCommand: false)
+        case .resume:
+            guard state == .paused else { return }
+            pauseOrResume(sendCommand: false)
+        case .finish:
+            finishFromPhone()
+        }
+    }
+
+    @discardableResult
+    func applyPhoneSnapshot(_ snapshot: PhoneRunSnapshot) -> Bool {
+        switch snapshot.state {
+        case .running:
+            if let sessionID = snapshot.sessionID { self.sessionID = sessionID }
+            updateMetrics(from: snapshot)
+            dismissedPhoneEndAt = nil
+            // iPhone 스냅샷과 Watch 자체 타이머가 서로 다른 시작 시각을 기준으로
+            // 시간을 갱신하면 화면 시간이 앞뒤로 튄다. 수신할 때마다 iPhone의
+            // 최신 경과 시간을 기준점으로 다시 맞춰 하나의 시간축만 사용한다.
+            elapsedBeforeCurrentSegment = metrics.elapsed
+            startedAt = snapshot.sentAt
+            if state == .idle || state == .paused {
+                state = .running
+                startTimer()
+            }
+            return true
+        case .paused:
+            // 유휴 상태에서 온 정지 스냅샷은 과거 세션의 상태일 수 있다.
+            // 실제로 실행 중인 세션만 iPhone의 정지 상태를 받아들인다.
+            guard state == .running || state == .paused else { return false }
+            updateMetrics(from: snapshot)
+            dismissedPhoneEndAt = nil
+            timer?.cancel()
+            startedAt = nil
+            elapsedBeforeCurrentSegment = metrics.elapsed
+            state = .paused
+            return true
+        case .ended:
+            latestPhoneEndAt = snapshot.sentAt
+            // Watch 앱을 다시 열면 WatchConnectivity가 마지막 applicationContext를
+            // 재전달한다. 유휴 상태의 종료 스냅샷은 이전 러닝이므로 홈 화면을 유지한다.
+            guard state.isActive || state == .ended else { return false }
+            if state == .running || state == .paused {
+                // 종료 명령이 유실돼도 종료 스냅샷만으로 Watch 운동 세션을 정리한다.
+                end(sendCommand: false)
+            }
+            updateMetrics(from: snapshot)
+            return true
+        }
+    }
+
+    private func updateMetrics(from snapshot: PhoneRunSnapshot) {
+        metrics.elapsed = TimeInterval(snapshot.elapsedSeconds)
+        metrics.distanceMeters = snapshot.distanceKilometers * 1_000
+        metrics.averagePaceSecondsPerKilometer = (snapshot.averagePaceMinutesPerKilometer ?? 0) * 60
+        metrics.currentPaceText = snapshot.currentPaceText
+        metrics.averagePaceText = snapshot.averagePaceText
+        metrics.splits = (snapshot.lapPaces ?? []).map {
+            WatchRunSplit(kilometer: $0.kilometer, paceText: $0.paceText)
+        }
+        metrics.currentPaceSecondsPerKilometer = snapshot.paceMinutesPerKilometer > 0
+            ? snapshot.paceMinutesPerKilometer * 60
+            : nil
+    }
+
+    /// iPhone 종료도 Watch의 종료 요약을 유지한다. 사용자가 요약의 완료를 탭할 때만 홈으로 복귀한다.
+    private func finishFromPhone() {
+        guard state == .running || state == .paused else { return }
+        end(sendCommand: false)
+    }
+
+    private func startWorkoutAfterCountdown() {
+        state = .starting
+
+        if usesPreviewMetrics {
+            startedAt = .now
+            state = .running
+            startTimer()
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await workoutRepository.start()
+                startedAt = .now
+                state = .running
+                locationRepository.startTracking()
+                startTimer()
+                publishWatchMetrics()
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionStartFailed)
+            }
+        }
+    }
+
+    func pauseOrResume(sendCommand: Bool = true) {
+        switch state {
+        case .running:
+            syncElapsed()
+            elapsedBeforeCurrentSegment = metrics.elapsed
+            startedAt = nil
+            timer?.cancel()
+            // HealthKit pause 처리보다 먼저 화면 상태를 확정한다. HealthKit 호출이
+            // 완료될 때까지 대시보드 메트릭이 다시 보이는 전환 지연을 막는다.
+            state = .paused
+            if !usesPreviewMetrics {
+                workoutRepository.pause()
+                locationRepository.pauseTracking()
+            }
+            if sendCommand {
+                WatchRunCommandPublisher.shared.send(
+                    PhoneRunCommand(action: .pause, sender: .watch, sessionID: sessionID)
+                )
+            }
+            publishWatchMetrics(state: .paused)
+            WKInterfaceDevice.current().play(.stop)
+        case .paused:
+            startedAt = .now
+            state = .running
+            if !usesPreviewMetrics {
+                workoutRepository.resume()
+                locationRepository.startTracking()
+            }
+            startTimer()
+            publishWatchMetrics(state: .running)
+            if sendCommand {
+                WatchRunCommandPublisher.shared.send(
+                    PhoneRunCommand(action: .resume, sender: .watch, sessionID: sessionID)
+                )
+            }
+            WKInterfaceDevice.current().play(.start)
+        default:
+            break
+        }
+    }
+
+    func end(sendCommand: Bool = true) {
+        guard state == .running || state == .paused else { return }
+        state = .ending
+        syncElapsed()
+        timer?.cancel()
+        startedAt = nil
+        locationRepository.pauseTracking()
+        if sendCommand {
+            WatchRunCommandPublisher.shared.send(
+                PhoneRunCommand(action: .finish, sender: .watch, sessionID: sessionID)
+            )
+        }
+
+        if usesPreviewMetrics {
+            completeRun()
+            return
+        }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await workoutRepository.end()
+                if !usesPhoneMetrics {
+                    metrics.distanceMeters = workoutRepository.liveMetrics.distanceMeters
+                }
+                if !usesPhoneMetrics, workoutRepository.liveMetrics.elapsed > 0 {
+                    metrics.elapsed = workoutRepository.liveMetrics.elapsed
+                }
+                self.completeRun()
+            } catch let error as WatchRunError {
+                state = .failed(error)
+            } catch {
+                state = .failed(.sessionEndFailed)
+            }
+        }
+    }
+
+    private func completeRun() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        timer?.cancel()
+        startedAt = nil
+        elapsedBeforeCurrentSegment = metrics.elapsed
+        locationRepository.reset()
+        state = .ended
+        publishWatchMetrics(state: .ended)
+    }
+
+    func reset() {
+        countdownTask?.cancel()
+        countdownTask = nil
+        timer?.cancel()
+        startedAt = nil
+        elapsedBeforeCurrentSegment = 0
+        resetMetrics()
+        locationRepository.reset()
+        if state == .ended {
+            dismissedPhoneEndAt = latestPhoneEndAt
+        }
+        state = .idle
+        displayMetric = .averagePace
+        secondaryMetrics = [.distance, .currentPace]
+    }
+
+    func selectNextDisplayMetric() {
+        displayMetric = displayMetric.next()
+    }
+
+    func selectDisplayMetric(_ metric: WatchRunDisplayMetric) {
+        displayMetric = metric
+    }
+
+    func selectNextSecondaryMetric(at index: Int) {
+        guard secondaryMetrics.indices.contains(index) else { return }
+
+        let otherMetrics = Set(secondaryMetrics.enumerated().compactMap { offset, metric in
+            offset == index ? nil : metric
+        })
+        var updatedMetrics = secondaryMetrics
+        updatedMetrics[index] = updatedMetrics[index].next(excluding: otherMetrics)
+        secondaryMetrics = updatedMetrics
+    }
+
+    private var isFailure: Bool {
+        if case .failed = state { return true }
+        return false
+    }
+
+    private func startTimer() {
+        timer?.cancel()
+        timer = Timer.publish(every: 1, on: .main, in: .common)
+            .autoconnect()
+            .sink { [weak self] _ in
+                self?.syncElapsed()
+                if let latestPaceAt = self?.latestPaceAt,
+                   Date().timeIntervalSince(latestPaceAt) > 20 {
+                    self?.metrics.currentPaceSecondsPerKilometer = nil
+                }
+                self?.publishWatchMetrics()
+            }
+    }
+
+    private func publishWatchMetrics(state snapshotState: WatchRunMetricsSnapshot.State? = nil) {
+        let resolvedState = snapshotState ?? (state == .paused ? .paused : (state == .ended ? .ended : .running))
+        // 백그라운드에서는 화면 타이머가 멈출 수 있지만 HealthKit 콜백은 계속 도착한다.
+        // 전송 직전에 시작 시각 기준으로 보정해 아이폰에 오래된 경과 시간이 전달되지 않게 한다.
+        if resolvedState == .running {
+            syncElapsed()
+        }
+        WatchRunCommandPublisher.shared.publish(
+            WatchRunMetricsSnapshot(
+                sessionID: sessionID,
+                state: resolvedState,
+                elapsedSeconds: max(0, Int(metrics.elapsed.rounded())),
+                distanceMeters: max(0, workoutRepository.liveMetrics.distanceMeters),
+                sentAt: .now
+            )
+        )
+    }
+
+    private func syncElapsed() {
+        guard let startedAt else { return }
+        metrics.elapsed = elapsedBeforeCurrentSegment + Date.now.timeIntervalSince(startedAt)
+    }
+
+    private func resetMetrics() {
+        metrics = .empty
+        elapsedBeforeCurrentSegment = 0
+        paceReference = nil
+        latestPaceAt = nil
+    }
+
+}

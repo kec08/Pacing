@@ -12,12 +12,21 @@ private enum MusicSheetPanel {
 }
 
 private enum RunningMetric: CaseIterable, Hashable {
+    case time
     case distance
     case elevation
     case pace
+    case averagePace
     case heartRate
     case cadence
     case calories
+}
+
+enum RunningMapCameraPolicy {
+    /// 최초 진입은 MapKit의 `.automatic` 카메라가 아닌 내 위치 버튼과 같은 범위로 시작한다.
+    static func initialCameraDistance(locationFocusDistance: Double) -> Double {
+        locationFocusDistance
+    }
 }
 
 struct RunningView: View {
@@ -32,12 +41,13 @@ struct RunningView: View {
     @State private var showSummary = false
     @State private var showMusicSheet = false
     @State private var showNearbySheet = false
-    @State private var countdown: Int? = nil
     // `.userLocation`은 시스템 위치 표시를 함께 노출할 수 있어, 지도에는 커스텀 프로필 핀만 보이도록 한다.
     @State private var cameraPosition: MapCameraPosition = .automatic
     @State private var showStopConfirm = false   // 정지 후 종료/재시작 버튼 표시
     @State private var stopHoldProgress: CGFloat = 0
     @State private var stopHoldTimer: Timer? = nil
+    @State private var stopHoldStartedAt: Date?
+    @State private var stopHoldHapticStep = 0
     @State private var collapsedPinIDs: Set<String> = []
     // 최초 진입도 내 위치 버튼과 같은 거리로 맞춰 내 위치가 너무 작게 보이지 않게 한다.
     @State private var mapZoomDistance: Double = 1_000
@@ -53,10 +63,14 @@ struct RunningView: View {
     @State private var localPlaybackStartedAt: Date? = nil
     @State private var shouldRunLocalPlaybackClock = false
     @State private var hasCenteredOnInitialLocation = false
+    @State private var isMapReady = false
+    @State private var pendingInitialCameraCoordinate: CLLocationCoordinate2D?
     @State private var showAlwaysLocationPermissionAlert = false
     @State private var myProfileImageBase64: String?
-    @State private var metricSlots: [RunningMetric] = [.distance, .pace, .calories]
+    @State private var metricSlots: [RunningMetric] = [.distance, .pace, .averagePace]
+    @State private var topMetric: RunningMetric = .time
     @State private var listenSheetDetent: PresentationDetent = .medium
+    @State private var countdownScale: CGFloat = 1
 
     private var isActiveListenGuest: Bool {
         listenVM.activeSession?.status == "active" && !listenVM.isHost
@@ -119,6 +133,10 @@ struct RunningView: View {
             }
             .mapStyle(.standard)
             .ignoresSafeArea()
+            .onAppear {
+                isMapReady = true
+                applyInitialCameraPositionIfPossible()
+            }
 
             // 맵 버튼 오버레이
             VStack {
@@ -273,23 +291,24 @@ struct RunningView: View {
             }
 
             // 카운트다운 풀스크린 오버레이 (같이 듣기 버튼 zIndex 11보다 위)
-            if let cd = countdown {
+            if let cd = viewModel.countdown {
                 ZStack {
-                    Color.black.opacity(0.85)
+                    Color.black
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .ignoresSafeArea()
                     Text("\(cd)")
-                        .font(.system(size: 160, weight: .black))
+                        .font(.system(size: 172, weight: .black))
                         .foregroundStyle(Color.main500)
-                        .transition(.scale(scale: 1.4).combined(with: .opacity))
                         .id(cd)
+                        .scaleEffect(countdownScale)
                 }
                 .zIndex(20)
             }
         }
         .onReceive(viewModel.locationManager.$currentLocation.compactMap { $0 }) { loc in
             if !hasCenteredOnInitialLocation {
-                hasCenteredOnInitialLocation = true
-                recenterCamera(distance: mapZoomDistance)
+                pendingInitialCameraCoordinate = loc.coordinate
+                applyInitialCameraPositionIfPossible()
             } else if viewModel.state == .running && isFollowingUser {
                 recenterCamera(distance: mapZoomDistance)
             } else if viewModel.state == .paused && isFollowingUser {
@@ -298,9 +317,24 @@ struct RunningView: View {
             nearbyVM.updateMyLocation(loc.coordinate)
         }
         .onMapCameraChange(frequency: .continuous) { context in
-            guard !isProgrammaticMove else { return }
+            guard hasCenteredOnInitialLocation, !isProgrammaticMove else { return }
             mapZoomDistance = context.camera.distance
             isFollowingUser = false
+        }
+        .onChange(of: viewModel.countdown) { _, newValue in
+            guard newValue != nil else {
+                countdownScale = 1
+                return
+            }
+
+            countdownScale = 0.84
+            Task { @MainActor in
+                await Task.yield()
+                guard viewModel.countdown != nil else { return }
+                withAnimation(.easeOut(duration: 0.48)) {
+                    countdownScale = 1
+                }
+            }
         }
         .task { await musicVM.requestAuthorization() }
         .onAppear {
@@ -312,8 +346,8 @@ struct RunningView: View {
             listenVM.startObservingRequests()
             if let coord = viewModel.locationManager.currentLocation?.coordinate {
                 if !hasCenteredOnInitialLocation {
-                    hasCenteredOnInitialLocation = true
-                    recenterCamera(distance: mapZoomDistance)
+                    pendingInitialCameraCoordinate = coord
+                    applyInitialCameraPositionIfPossible()
                 }
                 nearbyVM.updateMyLocation(coord)
             }
@@ -325,6 +359,7 @@ struct RunningView: View {
         .onChange(of: viewModel.state) { _, newState in
             if newState == .finished {
                 nearbyVM.stopObserving()
+                showSummary = true
             } else {
                 startNearbyObservationIfNeeded()
                 if newState == .running {
@@ -356,6 +391,12 @@ struct RunningView: View {
         .onChange(of: musicVM.nowPlayingSnapshot) { _, _ in
             listenVM.broadcastIfHost(musicVM: musicVM)
         }
+        .onReceive(listenVM.$activeSession) { _ in
+            PhoneRunSyncPublisher.shared.publishListenTogether(listenVM.watchListenTogetherSnapshot())
+        }
+        .onChange(of: listenVM.sessionStartDate) { _, _ in
+            PhoneRunSyncPublisher.shared.publishListenTogether(listenVM.watchListenTogetherSnapshot())
+        }
         .alert("항상 허용 위치 권한이 필요해요", isPresented: $showAlwaysLocationPermissionAlert) {
             Button("설정으로 이동") {
                 guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else { return }
@@ -372,6 +413,7 @@ struct RunningView: View {
             RunSummaryView(
                 distance: viewModel.distance,
                 elapsedSeconds: viewModel.elapsedSeconds,
+                // 활동 상세에 저장하는 평균 페이스와 같은 유효 이동 시간 기준 값을 사용한다.
                 avgPace: viewModel.avgPace,
                 calories: viewModel.estimatedCalories,
                 lapPaces: viewModel.completedLapPaces,
@@ -540,15 +582,23 @@ struct RunningView: View {
 
     private var runningStatsOverlay: some View {
         VStack(spacing: 0) {
-            // 시간 (크게, 중앙)
-            VStack(spacing: 2) {
-                Text(viewModel.formattedTime)
-                    .font(.system(size: 56, weight: .bold, design: .rounded))
-                    .foregroundStyle(Color.textPrimary)
-                Text("시간")
-                    .font(.system(size: 12))
-                    .foregroundStyle(Color.textSecondary)
+            // 상단 지표도 하단 지표와 동일하게 탭으로 순환한다.
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                topMetric = nextMetric(after: topMetric, excluding: Set(metricSlots))
+            } label: {
+                VStack(spacing: 2) {
+                    Text(metricValue(for: topMetric))
+                        .font(.system(size: 56, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.textPrimary)
+                    Text(metricLabel(for: topMetric))
+                        .font(.system(size: 12))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .frame(maxWidth: .infinity)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
             .padding(.top, 20)
             .padding(.bottom, 16)
@@ -576,13 +626,11 @@ struct RunningView: View {
     private func independentMetricButton(slot: Int) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            withAnimation(.easeInOut(duration: 0.24)) {
-                let currentMetric = metricSlots[slot]
-                let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
-                    index == slot ? nil : metric
-                })
-                metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
-            }
+            let currentMetric = metricSlots[slot]
+            let occupiedMetrics = Set(metricSlots.enumerated().compactMap { index, metric in
+                index == slot ? nil : metric
+            })
+            metricSlots[slot] = nextMetric(after: currentMetric, excluding: occupiedMetrics)
         } label: {
             VStack(spacing: 2) {
                 Text(metricValue(for: metricSlots[slot]))
@@ -590,13 +638,9 @@ struct RunningView: View {
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
-                    .id("value-\(metricSlots[slot])")
-                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 Text(metricLabel(for: metricSlots[slot]))
                     .font(.system(size: 12))
                     .foregroundStyle(Color.textSecondary)
-                    .id("label-\(metricSlots[slot])")
-                    .transition(.opacity)
             }
             .frame(maxWidth: .infinity)
             .contentShape(Rectangle())
@@ -622,9 +666,11 @@ struct RunningView: View {
 
     private func metricValue(for metric: RunningMetric) -> String {
         switch metric {
+        case .time: return viewModel.formattedTime
         case .distance: return viewModel.formattedDistance
         case .elevation: return viewModel.formattedElevationGain
         case .pace: return viewModel.formattedPace
+        case .averagePace: return viewModel.formattedAvgPace
         case .heartRate: return "--"
         case .cadence: return viewModel.formattedCadence
         case .calories: return viewModel.formattedCalories
@@ -633,9 +679,11 @@ struct RunningView: View {
 
     private func metricLabel(for metric: RunningMetric) -> String {
         switch metric {
+        case .time: return "시간"
         case .distance: return "km"
         case .elevation: return "고도 상승"
         case .pace: return "페이스"
+        case .averagePace: return "평균 페이스"
         case .heartRate: return "BPM"
         case .cadence: return "케이던스"
         case .calories: return "칼로리"
@@ -647,29 +695,31 @@ struct RunningView: View {
     }
 
     private var pausedRunDashboard: some View {
-        VStack(spacing: 0) {
-            Spacer(minLength: 0)
-
+        GeometryReader { proxy in
             VStack(spacing: 0) {
-                pausedMetricGrid
-                    .padding(.top, 64)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
-                    .offset(y: -10)
+                Spacer(minLength: 0)
 
-                Capsule()
-                    .fill(Color.secondary.opacity(0.28))
-                    .frame(width: 300, height: 2.5)
+                VStack(spacing: 0) {
+                    pausedMetricGrid
+                        .padding(.top, 64)
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 24)
+                        .offset(y: -10)
 
-                pausedControls
-                    .padding(.top, 44)
-                    .padding(.bottom, 34)
+                    Capsule()
+                        .fill(Color.secondary.opacity(0.28))
+                        .frame(width: 300, height: 2.5)
+
+                    pausedControls
+                        .padding(.top, 44)
+                        .padding(.bottom, 34)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: proxy.size.height * 0.55, alignment: .top)
+                .background(Color.backgroundPrimary)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: UIScreen.main.bounds.height * 0.55, alignment: .top)
-            .background(Color.backgroundPrimary)
         }
-        .frame(maxWidth: .infinity)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -741,7 +791,7 @@ struct RunningView: View {
                     .background(Color.main500)
                     .clipShape(Circle())
             }
-            .disabled(countdown != nil)
+            .disabled(viewModel.countdown != nil)
 
             sideButton(icon: "person.2.fill", label: "주변") { showNearbySheet = true }
         }
@@ -753,31 +803,6 @@ struct RunningView: View {
             if showStopConfirm {
                 // 종료 (꾹 눌러야) / 다시 시작
                 HStack(spacing: 24) {
-                    // 종료 — 1초 꾹 누르기
-                    ZStack {
-                        Circle()
-                            .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
-                            .frame(width: 80, height: 80)
-                        Circle()
-                            .trim(from: 0, to: stopHoldProgress)
-                            .stroke(Color.stopHoldProgress, lineWidth: 4)
-                            .frame(width: 80, height: 80)
-                            .rotationEffect(.degrees(-90))
-                            .animation(.linear(duration: 0.05), value: stopHoldProgress)
-
-                        Image(systemName: "stop.fill")
-                            .font(.system(size: 26, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 80, height: 80)
-                            .background(Color.black.opacity(0.85))
-                            .clipShape(Circle())
-                    }
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { _ in startStopHold() }
-                            .onEnded { _ in cancelStopHold() }
-                    )
-
                     // 다시 시작
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -791,6 +816,31 @@ struct RunningView: View {
                             .background(Color.main500)
                             .clipShape(Circle())
                     }
+
+                    // 종료 — 1초 꾹 누르기
+                    ZStack {
+                        Circle()
+                            .stroke(Color.white.opacity(0.2), lineWidth: 4)
+                            .frame(width: 76, height: 76)
+                        Circle()
+                            .trim(from: 0, to: stopHoldProgress)
+                            .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .frame(width: 76, height: 76)
+                            .rotationEffect(.degrees(-90))
+
+                        Image(systemName: "stop.fill")
+                            .font(.system(size: 26, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 76, height: 76)
+                            .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
+                            .clipShape(Circle())
+                    }
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { _ in startStopHold() }
+                            .onEnded { _ in cancelStopHold() }
+                    )
+
                 }
                 .transition(.scale.combined(with: .opacity))
             } else {
@@ -826,20 +876,19 @@ struct RunningView: View {
         HStack(spacing: 24) {
             ZStack {
                 Circle()
-                    .stroke(Color.stopHoldTrack.opacity(0.55), lineWidth: 4)
-                    .frame(width: 80, height: 80)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 4)
+                    .frame(width: 76, height: 76)
                 Circle()
                     .trim(from: 0, to: stopHoldProgress)
-                    .stroke(Color.stopHoldProgress, lineWidth: 4)
-                    .frame(width: 80, height: 80)
+                    .stroke(Color.main500, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                    .frame(width: 76, height: 76)
                     .rotationEffect(.degrees(-90))
-                    .animation(.linear(duration: 0.05), value: stopHoldProgress)
 
                 Image(systemName: "stop.fill")
                     .font(.system(size: 26, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 80, height: 80)
-                    .background(Color.black.opacity(0.85))
+                    .frame(width: 76, height: 76)
+                    .background(Color(red: 0.18, green: 0.18, blue: 0.20), in: Circle())
                     .clipShape(Circle())
             }
             .gesture(
@@ -884,16 +933,23 @@ struct RunningView: View {
     private func startStopHold() {
         guard stopHoldTimer == nil else { return }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        stopHoldTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+        stopHoldStartedAt = .now
+        stopHoldHapticStep = 0
+        stopHoldTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { _ in
             Task { @MainActor in
-                stopHoldProgress += 0.05
-                // 0.2마다 진동 — 충전 느낌
-                if Int(stopHoldProgress * 20) % 4 == 0 {
+                guard let stopHoldStartedAt else { return }
+                let elapsed = Date.now.timeIntervalSince(stopHoldStartedAt)
+                stopHoldProgress = min(CGFloat(elapsed / 1.2), 1)
+
+                let hapticStep = Int(elapsed / 0.2)
+                if hapticStep > stopHoldHapticStep {
+                    stopHoldHapticStep = hapticStep
                     UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
                 }
                 if stopHoldProgress >= 1.0 {
                     stopHoldTimer?.invalidate()
                     stopHoldTimer = nil
+                    self.stopHoldStartedAt = nil
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                     Task {
                         await viewModel.stop()
@@ -909,7 +965,9 @@ struct RunningView: View {
     private func cancelStopHold() {
         stopHoldTimer?.invalidate()
         stopHoldTimer = nil
-        withAnimation(.easeOut(duration: 0.2)) { stopHoldProgress = 0 }
+        stopHoldStartedAt = nil
+        stopHoldHapticStep = 0
+        stopHoldProgress = 0
     }
 
     // MARK: - 음악 시트
@@ -2342,6 +2400,27 @@ struct RunningView: View {
         recenterCamera(distance: locationFocusDistance)
     }
 
+    private func applyInitialCameraPositionIfPossible() {
+        guard isMapReady,
+              !hasCenteredOnInitialLocation,
+              let coordinate = pendingInitialCameraCoordinate
+        else { return }
+
+        let initialDistance = RunningMapCameraPolicy.initialCameraDistance(
+            locationFocusDistance: locationFocusDistance
+        )
+        mapZoomDistance = initialDistance
+        isFollowingUser = true
+        isProgrammaticMove = true
+        hasCenteredOnInitialLocation = true
+        cameraPosition = .camera(
+            MapCamera(centerCoordinate: coordinate, distance: initialDistance)
+        )
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) {
+            isProgrammaticMove = false
+        }
+    }
+
     private func refreshMyProfileImage() {
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
@@ -2388,23 +2467,10 @@ struct RunningView: View {
     }
 
     private func startCountdown() {
-
-        Task {
-            for i in stride(from: 3, through: 1, by: -1) {
-                await MainActor.run {
-                    withAnimation(.easeOut(duration: 0.2)) { countdown = i }
-                }
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-            }
-            await MainActor.run {
-                withAnimation(.easeOut(duration: 0.2)) { countdown = nil }
-                metricSlots = [.distance, .pace, .calories]
-                if viewModel.start() {
-                    startNearbyObservationIfNeeded()
-                } else {
-                    showAlwaysLocationPermissionAlert = true
-                }
-            }
+        metricSlots = [.distance, .pace, .averagePace]
+        guard viewModel.startCountdown() else {
+            showAlwaysLocationPermissionAlert = true
+            return
         }
     }
 }
