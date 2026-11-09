@@ -68,6 +68,7 @@ Thank you for reviewing Pacing 1.3.0.
 
 ## 아카이브 업로드 QA
 - App Store 오류 90208: ONNX Runtime의 정적 XCFramework를 앱에 내장하면 바이너리 최소 iOS 버전은 26.0인데 원본 `Info.plist`는 15.1로 남았습니다. 앱 빌드 단계에서 내장 프레임워크의 `MinimumOSVersion`을 배포 타깃과 일치시키고, 서명 빌드에서는 프레임워크를 다시 서명합니다. 2026-11-09 서명 제외 Release 아카이브에서 앱 plist·ONNX plist·ONNX 바이너리 모두 최소 iOS 26.0임을 확인했습니다. App Store 재업로드는 실기기 서명 아카이브로 확인이 필요합니다.
+- Xcode 서명 아카이브에서 스크립트 샌드박스가 `PlistBuddy`의 plist 쓰기와 `codesign`의 바이너리 읽기를 거부했습니다. 앱 타깃 Release 구성에서만 사용자 스크립트 샌드박스를 해제했습니다. 수정 후 서명 제외 Release 아카이브가 통과했고 세 최소 iOS 값이 26.0으로 일치합니다. 서명 아카이브 재검증은 남아 있습니다.
 
 - Watch AppIcon 원본은 1024×1024 RGBA였고 모서리가 투명했습니다. 검정 배경에 합성해 RGB PNG로 저장했습니다. `sips`에서 `hasAlpha: no`, 빌드된 Watch `Assets.car`의 AppIcon에서 `Opaque: true`를 확인했습니다.
 - iOS/Watch 통합 Debug 빌드(`generic/platform=iOS`, 코드 서명 제외)가 통과했습니다.
