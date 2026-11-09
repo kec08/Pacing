@@ -224,6 +224,7 @@
 				BC5790172FEC4AEF006C925A /* Frameworks */,
 				BC5790182FEC4AEF006C925A /* Resources */,
 				BCAF0401305B882200B0BFB3 /* Embed Watch Content */,
+				D8A19B9030A1F130008CC230 /* Align ONNX Runtime minimum OS */,
 			);
 			buildRules = (
 			);
@@ -476,6 +477,25 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D8A19B9030A1F130008CC230 /* Align ONNX Runtime minimum OS */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(FRAMEWORKS_FOLDER_PATH)/onnxruntime.framework/Info.plist",
+			);
+			name = "Align ONNX Runtime minimum OS";
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "sh \"$PROJECT_DIR/../tools/fix_onnxruntime_minimum_os.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		BC5790162FEC4AEF006C925A /* Sources */ = {
