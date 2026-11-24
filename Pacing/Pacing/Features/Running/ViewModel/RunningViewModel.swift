@@ -301,6 +301,9 @@ voiceAnnouncer.announce(.started)
         timer?.cancel()
         voiceAnnouncer.stop()
         voiceAnnouncer.announce(.paused)
+        // iPhone에서는 일시정지 후에만 종료할 수 있다. 수치가 멈춘 지금 결산을 미리 합성해
+        // 종료하는 즉시 한 번에 이어서 들려준다.
+        prepareRunCompletionAnnouncement()
         lastLocation = nil   // 재개 시 드리프트로 인한 거리/페이스 스파이크 방지
         recentPaceSegments = []
         locationManager.stopTracking()
@@ -315,6 +318,8 @@ voiceAnnouncer.announce(.started)
         let resumedAt = Date()
         runningStartedAt = resumedAt
         state = .running
+        // 일시정지 때 미리 합성하던 결산을 버려 이후 랩 안내가 그 뒤에서 기다리지 않게 한다.
+        voiceAnnouncer.stop()
         voiceAnnouncer.announce(.resumed)
         PhoneRunSyncPublisher.shared.send(
             PhoneRunCommand(action: .resume, sender: .phone, sessionID: sessionID)
@@ -336,6 +341,7 @@ voiceAnnouncer.announce(.started)
         // 상태를 finished로 확정한 뒤에는 후속 요청을 무시해 요약·음성 안내가
         // 중복되지 않게 한다.
         guard (state == .running || state == .paused), !isStopping else { return }
+        let wasRunning = state == .running
 
         syncElapsedSeconds()
         isStopping = true
@@ -347,6 +353,12 @@ voiceAnnouncer.announce(.started)
         locationManager.stopTracking()
         cadenceRepository.stopUpdates()
         elevationRepository.stopUpdates()
+        // Watch에서 달리는 중에 바로 종료한 경우에는 진행 중인 랩 안내와 합성을 먼저 버린다.
+        // 일시정지 상태라면 그때 미리 합성한 결산을 그대로 이어서 쓴다.
+        if wasRunning { voiceAnnouncer.stop() }
+        // Watch 최종 수치(최대 3초)를 기다리지 않고 지금 바로 결산을 재생한다. 일시정지 중에는
+        // 수치가 멈춰 있어 대부분 최종 수치와 같고, 다르면 아래에서 아직 재생 전일 때만 교체된다.
+        announceRunCompletion()
         if sendCommand {
             PhoneRunSyncPublisher.shared.send(
                 PhoneRunCommand(action: .finish, sender: .phone, sessionID: sessionID)
@@ -362,8 +374,15 @@ voiceAnnouncer.announce(.started)
         }
 
         syncElapsedSeconds()
-        completePendingLapsIfNeeded()
+        // 화면·저장·TTS가 쓰는 "%.2f" 표시 규칙과 같은 값으로 마지막 구간을 확정한다.
+        // 결산 안내가 곧바로 이어지므로 마지막 구간 랩 안내는 생략한다. 랩 안내를 합성하면
+        // MeloTTS 직렬 큐에서 결산 합성이 그 뒤로 밀린다.
+        completePendingLapsIfNeeded(
+            distanceKilometers: Double(String(format: "%.2f", distance)) ?? distance,
+            announces: false
+        )
         state = .finished
+        // 이미 같은 결산이 재생 중이면 서비스가 무시한다.
         announceRunCompletion()
         publishRunSnapshot(state: .ended, persist: true)
         let lastLiveCadence = currentCadenceStepsPerMinute
@@ -734,7 +753,9 @@ voiceAnnouncer.announce(.started)
             return
         }
 
-        completePendingLapsIfNeeded()
+        // 종료 처리 중 Watch 최종 수치로 구간이 넘어가도 랩 안내는 하지 않는다.
+        // 결산 안내 큐에 랩 안내가 끼어들어 결산이 늦어지는 것을 막는다.
+        completePendingLapsIfNeeded(announces: !isStopping && state != .finished)
 
     }
 
@@ -772,6 +793,11 @@ voiceAnnouncer.announce(.started)
         }
 
         updateDisplayedPace()
+        // 일시정지·종료 처리 중 Watch 수치가 바뀌면 미리 합성할 결산도 최신 수치로 맞춘다.
+        // 문구가 같으면 서비스가 기존 합성을 그대로 둔다.
+        if state == .paused || isStopping {
+            prepareRunCompletionAnnouncement()
+        }
         let phoneState: PhoneRunSnapshot.State = switch state {
         case .running, .idle: .running
         case .paused: .paused
@@ -820,9 +846,9 @@ voiceAnnouncer.announce(.started)
         return Date().timeIntervalSince(latestPaceAt) < 20
     }
 
-    private func completePendingLapsIfNeeded() {
+    private func completePendingLapsIfNeeded(distanceKilometers: Double? = nil, announces: Bool = true) {
         let crossedKilometers = RunningLapBoundaryPolicy.crossedKilometers(
-            distanceKilometers: distance,
+            distanceKilometers: distanceKilometers ?? distance,
             startingAt: Int(nextLapDistanceMark)
         )
         for kilometer in crossedKilometers {
@@ -843,7 +869,7 @@ voiceAnnouncer.announce(.started)
             // A delayed GPS batch can cross multiple kilometer boundaries at once.
             // Deliver every distance-based announcement even when a split pace cannot
             // be reconstructed for one of those boundaries.
-            announceCompletedKilometer(kilometer)
+            if announces { announceCompletedKilometer(kilometer) }
 
             lapStartDistance = kilometerMark
             lapStartElapsedSeconds = elapsedSeconds
@@ -860,16 +886,23 @@ voiceAnnouncer.announce(.started)
         voiceAnnouncer.announce(announcement)
     }
 
-    private func announceRunCompletion() {
-        guard let announcement = RunCompletionVoiceAnnouncement(
+    private func makeRunCompletionAnnouncement() -> RunCompletionVoiceAnnouncement? {
+        RunCompletionVoiceAnnouncement(
             distanceKilometers: distance,
             elapsedSeconds: elapsedSeconds,
             averagePaceMinutesPerKilometer: avgPace
-        ) else { return }
+        )
+    }
 
-        // 마지막 킬로미터 안내가 진행 중인 경우 종료 요약으로 교체해, 완료 수치를
-        // 한 번만 명확하게 들려준다.
-        voiceAnnouncer.stop()
+    private func prepareRunCompletionAnnouncement() {
+        guard let announcement = makeRunCompletionAnnouncement() else { return }
+        voiceAnnouncer.prepareCompletion(announcement)
+    }
+
+    private func announceRunCompletion() {
+        // stop()을 부르면 미리 합성한 결산이 버려지므로 최종 수치만 전달한다.
+        // 문구가 같으면 미리 합성한 음성을 바로 재생한다.
+        guard let announcement = makeRunCompletionAnnouncement() else { return }
         voiceAnnouncer.announce(announcement)
     }
 }
