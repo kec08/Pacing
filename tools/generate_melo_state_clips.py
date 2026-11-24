@@ -12,7 +12,7 @@ import onnxruntime as ort
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / 'Pacing/Pacing/Core/Audio/Melo'
 lexicon = json.loads((ASSETS / 'korean_lexicon.json').read_text())
-session = ort.InferenceSession(str(ASSETS / 'melotts_kr_int8.onnx'), providers=['CPUExecutionProvider'])
+session = ort.InferenceSession(str(ASSETS / 'melotts_kr_fp16.onnx'), providers=['CPUExecutionProvider'])
 
 for name, text in {
     'started': '운동을 시작합니다.',

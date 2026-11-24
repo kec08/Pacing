@@ -121,7 +121,7 @@ final class PacingTests: XCTestCase {
 
     func testMeloLexiconCoversRunningAnnouncementsOffline() throws {
         let url = try XCTUnwrap(Bundle.main.url(forResource: "korean_lexicon", withExtension: "json"))
-        XCTAssertNotNil(Bundle.main.url(forResource: "melotts_kr_int8", withExtension: "onnx"))
+        XCTAssertNotNil(Bundle.main.url(forResource: "melotts_kr_fp16", withExtension: "onnx"))
         for name in ["melo_started", "melo_paused", "melo_resumed", "melo_completed"] {
             let clip = try XCTUnwrap(Bundle.main.url(forResource: name, withExtension: "wav"))
             let player = try AVAudioPlayer(contentsOf: clip)
@@ -931,6 +931,7 @@ private final class VoiceAnnouncerSpy: RunningVoiceAnnouncing {
 
     func announce(_ announcement: LapVoiceAnnouncement) {}
     func announce(_ announcement: RunningStateVoiceAnnouncement) {}
+    func prepareCompletion(_ announcement: RunCompletionVoiceAnnouncement) {}
     func announce(_ announcement: RunCompletionVoiceAnnouncement) {}
     func stop() { stopCount += 1 }
 }
