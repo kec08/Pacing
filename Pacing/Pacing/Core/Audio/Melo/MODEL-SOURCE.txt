@@ -4,6 +4,13 @@ Model revision: c110131 (as listed when downloaded 2026-10-23)
 Model SHA-256: 421b94ce7e803fdd0126c7d39d90192b64878794619668cf3ec12611fc860f88
 melotts_kr_config.json SHA-256: 74543376976dfadde45ba34336fa79c7e95509f43a7c2e701b22c0f71fd7695c
 Original model: https://huggingface.co/myshell-ai/MeloTTS-Korean
+
+The bundled melotts_kr_fp16.onnx is converted from that INT8 model with
+tools/convert_melo_model.py (onnx 1.23.2, numpy 2.5.5): dynamic INT8
+ConvInteger/MatMulInteger are dequantized to float Conv/MatMul and large
+weights are stored as FP16 with a Cast to float. The INT8 kernels synthesized
+about 1.5x slower than real time; the float model is about 7x faster.
+melotts_kr_fp16.onnx SHA-256: 9b45dfbe4bd389b219ae507d39af91d1dae4b059a641991c5a1a2d13c6fcd6a2
 License: MIT, see LICENSE-MeloTTS.txt
 
 korean_lexicon.json is generated from g2pkk pronunciations for the app's fixed
