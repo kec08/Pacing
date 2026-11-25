@@ -522,12 +522,12 @@ private struct RouteKilometerLabel: View {
 
     var body: some View {
         Text("\(kilometer) km")
-            .font(.system(size: 13, weight: .semibold))
+            .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(Color.black)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
             .background(Capsule().fill(Color.white))
-            .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 1)
+            .shadow(color: .black.opacity(0.2), radius: 2, x: 0, y: 1)
     }
 }
 
