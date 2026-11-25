@@ -79,8 +79,12 @@ final class FirestoreService {
             GeoPoint(latitude: $0.latitude, longitude: $0.longitude)
         }
         data["routeCoordinates"] = geoPoints
-        data["lapPaces"] = record.lapPaces.map {
-            ["kilometer": $0.kilometer, "pace": $0.pace]
+        data["lapPaces"] = record.lapPaces.map { lap -> [String: Any] in
+            var lapData: [String: Any] = ["kilometer": lap.kilometer, "pace": lap.pace]
+            if let averageHeartRate = lap.averageHeartRate, averageHeartRate.isFinite {
+                lapData["averageHeartRate"] = averageHeartRate
+            }
+            return lapData
         }
         if let elevationGainMeters = record.elevationGainMeters {
             data["elevationGainMeters"] = elevationGainMeters
@@ -90,6 +94,15 @@ final class FirestoreService {
         }
         if let averageCadence = record.averageCadence {
             data["averageCadence"] = averageCadence
+        }
+        if let locationName = record.locationName, !locationName.isEmpty {
+            data["locationName"] = locationName
+        }
+        if let weather = record.weather {
+            data["weather"] = [
+                "temperatureCelsius": weather.temperatureCelsius,
+                "symbolName": weather.symbolName
+            ]
         }
 
         try await db.collection("users").document(uid)
@@ -129,7 +142,15 @@ final class FirestoreService {
                       pace > 0 else {
                     return nil
                 }
-                return RunLapPace(kilometer: kilometer, pace: pace)
+                let lapHeartRate = (lap["averageHeartRate"] as? NSNumber)?.doubleValue
+                return RunLapPace(kilometer: kilometer, pace: pace, averageHeartRate: lapHeartRate)
+            }
+            let locationName = (d["locationName"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            let weather = (d["weather"] as? [String: Any]).flatMap { weather -> RunWeatherSnapshot? in
+                guard let temperature = (weather["temperatureCelsius"] as? NSNumber)?.doubleValue,
+                      let symbolName = weather["symbolName"] as? String,
+                      temperature.isFinite, !symbolName.isEmpty else { return nil }
+                return RunWeatherSnapshot(temperatureCelsius: temperature, symbolName: symbolName)
             }
 
             return RunRecord(
@@ -143,7 +164,9 @@ final class FirestoreService {
                 lapPaces: lapPaces,
                 elevationGainMeters: elevationGainMeters,
                 averageHeartRate: averageHeartRate,
-                averageCadence: averageCadence
+                averageCadence: averageCadence,
+                locationName: locationName,
+                weather: weather
             )
         }
     }
