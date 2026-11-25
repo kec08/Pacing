@@ -184,6 +184,14 @@ struct RunActivityDetailView: View {
 
     private var routeMap: some View {
         Map(position: $cameraPosition, interactionModes: []) {
+            // 나이키처럼 선 색을 어둡게 한 굵은 선을 먼저 깔아 경로 테두리를 만든다.
+            ForEach(routeGradientSegments) { segment in
+                MapPolyline(coordinates: segment.coordinates)
+                    .stroke(
+                        segment.outlineColor,
+                        style: StrokeStyle(lineWidth: 10, lineCap: .round, lineJoin: .round)
+                    )
+            }
             ForEach(routeGradientSegments) { segment in
                 MapPolyline(coordinates: segment.coordinates)
                     .stroke(
@@ -203,18 +211,18 @@ struct RunActivityDetailView: View {
                 // 출발·도착이 가까우면 지도가 한쪽 핀을 겹침으로 숨기므로 하나의 핀으로 나란히 그린다.
                 Annotation("출발·도착", coordinate: record.routeCoordinates[0], anchor: .center) {
                     HStack(spacing: -4) {
-                        RouteEndpointDot(color: Color.success500)
-                        RouteEndpointDot(color: Color.accent500)
+                        RouteEndpointDot(color: Color.main500)
+                        RouteEndpointDot(color: Color.sub500)
                     }
                 }
                 .annotationTitles(.hidden)
             } else {
                 Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .center) {
-                    RouteEndpointDot(color: Color.success500)
+                    RouteEndpointDot(color: Color.main500)
                 }
                 .annotationTitles(.hidden)
                 Annotation("도착", coordinate: record.routeCoordinates[record.routeCoordinates.count - 1], anchor: .center) {
-                    RouteEndpointDot(color: Color.accent500)
+                    RouteEndpointDot(color: Color.sub500)
                 }
                 .annotationTitles(.hidden)
             }
@@ -337,6 +345,13 @@ struct RunActivityDetailView: View {
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
 
+    /// 구간 막대 색. 라이트는 흰 카드에서 보이도록 gray200, 다크는 튀지 않게 gray100(#292929)을 60%로 낮춘 값.
+    private static let splitBarColor = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0x21 / 255, green: 0x21 / 255, blue: 0x21 / 255, alpha: 1)
+            : UIColor(red: 0xE3 / 255, green: 0xE3 / 255, blue: 0xE6 / 255, alpha: 1)
+    })
+
     private static let kilometerColumnWidth: CGFloat = 32
     private static let heartRateColumnWidth: CGFloat = 64
 
@@ -365,8 +380,7 @@ struct RunActivityDetailView: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        // 카드 배경과 대비가 너무 크지 않게 한 단계 낮춘다.
-                        .fill(Color.gray100.opacity(0.6))
+                        .fill(Self.splitBarColor)
                         .frame(width: proxy.size.width * barFraction)
                     Text(formattedPace(lap.pace))
                         .font(.system(size: 16, weight: .bold, design: .rounded))
