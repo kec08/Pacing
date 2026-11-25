@@ -74,6 +74,25 @@ enum RunningPacePolicy {
     }
 }
 
+enum RunLapHeartRateResolver {
+    /// 각 구간의 벽시계 범위로 평균 심박수를 조회해 채운다. 범위가 없거나 샘플이 없으면 nil로 둔다.
+    static func resolve(
+        laps: [RunLapPace],
+        windows: [Int: DateInterval],
+        repository: HeartRateRepository
+    ) async -> [RunLapPace] {
+        var resolved = laps
+        for index in resolved.indices {
+            guard let window = windows[resolved[index].kilometer] else { continue }
+            resolved[index].averageHeartRate = await repository.averageHeartRate(
+                from: window.start,
+                to: window.end
+            )
+        }
+        return resolved
+    }
+}
+
 enum RunningLapBoundaryPolicy {
     static func crossedKilometers(
         distanceKilometers: Double,
@@ -116,6 +135,9 @@ final class RunningViewModel: ObservableObject {
     private var nextLapDistanceMark: Double = 1.0
     private var lapStartDistance: Double = 0
     private var lapStartElapsedSeconds: Int = 0
+    /// 구간 심박수 조회용 벽시계 범위. 랩 확정 때 기록하고 종료 뒤 한 번에 조회한다.
+    private var lapStartDate: Date?
+    private var completedLapWindows: [Int: DateInterval] = [:]
     private var recentPaceSegments: [(end: Date, meters: Double, seconds: TimeInterval)] = []
     private var latestPaceAt: Date?
     private var runningStartedAt: Date?
@@ -258,6 +280,7 @@ final class RunningViewModel: ObservableObject {
         resetLapState()
         accumulatedElapsedSecondsBeforeResume = 0
         let startedAt = startDate
+        lapStartDate = startedAt
         if launchWatch {
             sessionID = UUID()
         }
@@ -395,6 +418,12 @@ voiceAnnouncer.announce(.started)
             averageHeartRate = await heartRateRepository.averageHeartRate(
                 from: healthStartedAt,
                 to: endedAt
+            )
+            // Watch 심박 샘플은 iPhone HealthKit에 늦게 들어오므로 구간 심박수는 종료 뒤 한 번에 조회한다.
+            completedLapPaces = await RunLapHeartRateResolver.resolve(
+                laps: completedLapPaces,
+                windows: completedLapWindows,
+                repository: heartRateRepository
             )
         }
         averageCadence = cadenceAccumulator.averageStepsPerMinute
@@ -695,6 +724,19 @@ voiceAnnouncer.announce(.started)
 
         guard savedElapsedSeconds >= 60 else { return }  // 1분 미만은 저장하지 않음
         guard let uid = Auth.auth().currentUser?.uid else { return }
+        // 위치 이름·날씨는 부가 정보라 실패하거나 늦으면 없이 저장한다.
+        var locationName: String?
+        var weather: RunWeatherSnapshot?
+        if let startCoordinate = savedRouteCoordinates.first {
+            async let resolvedLocationName = AsyncTimeout.value(seconds: 5) {
+                await RunPlaceNameResolver.cityName(for: startCoordinate)
+            }
+            async let resolvedWeather = AsyncTimeout.value(seconds: 5) {
+                await RunWeatherRepository.currentWeather(at: startCoordinate)
+            }
+            locationName = await resolvedLocationName
+            weather = await resolvedWeather
+        }
         let record = RunRecord(
             id: UUID().uuidString,
             startedAt: Date().addingTimeInterval(-Double(savedElapsedSeconds)),
@@ -706,7 +748,9 @@ voiceAnnouncer.announce(.started)
             lapPaces: savedLapPaces,
             elevationGainMeters: elevationGainMeters ?? self.elevationGainMeters,
             averageHeartRate: averageHeartRate ?? self.averageHeartRate,
-            averageCadence: averageCadence ?? self.averageCadence
+            averageCadence: averageCadence ?? self.averageCadence,
+            locationName: locationName,
+            weather: weather
         )
         try? await FirestoreService.shared.saveRunRecord(uid: uid, record: record)
         if let records = try? await FirestoreService.shared.fetchRunHistory(uid: uid, limit: 100) {
@@ -742,6 +786,8 @@ voiceAnnouncer.announce(.started)
         lapStartDistance = 0
         lapStartElapsedSeconds = 0
         completedLapPaces = []
+        lapStartDate = nil
+        completedLapWindows = [:]
     }
 
     private func updateDisplayedPace() {
@@ -871,6 +917,11 @@ voiceAnnouncer.announce(.started)
             // be reconstructed for one of those boundaries.
             if announces { announceCompletedKilometer(kilometer) }
 
+            let lapEndDate = Date()
+            if let lapStartDate, lapStartDate < lapEndDate {
+                completedLapWindows[kilometer] = DateInterval(start: lapStartDate, end: lapEndDate)
+            }
+            lapStartDate = lapEndDate
             lapStartDistance = kilometerMark
             lapStartElapsedSeconds = elapsedSeconds
             nextLapDistanceMark = kilometerMark + 1.0
