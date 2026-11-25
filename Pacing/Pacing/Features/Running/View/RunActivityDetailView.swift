@@ -312,8 +312,12 @@ struct RunActivityDetailView: View {
                     .frame(width: Self.kilometerColumnWidth, alignment: .leading)
                 Text("평균 페이스")
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text("심박수")
-                    .frame(width: Self.heartRateColumnWidth, alignment: .trailing)
+                HStack(spacing: 4) {
+                    Image(systemName: "heart")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text("심박수")
+                }
+                .frame(width: Self.heartRateColumnWidth, alignment: .trailing)
             }
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(Color.textSecondary)
@@ -334,7 +338,7 @@ struct RunActivityDetailView: View {
     }
 
     private static let kilometerColumnWidth: CGFloat = 32
-    private static let heartRateColumnWidth: CGFloat = 52
+    private static let heartRateColumnWidth: CGFloat = 64
 
     private var displayLapPaces: [RunLapPace] {
         if !record.lapPaces.isEmpty { return record.lapPaces }
@@ -361,7 +365,8 @@ struct RunActivityDetailView: View {
             GeometryReader { proxy in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.gray100)
+                        // 카드 배경과 대비가 너무 크지 않게 한 단계 낮춘다.
+                        .fill(Color.gray100.opacity(0.6))
                         .frame(width: proxy.size.width * barFraction)
                     Text(formattedPace(lap.pace))
                         .font(.system(size: 16, weight: .bold, design: .rounded))
