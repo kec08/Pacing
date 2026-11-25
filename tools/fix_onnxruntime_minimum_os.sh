@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 
+# The embedded Debug framework does not need the Release archive metadata fix.
+[ "${CONFIGURATION:-}" = Release ] || exit 0
+
 framework="${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework"
 plist="${framework}/Info.plist"
 test -f "$plist" || { echo "error: ONNX Runtime framework Info.plist is missing: $plist" >&2; exit 1; }

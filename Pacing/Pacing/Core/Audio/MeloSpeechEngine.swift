@@ -20,6 +20,8 @@ final class MeloSpeechEngine {
         }
     }
     static let shared = MeloSpeechEngine()
+    /// 부동소수 모델은 기존 int8 모델보다 약 10% 빨리 읽으므로, 맞춰 둔 읽기 속도를 유지하도록 길이를 늘린다.
+    private static let durationCompensation: Float = 1.1
 
     private let queue = DispatchQueue(label: "pacing.melotts", qos: .userInitiated)
     private let lock = NSLock()
@@ -27,6 +29,8 @@ final class MeloSpeechEngine {
     private var environment: ORTEnv?
     private var session: ORTSession?
     private var tokenizer: MeloKoreanTokenizer?
+    /// 직렬 큐에 쌓였지만 아직 시작하지 않은 합성을 무효화하는 세대 번호.
+    private var requestGeneration = 0
 
     var isReady: Bool {
         lock.lock()
@@ -41,7 +45,7 @@ final class MeloSpeechEngine {
             guard !didAttemptLoad else { return }
             didAttemptLoad = true
             do {
-                guard let modelURL = Bundle.main.url(forResource: "melotts_kr_int8", withExtension: "onnx"),
+                guard let modelURL = Bundle.main.url(forResource: "melotts_kr_fp16", withExtension: "onnx"),
                       let lexiconURL = Bundle.main.url(forResource: "korean_lexicon", withExtension: "json")
                 else { throw MeloError.missingResources }
                 let lexicon = try JSONDecoder().decode([String: [Int64]].self, from: Data(contentsOf: lexiconURL))
@@ -63,9 +67,30 @@ final class MeloSpeechEngine {
         }
     }
 
+    /// 아직 시작하지 않은 합성 요청을 건너뛰게 한다. 이미 실행 중인 추론은 끝까지 돈다.
+    func cancelPendingSynthesis() {
+        lock.lock()
+        requestGeneration += 1
+        lock.unlock()
+    }
+
     func synthesize(_ text: String, lengthScale: Float = 0.98, completion: @escaping (Data?) -> Void) {
         let backgroundTask = BackgroundTask()
+        lock.lock()
+        let generation = requestGeneration
+        lock.unlock()
         queue.async { [self] in
+            lock.lock()
+            let isCancelled = generation != requestGeneration
+            lock.unlock()
+            guard !isCancelled else {
+                DispatchQueue.main.async {
+                    backgroundTask.end()
+                    completion(nil)
+                }
+                return
+            }
+
             let audio: Data?
             do {
                 guard let session, let tokenizer,
@@ -108,7 +133,7 @@ final class MeloSpeechEngine {
             "tone": try tensor(blankAwareTone, type: .int64, shape: textShape),
             "language": try tensor(blankAwareLanguage, type: .int64, shape: textShape),
             "noise_scale": try tensor([Float(0.6)], type: .float, shape: []),
-            "length_scale": try tensor([lengthScale], type: .float, shape: []),
+            "length_scale": try tensor([lengthScale * Self.durationCompensation], type: .float, shape: []),
             "noise_scale_w": try tensor([Float(0.8)], type: .float, shape: []),
             "sdp_ratio": try tensor([Float(0.2)], type: .float, shape: [])
         ].merging([

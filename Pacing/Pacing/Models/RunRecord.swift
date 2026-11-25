@@ -5,8 +5,17 @@ import CoreLocation
 struct RunLapPace: Identifiable, Equatable {
     let kilometer: Int
     let pace: Double
+    /// 구간 평균 심박수(bpm). Apple Watch 샘플이 없거나 이전 기록이면 nil이다.
+    var averageHeartRate: Double? = nil
 
     var id: Int { kilometer }
+}
+
+/// 러닝을 마친 시점의 출발 위치 날씨 스냅샷.
+struct RunWeatherSnapshot: Equatable {
+    let temperatureCelsius: Double
+    /// WeatherKit이 주는 SF Symbol 이름(예: `moon.stars`).
+    let symbolName: String
 }
 
 struct RunRecord: Identifiable {
@@ -21,6 +30,9 @@ struct RunRecord: Identifiable {
     let elevationGainMeters: Double?
     let averageHeartRate: Double?
     let averageCadence: Double?
+    /// 출발 위치의 시·구 단위 이름(예: `남양주시, 대한민국`). 이전 기록은 nil이다.
+    let locationName: String?
+    let weather: RunWeatherSnapshot?
 
     init(
         id: String,
@@ -33,7 +45,9 @@ struct RunRecord: Identifiable {
         lapPaces: [RunLapPace],
         elevationGainMeters: Double? = nil,
         averageHeartRate: Double? = nil,
-        averageCadence: Double? = nil
+        averageCadence: Double? = nil,
+        locationName: String? = nil,
+        weather: RunWeatherSnapshot? = nil
     ) {
         self.id = id
         self.startedAt = startedAt
@@ -46,6 +60,8 @@ struct RunRecord: Identifiable {
         self.elevationGainMeters = elevationGainMeters
         self.averageHeartRate = averageHeartRate
         self.averageCadence = averageCadence
+        self.locationName = locationName
+        self.weather = weather
     }
 }
 
