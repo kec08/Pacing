@@ -156,25 +156,7 @@ struct RunActivityDetailView: View {
 
             Group {
                 if record.routeCoordinates.count >= 2 {
-                    Map(position: $cameraPosition, interactionModes: []) {
-                        ForEach(routeGradientSegments) { segment in
-                            MapPolyline(coordinates: segment.coordinates)
-                                .stroke(
-                                    segment.color,
-                                    style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
-                                )
-                        }
-
-                        Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .bottom) {
-                            RouteEndpointLabel(title: "출발", tint: Color.main500)
-                        }
-                        Annotation("도착", coordinate: record.routeCoordinates[record.routeCoordinates.count - 1], anchor: .bottom) {
-                            RouteEndpointLabel(title: "도착", tint: Color.sub500)
-                        }
-                    }
-                    .mapStyle(.standard)
-                    .allowsHitTesting(false)
-                    .accessibilityLabel("러닝 이동 경로 지도")
+                    routeMap
                 } else {
                     ContentUnavailableView(
                         "저장된 경로가 없어요",
@@ -182,18 +164,119 @@ struct RunActivityDetailView: View {
                         description: Text("이 기록은 위치 경로를 저장하지 않았습니다.")
                     )
                     .foregroundStyle(Color.textSecondary)
+                    .frame(height: 270)
                 }
             }
-            .frame(height: 270)
             .frame(maxWidth: .infinity)
             .background(Color.backgroundPrimary)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+
+            if record.weather != nil, record.routeCoordinates.count >= 2 {
+                Link(destination: Self.weatherAttributionURL) {
+                    Text("날씨 정보 제공: Apple 날씨")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.textSecondary)
+                }
+                .accessibilityLabel("날씨 정보 제공 Apple 날씨, 법적 고지 열기")
+            }
         }
+    }
+
+    private var routeMap: some View {
+        Map(position: $cameraPosition, interactionModes: []) {
+            ForEach(routeGradientSegments) { segment in
+                MapPolyline(coordinates: segment.coordinates)
+                    .stroke(
+                        segment.color,
+                        style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round)
+                    )
+            }
+
+            ForEach(kilometerMarkers) { marker in
+                Annotation("\(marker.kilometer) km", coordinate: marker.coordinate, anchor: .center) {
+                    RouteKilometerLabel(kilometer: marker.kilometer)
+                }
+                .annotationTitles(.hidden)
+            }
+
+            if endpointsOverlap {
+                // 출발·도착이 가까우면 지도가 한쪽 핀을 겹침으로 숨기므로 하나의 핀으로 나란히 그린다.
+                Annotation("출발·도착", coordinate: record.routeCoordinates[0], anchor: .center) {
+                    HStack(spacing: -4) {
+                        RouteEndpointDot(color: Color.success500)
+                        RouteEndpointDot(color: Color.accent500)
+                    }
+                }
+                .annotationTitles(.hidden)
+            } else {
+                Annotation("출발", coordinate: record.routeCoordinates[0], anchor: .center) {
+                    RouteEndpointDot(color: Color.success500)
+                }
+                .annotationTitles(.hidden)
+                Annotation("도착", coordinate: record.routeCoordinates[record.routeCoordinates.count - 1], anchor: .center) {
+                    RouteEndpointDot(color: Color.accent500)
+                }
+                .annotationTitles(.hidden)
+            }
+        }
+        .mapStyle(.standard(pointsOfInterest: .excludingAll))
+        .allowsHitTesting(false)
+        .aspectRatio(0.8, contentMode: .fit)
+        .overlay(alignment: .topTrailing) {
+            if let locationName = record.locationName {
+                RouteMapInfoCard {
+                    Text(locationName)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(Color.textPrimary)
+                        .lineLimit(1)
+                }
+                .padding(12)
+                .accessibilityLabel("러닝 위치 \(locationName)")
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if let weather = record.weather {
+                RouteMapInfoCard {
+                    HStack(spacing: 8) {
+                        Text("\(Int(weather.temperatureCelsius.rounded()))°")
+                            .font(.system(size: 17, weight: .semibold, design: .rounded))
+                            .foregroundStyle(Color.textPrimary)
+                        Image(systemName: weather.symbolName)
+                            .font(.system(size: 20))
+                            .symbolRenderingMode(.multicolor)
+                    }
+                }
+                .padding(12)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("러닝 당시 기온 \(Int(weather.temperatureCelsius.rounded()))도")
+            }
+        }
+        .accessibilityLabel("러닝 이동 경로 지도")
+    }
+
+    /// 출발·도착 핀이 화면에서 겹칠 만큼 가까운지. 경로 크기의 3% 또는 80m 중 큰 값 안이면 겹친다고 본다.
+    private var endpointsOverlap: Bool {
+        guard let first = record.routeCoordinates.first, let last = record.routeCoordinates.last else { return false }
+        let start = CLLocation(latitude: first.latitude, longitude: first.longitude)
+        let end = CLLocation(latitude: last.latitude, longitude: last.longitude)
+        let routeSpanMeters = record.routeCoordinates.reduce(0.0) { farthest, coordinate in
+            max(farthest, start.distance(from: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)))
+        }
+        return start.distance(from: end) <= max(80, routeSpanMeters * 0.03)
+    }
+
+    private static let weatherAttributionURL = URL(string: "https://weatherkit.apple.com/legal-attribution.html")!
+
+    private var kilometerMarkers: [RunRouteKilometerMarker] {
+        RunRouteKilometerMarkers.markers(
+            for: record.routeCoordinates,
+            recordedDistanceKilometers: record.distance
+        )
     }
 
     private var splitSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("구간별 페이스")
+            Text("구간")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(Color.textPrimary)
 
@@ -212,14 +295,46 @@ struct RunActivityDetailView: View {
                         .foregroundStyle(Color.textSecondary)
                 }
 
-                VStack(spacing: 8) {
-                    ForEach(displayLapPaces) { lap in
-                        splitRow(lap)
-                    }
-                }
+                splitTable
             }
         }
     }
+
+    private var splitTable: some View {
+        let laps = displayLapPaces
+        let validPaces = laps.map(\.pace).filter { $0.isFinite && $0 > 0 }
+        let fastest = validPaces.min() ?? 0
+        let slowest = validPaces.max() ?? 0
+
+        return VStack(spacing: 6) {
+            HStack(spacing: 12) {
+                Text("Km")
+                    .frame(width: Self.kilometerColumnWidth, alignment: .leading)
+                Text("평균 페이스")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text("심박수")
+                    .frame(width: Self.heartRateColumnWidth, alignment: .trailing)
+            }
+            .font(.system(size: 13, weight: .medium))
+            .foregroundStyle(Color.textSecondary)
+            .padding(.bottom, 6)
+            .accessibilityHidden(true)
+
+            ForEach(laps) { lap in
+                splitRow(
+                    lap,
+                    barFraction: RunSplitBarScale.widthFraction(pace: lap.pace, fastest: fastest, slowest: slowest)
+                )
+            }
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .background(Color.backgroundPrimary)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+    }
+
+    private static let kilometerColumnWidth: CGFloat = 32
+    private static let heartRateColumnWidth: CGFloat = 52
 
     private var displayLapPaces: [RunLapPace] {
         if !record.lapPaces.isEmpty { return record.lapPaces }
@@ -236,28 +351,41 @@ struct RunActivityDetailView: View {
         RunRouteGradient.segments(from: record.routeCoordinates)
     }
 
-    private func splitRow(_ lap: RunLapPace) -> some View {
-        HStack(spacing: 14) {
-            Text("\(lap.kilometer) km")
-                .font(.system(size: 16, weight: .semibold))
+    private func splitRow(_ lap: RunLapPace, barFraction: Double) -> some View {
+        HStack(spacing: 12) {
+            Text("\(lap.kilometer)")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(Color.textPrimary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .frame(width: 56, alignment: .leading)
+                .frame(width: Self.kilometerColumnWidth, alignment: .leading)
 
-            Spacer(minLength: 0)
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.gray100)
+                        .frame(width: proxy.size.width * barFraction)
+                    Text(formattedPace(lap.pace))
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.textPrimary)
+                        .padding(.leading, 12)
+                }
+                .frame(maxHeight: .infinity)
+            }
+            .frame(height: 40)
 
-            Text(formattedPace(lap.pace))
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundStyle(Color.textPrimary)
-                .frame(width: 58, alignment: .trailing)
+            Text(formattedLapHeartRate(lap.averageHeartRate))
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundStyle(lap.averageHeartRate == nil ? Color.textSecondary : Color.textPrimary)
+                .frame(width: Self.heartRateColumnWidth, alignment: .trailing)
         }
-        .padding(.horizontal, 18)
-        .frame(minHeight: 56)
-        .background(Color.backgroundPrimary)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(lap.kilometer) 킬로미터, 평균 페이스 \(formattedPace(lap.pace))")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            "\(lap.kilometer) 킬로미터, 평균 페이스 \(formattedPace(lap.pace)), 심박수 \(lap.averageHeartRate.map { "\(Int($0.rounded()))" } ?? "기록 없음")"
+        )
+    }
+
+    private func formattedLapHeartRate(_ value: Double?) -> String {
+        guard let value, value.isFinite, value > 0 else { return "--" }
+        return "\(Int(value.rounded()))"
     }
 
     private var startedAtText: String {
@@ -307,7 +435,8 @@ struct RunActivityDetailView: View {
     private func fitRoute() {
         guard let region = RunRouteBounds.region(
             for: record.routeCoordinates,
-            paddingMultiplier: 1.4,
+            // 지도 오른쪽 위·아래 정보 카드에 경로가 가리지 않도록 여백을 넉넉히 둔다.
+            paddingMultiplier: 1.6,
             minimumDelta: 0.003
         ) else { return }
         cameraPosition = .region(region)
@@ -344,23 +473,54 @@ private struct RunActivityOwnerAvatar: View {
     }
 }
 
-private struct RouteEndpointLabel: View {
-    let title: String
-    let tint: Color
+/// 구간 표 페이스 막대 길이. 빠른 구간일수록 길다.
+enum RunSplitBarScale {
+    static let minimumFraction = 0.35
+
+    static func widthFraction(pace: Double, fastest: Double, slowest: Double) -> Double {
+        guard pace.isFinite, pace > 0, fastest > 0, slowest >= fastest else { return minimumFraction }
+        let range = slowest - fastest
+        guard range > 0.001 else { return 1 }
+        let speedRatio = (slowest - min(max(pace, fastest), slowest)) / range
+        return minimumFraction + (1 - minimumFraction) * speedRatio
+    }
+}
+
+private struct RouteEndpointDot: View {
+    let color: Color
 
     var body: some View {
-        Text(title)
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(tint)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(Color.backgroundPrimary)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(tint.opacity(0.35), lineWidth: 1)
-            }
-            .shadow(color: .black.opacity(0.16), radius: 4, x: 0, y: 2)
-            .accessibilityLabel(title)
+        Circle()
+            .fill(color)
+            .frame(width: 16, height: 16)
+            .overlay { Circle().stroke(Color.white, lineWidth: 3) }
+            .shadow(color: .black.opacity(0.25), radius: 3, x: 0, y: 1)
+    }
+}
+
+private struct RouteKilometerLabel: View {
+    let kilometer: Int
+
+    var body: some View {
+        Text("\(kilometer) km")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(Capsule().fill(Color.white))
+            .shadow(color: .black.opacity(0.2), radius: 3, x: 0, y: 1)
+    }
+}
+
+private struct RouteMapInfoCard<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.backgroundPrimary.opacity(0.92))
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 2)
     }
 }
