@@ -49,7 +49,16 @@ final class RunActivityDetailRedesignTests: XCTestCase {
         XCTAssertEqual(
             RunRouteKilometerMarkers.markers(for: straightRoute(kilometers: 16.5), recordedDistanceKilometers: 16.5)
                 .map(\.kilometer),
-            [2, 4, 6, 8, 10, 12, 14, 16]
+            [3, 6, 9, 12, 15]
+        )
+        XCTAssertEqual(
+            [5.2, 7.9, 8, 10.05, 14.9, 15, 20, 24.9, 25, 42.2].map(RunRouteKilometerMarkers.interval(forDistanceKilometers:)),
+            [1, 1, 2, 2, 2, 3, 3, 3, 5, 5]
+        )
+        XCTAssertEqual(
+            RunRouteKilometerMarkers.markers(for: straightRoute(kilometers: 10.3), recordedDistanceKilometers: 10.3)
+                .map(\.kilometer),
+            [2, 4, 6, 8, 10]
         )
         XCTAssertTrue(
             RunRouteKilometerMarkers.markers(for: straightRoute(kilometers: 0.9), recordedDistanceKilometers: 0.9)

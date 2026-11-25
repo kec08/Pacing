@@ -9,8 +9,19 @@ struct RunRouteKilometerMarker: Identifiable {
 
 /// 경로 좌표의 누적 거리로 km 지점을 찾는다.
 enum RunRouteKilometerMarkers {
-    /// 이 거리(km)를 넘는 기록은 라벨이 겹치지 않게 2km 간격으로 표시한다.
-    static let sparseIntervalThresholdKilometers: Double = 15
+    /// 라벨이 겹치지 않게 거리에 따라 간격을 넓힌다. 어떤 거리든 라벨이 대략 8개를 넘지 않는다.
+    /// - 8km 미만: 1km (5km → 1·2·3·4)
+    /// - 8km 이상 15km 미만: 2km (10km → 2·4·6·8)
+    /// - 15km 이상 25km 미만: 3km (20km → 3·6·9·12·15·18)
+    /// - 25km 이상: 5km (하프·풀코스 → 5·10·15·20 …)
+    static func interval(forDistanceKilometers distance: Double) -> Int {
+        switch distance {
+        case ..<8: return 1
+        case ..<15: return 2
+        case ..<25: return 3
+        default: return 5
+        }
+    }
 
     /// - Parameters:
     ///   - recordedDistanceKilometers: 기록된 거리. Watch 거리처럼 GPS 경로 길이와 다를 수 있어
@@ -41,7 +52,7 @@ enum RunRouteKilometerMarkers {
         // 기록 거리 1m가 경로 위에서 몇 m인지.
         let routeMetersPerRecordedMeter = routeMeters / (recordedDistanceKilometers * 1_000)
         let completedKilometers = Int(recordedDistanceKilometers.rounded(.down))
-        let interval = recordedDistanceKilometers > sparseIntervalThresholdKilometers ? 2 : 1
+        let interval = interval(forDistanceKilometers: recordedDistanceKilometers)
 
         var markers: [RunRouteKilometerMarker] = []
         var segmentEnd = 1
